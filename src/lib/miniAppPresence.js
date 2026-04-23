@@ -212,3 +212,33 @@ export async function appendNovelReview(novelId, entry) {
     return null
   }
 }
+
+export async function appendNovelReviewVerbose(novelId, entry) {
+  try {
+    const endpoint = apiUrl('/api/reviews/append')
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        novelId: String(novelId || ''),
+        entry,
+      }),
+    })
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '')
+      return {
+        item: null,
+        error: `HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`,
+        endpoint,
+      }
+    }
+    const data = await res.json().catch(() => ({}))
+    return { item: data?.item ?? null, error: '', endpoint }
+  } catch (err) {
+    return {
+      item: null,
+      error: err instanceof Error ? err.message : 'network error',
+      endpoint: apiUrl('/api/reviews/append'),
+    }
+  }
+}

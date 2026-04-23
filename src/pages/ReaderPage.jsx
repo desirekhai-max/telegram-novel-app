@@ -24,7 +24,7 @@ import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
 import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
 import {
   appendReadingRecord,
-  appendNovelReview,
+  appendNovelReviewVerbose,
   fetchNovelReviews,
   fetchNovelViewCount,
   getPresenceMemberId,
@@ -498,7 +498,7 @@ export default function ReaderPage() {
     if (replyTarget.mode === 'comment') {
       setReplySubmitPending(true)
       setReplySubmitError('')
-      const saved = await appendNovelReview(novel.id, {
+      const { item: saved, error: submitError, endpoint: submitEndpoint } = await appendNovelReviewVerbose(novel.id, {
         score: 1,
         text,
         userName: tgUser ? formatTelegramDisplayName(tgUser) : 'A',
@@ -527,7 +527,8 @@ export default function ReaderPage() {
           return
         }
         setReplySubmitPending(false)
-        setReplySubmitError('提交失败，请检查网络或稍后重试')
+        const details = submitError ? `（${submitError}）` : ''
+        setReplySubmitError(`提交失败，请检查网络或稍后重试${details}\n接口：${submitEndpoint}`)
         return
       }
       const items = await fetchNovelReviews(novel.id)
