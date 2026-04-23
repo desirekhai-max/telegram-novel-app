@@ -23,8 +23,10 @@ import {
 import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
 import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
 import {
+  appendNovelReplyVerbose,
   appendReadingRecord,
   appendNovelReviewVerbose,
+  fetchNovelReplies,
   fetchNovelReviews,
   fetchNovelViewCount,
   getPresenceMemberId,
@@ -41,7 +43,6 @@ function chapterAccessLabel(idx, memberTier) {
 }
 
 const CATALOG_MIN_COUNT = 15
-const REPLY_STORAGE_KEY = 'tg_novel_reply_threads_v1'
 const DETAIL_LIKE_STORAGE_KEY = 'tg_novel_detail_likes_v1'
 const COMMENT_VOTES_STORAGE_KEY = 'tg_novel_comment_votes_v1'
 const COMMENT_SUBMIT_RETRY_MS = 450
@@ -104,23 +105,6 @@ function formatCommentTimeAgo(ts, nowMs = Date.now()) {
   return `${Math.max(1, year)} ឆ្នាំមុន`
 }
 
-function legacyReplyKeyPrefix(ts) {
-  const n = Number(ts)
-  if (!Number.isFinite(n) || n <= 0) return ''
-  return `${n}-`
-}
-
-function inferSnapshotTier({ row, tgUser, viewerMemberTier }) {
-  const stored = normalizeStoredMemberTier(row.memberTier)
-  if (stored) return stored
-  const uid = row.userId
-  if (tgUser?.id != null && uid === tgUser.id) return viewerMemberTier
-  const dn = tgUser ? formatTelegramDisplayName(tgUser) : ''
-  if (dn && row.name === dn) return viewerMemberTier
-  if (tgUser?.first_name && row.name === tgUser.first_name) return viewerMemberTier
-  return ''
-}
-
 function resolveCommentRowMemberTier({ row }) {
   const stored = normalizeStoredMemberTier(row.memberTier)
   if (stored) return stored
@@ -158,7 +142,6 @@ export default function ReaderPage() {
   const [searchDraft, setSearchDraft] = useState('')
   const [commentVotes, setCommentVotes] = useState({})
   const [extraReplies, setExtraReplies] = useState({})
-  const [repliesHydrated, setRepliesHydrated] = useState(false)
   const [replyTarget, setReplyTarget] = useState(null)
   const [replyDraft, setReplyDraft] = useState('')
   const [replySubmitPending, setReplySubmitPending] = useState(false)
@@ -298,15 +281,37 @@ export default function ReaderPage() {
     if (!novel) return
     let cancelled = false
     const pull = async () => {
-      const items = await fetchNovelReviews(novel.id)
+      const [items, replies] = await Promise.all([
+        fetchNovelReviews(novel.id),
+        fetchNovelReplies(novel.id),
+      ])
       if (cancelled) return
       setReviewItems(items)
+      const groupedReplies = replies.reduce((acc, row) => {
+        const key = String(row?.parentCommentId || '')
+        if (!key) return acc
+        const mapped = {
+          id: String(row?.id || `${key}-${row?.at || Date.now()}`),
+          name: String(row?.userName ?? row?.name ?? tgUser?.first_name ?? 'A'),
+          userId: row?.userId,
+          memberTier: row?.memberTier,
+          avatar: row?.userAvatar ?? row?.avatar ?? tgUser?.photo_url ?? null,
+          text: String(row?.text || '').trim(),
+          at: Number(row?.at || Date.now()),
+        }
+        if (!mapped.text) return acc
+        const list = acc[key] ?? []
+        list.push(mapped)
+        acc[key] = list
+        return acc
+      }, {})
+      setExtraReplies(groupedReplies)
     }
     pull()
     return () => {
       cancelled = true
     }
-  }, [novel])
+  }, [novel, tgUser?.first_name, tgUser?.photo_url])
 
   useEffect(() => {
     if (!startReadPageOpen) return undefined
@@ -418,60 +423,6 @@ export default function ReaderPage() {
     })
   }, [commentFeed, commentSort])
 
-  useEffect(() => {
-    if (!novel) return
-    setRepliesHydrated(false)
-    try {
-      const raw = localStorage.getItem(REPLY_STORAGE_KEY)
-      if (!raw) {
-        setExtraReplies({})
-        setRepliesHydrated(true)
-        return
-      }
-      const all = JSON.parse(raw)
-      const byNovel = all?.[String(novel.id)]
-      const base = byNovel && typeof byNovel === 'object' ? byNovel : {}
-      let changed = false
-      const snapshotted = Object.fromEntries(
-        Object.entries(base).map(([k, list]) => {
-          if (!Array.isArray(list)) return [k, list]
-          const next = list.map((r) => {
-            const stored = normalizeStoredMemberTier(r?.memberTier)
-            if (stored) return r
-            const inferred = inferSnapshotTier({ row: r, tgUser, viewerMemberTier })
-            const tier = normalizeStoredMemberTier(inferred)
-            if (!tier) return r
-            changed = true
-            return { ...r, memberTier: tier }
-          })
-          return [k, next]
-        }),
-      )
-      setExtraReplies(snapshotted)
-      if (changed) {
-        const nextAll = all && typeof all === 'object' ? { ...all } : {}
-        nextAll[String(novel.id)] = snapshotted
-        localStorage.setItem(REPLY_STORAGE_KEY, JSON.stringify(nextAll))
-      }
-    } catch {
-      setExtraReplies({})
-    } finally {
-      setRepliesHydrated(true)
-    }
-  }, [novel, tgUser, viewerMemberTier])
-
-  useEffect(() => {
-    if (!novel || !repliesHydrated) return
-    try {
-      const raw = localStorage.getItem(REPLY_STORAGE_KEY)
-      const all = raw ? JSON.parse(raw) : {}
-      const next = all && typeof all === 'object' ? { ...all } : {}
-      next[String(novel.id)] = extraReplies
-      localStorage.setItem(REPLY_STORAGE_KEY, JSON.stringify(next))
-    } catch {
-      /* ignore quota / parse errors */
-    }
-  }, [extraReplies, novel, repliesHydrated])
   const onOpenReplyModal = (targetId, targetName) => {
     if (!ensureMiniAppLoggedIn()) return
     setReplyTarget({ id: targetId, name: targetName, mode: 'reply' })
@@ -542,24 +493,46 @@ export default function ReaderPage() {
       onCloseReplyModal()
       return
     }
-    setExtraReplies((prev) => {
-      const list = prev[replyTarget.id] ?? []
-      return {
-        ...prev,
-        [replyTarget.id]: [
-          ...list,
-          {
-            id: `${Date.now()}-${list.length}`,
-            name: tgUser ? formatTelegramDisplayName(tgUser) : 'A',
-            userId: tgUser?.id,
-            memberTier: viewerMemberTier,
-            avatar: tgUser?.photo_url ?? null,
-            text,
-            at: Date.now(),
-          },
-        ],
+    setReplySubmitPending(true)
+    setReplySubmitError('')
+    const { item: savedReply, error: replyError, endpoint: replyEndpoint } = await appendNovelReplyVerbose(
+      novel.id,
+      replyTarget.id,
+      {
+        text,
+        userName: tgUser ? formatTelegramDisplayName(tgUser) : 'A',
+        userAvatar: tgUser?.photo_url ?? null,
+        userId: tgUser?.id,
+        memberTier: viewerMemberTier,
+      },
+    )
+    if (!savedReply) {
+      setReplySubmitPending(false)
+      const details = replyError ? `（${replyError}）` : ''
+      setReplySubmitError(`提交失败，请检查网络或稍后重试${details}\n接口：${replyEndpoint}`)
+      return
+    }
+    const replies = await fetchNovelReplies(novel.id)
+    const groupedReplies = replies.reduce((acc, row) => {
+      const key = String(row?.parentCommentId || '')
+      if (!key) return acc
+      const mapped = {
+        id: String(row?.id || `${key}-${row?.at || Date.now()}`),
+        name: String(row?.userName ?? row?.name ?? tgUser?.first_name ?? 'A'),
+        userId: row?.userId,
+        memberTier: row?.memberTier,
+        avatar: row?.userAvatar ?? row?.avatar ?? tgUser?.photo_url ?? null,
+        text: String(row?.text || '').trim(),
+        at: Number(row?.at || Date.now()),
       }
-    })
+      if (!mapped.text) return acc
+      const list = acc[key] ?? []
+      list.push(mapped)
+      acc[key] = list
+      return acc
+    }, {})
+    setExtraReplies(groupedReplies)
+    setReplySubmitPending(false)
     onCloseReplyModal()
   }
   const onToggleDetailLike = () => {
@@ -1042,16 +1015,7 @@ export default function ReaderPage() {
                       </div>
                     </div>
                   ) : null}
-                  {[
-                    ...(extraReplies[it.id] ?? []),
-                    ...(() => {
-                      const prefix = legacyReplyKeyPrefix(it.at)
-                      if (!prefix) return []
-                      return Object.entries(extraReplies)
-                        .filter(([k]) => k !== it.id && k.startsWith(prefix))
-                        .flatMap(([, list]) => (Array.isArray(list) ? list : []))
-                    })(),
-                  ].map((r) => (
+                  {(extraReplies[it.id] ?? []).map((r) => (
                     <div key={r.id} className="tg-reader-detail__comment-reply">
                       {r.avatar ? (
                         <img

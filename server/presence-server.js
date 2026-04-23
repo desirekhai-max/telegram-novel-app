@@ -29,6 +29,7 @@ const txMetrics = {
 }
 const novelViews = new Map()
 const novelReviews = new Map()
+const novelReplies = new Map()
 
 const READ_RECORDS_CAP = 2000
 /** @type {object[]} */
@@ -46,6 +47,26 @@ function normalizeReviewIn(raw, novelId = '') {
   return {
     id,
     score,
+    text: String(raw.text || '').slice(0, 500),
+    at,
+    userName: String(raw.userName || raw.name || 'A').slice(0, 120),
+    userAvatar: raw.userAvatar ?? raw.avatar ?? null,
+    userId: Number.isFinite(userIdRaw) ? userIdRaw : undefined,
+    memberTier: String(raw.memberTier || '').slice(0, 32),
+  }
+}
+
+function normalizeReplyIn(raw, novelId = '', commentId = '') {
+  if (!raw || typeof raw !== 'object') return null
+  const atRaw = Number(raw.at ?? raw.createdAt ?? raw.time)
+  const at = Number.isFinite(atRaw) && atRaw > 0 ? atRaw : now()
+  const parentCommentId = String(raw.parentCommentId || commentId || '').trim().slice(0, 120)
+  if (!parentCommentId) return null
+  const id = String(raw.id || `rp-${novelId || 'novel'}-${parentCommentId}-${at}-${Math.floor(Math.random() * 100000)}`).slice(0, 140)
+  const userIdRaw = Number(raw.userId)
+  return {
+    id,
+    parentCommentId,
     text: String(raw.text || '').slice(0, 500),
     at,
     userName: String(raw.userName || raw.name || 'A').slice(0, 120),
@@ -145,6 +166,13 @@ function loadPersistedMembers() {
       const items = Array.isArray(row?.items) ? row.items.map((it) => normalizeReviewIn(it, novelId)).filter(Boolean) : []
       novelReviews.set(String(novelId), { items })
     }
+    const novelRepliesObj = parsed?.novelReplies && typeof parsed.novelReplies === 'object'
+      ? parsed.novelReplies
+      : {}
+    for (const [novelId, row] of Object.entries(novelRepliesObj)) {
+      const items = Array.isArray(row?.items) ? row.items.map((it) => normalizeReplyIn(it, novelId)).filter(Boolean) : []
+      novelReplies.set(String(novelId), { items })
+    }
     readRecords = Array.isArray(parsed.readRecords)
       ? parsed.readRecords.map(normalizeReadRecordIn).filter(Boolean)
       : []
@@ -164,6 +192,7 @@ function persistMembers() {
       txMetrics,
       novelViews: Object.fromEntries(novelViews),
       novelReviews: Object.fromEntries(novelReviews),
+      novelReplies: Object.fromEntries(novelReplies),
       readRecords: readRecords.slice(0, READ_RECORDS_CAP),
     })
     fs.writeFileSync(DATA_FILE, payload, 'utf8')
@@ -176,6 +205,14 @@ function resolveNovelReviews(novelId) {
   const key = String(novelId || '').trim()
   if (!key) return []
   const row = novelReviews.get(key)
+  const items = Array.isArray(row?.items) ? row.items : []
+  return items
+}
+
+function resolveNovelReplies(novelId) {
+  const key = String(novelId || '').trim()
+  if (!key) return []
+  const row = novelReplies.get(key)
   const items = Array.isArray(row?.items) ? row.items : []
   return items
 }
@@ -487,6 +524,33 @@ const server = http.createServer(async (req, res) => {
     const items = resolveNovelReviews(novelId).slice()
     items.push(item)
     novelReviews.set(novelId, { items })
+    persistMembers()
+    return sendJson(res, 200, { ok: true, novelId, item })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/replies') {
+    const novelId = String(url.searchParams.get('novelId') || '').trim()
+    if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
+    const parentCommentId = String(url.searchParams.get('parentCommentId') || '').trim()
+    const all = resolveNovelReplies(novelId).slice()
+    const items = parentCommentId
+      ? all.filter((it) => String(it?.parentCommentId || '') === parentCommentId)
+      : all
+    items.sort((a, b) => Number(a?.at || 0) - Number(b?.at || 0))
+    return sendJson(res, 200, { ok: true, novelId, items })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/replies/append') {
+    const body = await parseJsonBody(req)
+    const novelId = String(body.novelId || '').trim()
+    if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
+    const parentCommentId = String(body.parentCommentId || body.entry?.parentCommentId || '').trim()
+    if (!parentCommentId) return sendJson(res, 400, { ok: false, error: 'parentCommentId required' })
+    const item = normalizeReplyIn(body.entry ?? body, novelId, parentCommentId)
+    if (!item) return sendJson(res, 400, { ok: false, error: 'invalid reply entry' })
+    const items = resolveNovelReplies(novelId).slice()
+    items.push(item)
+    novelReplies.set(novelId, { items })
     persistMembers()
     return sendJson(res, 200, { ok: true, novelId, item })
   }

@@ -242,3 +242,51 @@ export async function appendNovelReviewVerbose(novelId, entry) {
     }
   }
 }
+
+export async function fetchNovelReplies(novelId) {
+  try {
+    const res = await fetch(
+      apiUrl(`/api/replies?novelId=${encodeURIComponent(String(novelId || ''))}&t=${Date.now()}`),
+      { cache: 'no-store' },
+    )
+    if (!res.ok) throw new Error('fetch replies failed')
+    const data = await res.json()
+    return Array.isArray(data?.items) ? data.items : []
+  } catch {
+    return []
+  }
+}
+
+export async function appendNovelReplyVerbose(novelId, parentCommentId, entry) {
+  try {
+    const endpoint = apiUrl('/api/replies/append')
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        novelId: String(novelId || ''),
+        parentCommentId: String(parentCommentId || ''),
+        entry: {
+          ...entry,
+          parentCommentId: String(parentCommentId || ''),
+        },
+      }),
+    })
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '')
+      return {
+        item: null,
+        error: `HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`,
+        endpoint,
+      }
+    }
+    const data = await res.json().catch(() => ({}))
+    return { item: data?.item ?? null, error: '', endpoint }
+  } catch (err) {
+    return {
+      item: null,
+      error: err instanceof Error ? err.message : 'network error',
+      endpoint: apiUrl('/api/replies/append'),
+    }
+  }
+}
