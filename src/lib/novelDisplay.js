@@ -42,17 +42,7 @@ export function formatLatestChapterRelativeLabel(novel, nowMs = Date.now()) {
 export function formatViewCount(n) {
   const v = Math.floor(Number(n))
   if (!Number.isFinite(v) || v < 0) return '0'
-  if (v >= 10000) {
-    const x = v / 10000
-    const t = x % 1 === 0 ? String(x) : x.toFixed(2).replace(/\.?0+$/, '')
-    return `${t}万`
-  }
-  if (v >= 1000) {
-    const k = v / 1000
-    const t = k % 1 === 0 ? String(k) : k.toFixed(2).replace(/\.?0+$/, '')
-    return `${t}K`
-  }
-  return String(v)
+  return v.toLocaleString('en-US')
 }
 
 /** 统计已发布章节正文字符数（每章标题 + 各段 body）；作者增删章节后卡片字数会随之变化 */
