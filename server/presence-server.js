@@ -31,6 +31,7 @@ const novelViews = new Map()
 const novelReviews = new Map()
 const novelReplies = new Map()
 const novelReviewVotes = new Map()
+const novelLikes = new Map()
 
 const READ_RECORDS_CAP = 2000
 /** @type {object[]} */
@@ -193,6 +194,13 @@ function loadPersistedMembers() {
       )
       novelReviewVotes.set(String(novelId), votes)
     }
+    const novelLikesObj = parsed?.novelLikes && typeof parsed.novelLikes === 'object'
+      ? parsed.novelLikes
+      : {}
+    for (const [novelId, row] of Object.entries(novelLikesObj)) {
+      const users = Array.isArray(row?.users) ? row.users.map((v) => String(v || '').trim()).filter(Boolean) : []
+      novelLikes.set(String(novelId), { users: [...new Set(users)] })
+    }
     readRecords = Array.isArray(parsed.readRecords)
       ? parsed.readRecords.map(normalizeReadRecordIn).filter(Boolean)
       : []
@@ -214,6 +222,7 @@ function persistMembers() {
       novelReviews: Object.fromEntries(novelReviews),
       novelReplies: Object.fromEntries(novelReplies),
       novelReviewVotes: Object.fromEntries(novelReviewVotes),
+      novelLikes: Object.fromEntries(novelLikes),
       readRecords: readRecords.slice(0, READ_RECORDS_CAP),
     })
     fs.writeFileSync(DATA_FILE, payload, 'utf8')
@@ -243,6 +252,14 @@ function resolveNovelReviewVotes(novelId) {
   if (!key) return {}
   const row = novelReviewVotes.get(key)
   return row && typeof row === 'object' ? row : {}
+}
+
+function resolveNovelLikeUsers(novelId) {
+  const key = String(novelId || '').trim()
+  if (!key) return []
+  const row = novelLikes.get(key)
+  const users = Array.isArray(row?.users) ? row.users : []
+  return users
 }
 
 function resolveNovelViewCount(novelId, baseCount = 0) {
@@ -595,6 +612,31 @@ const server = http.createServer(async (req, res) => {
       likes: upSet.size,
       dislikes: downSet.size,
     })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/novel-likes') {
+    const novelId = String(url.searchParams.get('novelId') || '').trim()
+    if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
+    const userId = String(url.searchParams.get('userId') || '').trim()
+    const users = resolveNovelLikeUsers(novelId)
+    const count = users.length
+    const liked = userId ? users.includes(userId) : false
+    return sendJson(res, 200, { ok: true, novelId, count, liked })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/novel-likes/toggle') {
+    const body = await parseJsonBody(req)
+    const novelId = String(body.novelId || '').trim()
+    if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
+    const userId = String(body.userId || '').trim()
+    if (!userId) return sendJson(res, 400, { ok: false, error: 'userId required' })
+    const shouldLike = Boolean(body.like)
+    const users = new Set(resolveNovelLikeUsers(novelId))
+    if (shouldLike) users.add(userId)
+    else users.delete(userId)
+    novelLikes.set(novelId, { users: [...users] })
+    persistMembers()
+    return sendJson(res, 200, { ok: true, novelId, count: users.size, liked: shouldLike })
   }
 
   if (req.method === 'GET' && url.pathname === '/api/replies') {

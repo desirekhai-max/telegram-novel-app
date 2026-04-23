@@ -26,12 +26,14 @@ import {
   appendNovelReplyVerbose,
   appendReadingRecord,
   appendNovelReviewVerbose,
+  fetchNovelLikeState,
   fetchNovelReplies,
   fetchNovelReviews,
   fetchNovelViewCount,
   getPresenceMemberId,
   incrementNovelViewCount,
   reportMetricEvent,
+  toggleNovelLikeVerbose,
   voteNovelReviewVerbose,
 } from '../lib/miniAppPresence.js'
 import { buildOrderNo } from '../lib/orderNo.js'
@@ -44,7 +46,6 @@ function chapterAccessLabel(idx, memberTier) {
 }
 
 const CATALOG_MIN_COUNT = 15
-const DETAIL_LIKE_STORAGE_KEY = 'tg_novel_detail_likes_v1'
 const COMMENT_VOTES_STORAGE_KEY = 'tg_novel_comment_votes_v1'
 const COMMENT_SUBMIT_RETRY_MS = 450
 
@@ -198,7 +199,7 @@ export default function ReaderPage() {
   useEffect(() => {
     if (!novel) return
     saveLastRead({ id: novel.id, title: novel.title })
-  }, [novel])
+  }, [novel, tgUser?.id])
 
   useEffect(() => {
     setArticleHeaderCompact(false)
@@ -214,18 +215,13 @@ export default function ReaderPage() {
       setViewCount(count)
     })
     const baseLikeCount = Number(novel.likeCount ?? 0)
-    try {
-      const raw = localStorage.getItem(DETAIL_LIKE_STORAGE_KEY)
-      const all = raw ? JSON.parse(raw) : {}
-      const liked = Boolean(all?.[String(novel.id)])
-      setLikedDetail(liked)
-      setLikeCount(Math.max(0, baseLikeCount + (liked ? 1 : 0)))
-    } catch {
-      setLikedDetail(false)
-      setLikeCount(baseLikeCount)
-    } finally {
+    const likerId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
+    setLikeCount(Math.max(0, baseLikeCount))
+    void fetchNovelLikeState(novel.id, likerId, baseLikeCount).then((state) => {
+      setLikedDetail(Boolean(state?.liked))
+      setLikeCount(Math.max(0, Number(state?.count) || 0))
       setDetailLikeHydrated(true)
-    }
+    })
     try {
       const rawVotes = localStorage.getItem(COMMENT_VOTES_STORAGE_KEY)
       const allVotes = rawVotes ? JSON.parse(rawVotes) : {}
@@ -238,23 +234,6 @@ export default function ReaderPage() {
     }
     setLikeBump(false)
   }, [novel])
-  useEffect(() => {
-    if (!novel || !detailLikeHydrated) return
-    let all = {}
-    try {
-      const raw = localStorage.getItem(DETAIL_LIKE_STORAGE_KEY)
-      const parsed = raw ? JSON.parse(raw) : {}
-      all = parsed && typeof parsed === 'object' ? parsed : {}
-    } catch {
-      all = {}
-    }
-    try {
-      const next = { ...all, [String(novel.id)]: likedDetail }
-      localStorage.setItem(DETAIL_LIKE_STORAGE_KEY, JSON.stringify(next))
-    } catch {
-      /* ignore storage errors */
-    }
-  }, [likedDetail, novel, detailLikeHydrated])
   useEffect(() => {
     if (!novel || !commentVotesHydrated) return
     let all = {}
@@ -538,11 +517,20 @@ export default function ReaderPage() {
   }
   const onToggleDetailLike = () => {
     if (!ensureMiniAppLoggedIn()) return
+    if (!novel?.id) return
     const next = !likedDetail
     setLikedDetail(next)
     setLikeCount((c) => Math.max(0, c + (next ? 1 : -1)))
     setLikeBump(true)
     window.setTimeout(() => setLikeBump(false), 220)
+    const likerId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
+    void toggleNovelLikeVerbose(novel.id, likerId, next).then((resp) => {
+      if (!resp.ok) return
+      setLikedDetail(Boolean(resp.liked))
+      if (Number.isFinite(resp.count)) {
+        setLikeCount(Math.max(0, Math.floor(Number(resp.count))))
+      }
+    })
   }
   const onVoteComment = async (commentId, currentVote, targetVote) => {
     if (!ensureMiniAppLoggedIn()) return

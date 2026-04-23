@@ -332,3 +332,67 @@ export async function voteNovelReviewVerbose(novelId, commentId, voterId, action
     }
   }
 }
+
+export async function fetchNovelLikeState(novelId, userId = '', baseCount = 0) {
+  try {
+    const res = await fetch(
+      apiUrl(
+        `/api/novel-likes?novelId=${encodeURIComponent(String(novelId || ''))}&userId=${encodeURIComponent(String(userId || ''))}`,
+      ),
+      { cache: 'no-store' },
+    )
+    if (!res.ok) throw new Error('fetch novel likes failed')
+    const data = await res.json()
+    const count = Number(data?.count)
+    return {
+      count: Number.isFinite(count) && count >= 0 ? Math.floor(count) : Math.max(0, Number(baseCount) || 0),
+      liked: Boolean(data?.liked),
+    }
+  } catch {
+    return {
+      count: Math.max(0, Number(baseCount) || 0),
+      liked: false,
+    }
+  }
+}
+
+export async function toggleNovelLikeVerbose(novelId, userId, like) {
+  try {
+    const endpoint = apiUrl('/api/novel-likes/toggle')
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        novelId: String(novelId || ''),
+        userId: String(userId || ''),
+        like: Boolean(like),
+      }),
+    })
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '')
+      return {
+        ok: false,
+        count: null,
+        liked: null,
+        error: `HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`,
+        endpoint,
+      }
+    }
+    const data = await res.json().catch(() => ({}))
+    return {
+      ok: Boolean(data?.ok),
+      count: Number(data?.count),
+      liked: Boolean(data?.liked),
+      error: '',
+      endpoint,
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      count: null,
+      liked: null,
+      error: err instanceof Error ? err.message : 'network error',
+      endpoint: apiUrl('/api/novel-likes/toggle'),
+    }
+  }
+}
