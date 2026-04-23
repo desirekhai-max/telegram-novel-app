@@ -1,5 +1,4 @@
 import { getNovelMeatCharCount } from './novelDisplay.js'
-import { getReviewAggregatedRating } from './novelReviewRatings.js'
 
 function num(n, fallback = 0) {
   const v = Number(n)
@@ -39,9 +38,9 @@ export function sortNovelsForHome(list, sortKey, sortDesc) {
 
   const getters = {
     update: (n) => getLastContentUpdateMs(n),
-    views: (n) => num(n.viewsWan),
-    favorites: (n) => num(n.favoritesK),
-    rating: (n) => num(getReviewAggregatedRating(n.id, n.rating)),
+    views: (n) => num(n.cardViewCount),
+    favorites: (n) => num(n.cardFavoriteCount),
+    rating: (n) => num(n.cardRatingPoints),
     meat: (n) => getNovelMeatCharCount(n),
   }
 

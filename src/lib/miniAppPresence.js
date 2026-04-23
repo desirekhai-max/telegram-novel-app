@@ -396,3 +396,14 @@ export async function toggleNovelLikeVerbose(novelId, userId, like) {
     }
   }
 }
+
+export async function fetchHomeStats() {
+  try {
+    const res = await fetch(apiUrl(`/api/home-stats?t=${Date.now()}`), { cache: 'no-store' })
+    if (!res.ok) throw new Error('fetch home stats failed')
+    const data = await res.json()
+    return data?.items && typeof data.items === 'object' ? data.items : {}
+  } catch {
+    return {}
+  }
+}

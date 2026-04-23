@@ -262,6 +262,30 @@ function resolveNovelLikeUsers(novelId) {
   return users
 }
 
+function getNovelCommentPoints(novelId) {
+  const reviews = resolveNovelReviews(novelId)
+  const replies = resolveNovelReplies(novelId)
+  return Math.min(100, reviews.length + replies.length)
+}
+
+function buildHomeStats() {
+  const ids = new Set([
+    ...novelViews.keys(),
+    ...novelLikes.keys(),
+    ...novelReviews.keys(),
+    ...novelReplies.keys(),
+  ])
+  const stats = {}
+  for (const id of ids) {
+    const novelId = String(id)
+    const viewCount = resolveNovelViewCount(novelId, 0)
+    const favoriteCount = resolveNovelLikeUsers(novelId).length
+    const ratingPoints = getNovelCommentPoints(novelId)
+    stats[novelId] = { viewCount, favoriteCount, ratingPoints }
+  }
+  return stats
+}
+
 function resetInteractionData() {
   txMetrics.readEvents = []
   txMetrics.orderEvents = []
@@ -662,6 +686,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/admin/reset-interactions') {
     resetInteractionData()
     return sendJson(res, 200, { ok: true })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/home-stats') {
+    return sendJson(res, 200, { ok: true, items: buildHomeStats() })
   }
 
   if (req.method === 'GET' && url.pathname === '/api/replies') {

@@ -19,6 +19,7 @@ import {
 } from '../lib/filterNovels.js'
 import { getAppliedFilterChips, removeCriterionFromCriteria } from '../lib/homeFilterChips.js'
 import { buildHomeOrderedNovels } from '../lib/homeListOrder.js'
+import { fetchHomeStats } from '../lib/miniAppPresence.js'
 import { novelMatchesInlineSearch } from '../lib/novelInlineSearch.js'
 import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
 
@@ -105,11 +106,24 @@ export default function HomePage() {
 
   /** 阅读页提交评论分后刷新卡片与「评分」排序 */
   const [reviewRatingTick, setReviewRatingTick] = useState(0)
+  const [homeStats, setHomeStats] = useState({})
   const [currentPage, setCurrentPage] = useState(1)
   useEffect(() => {
     const fn = () => setReviewRatingTick((t) => t + 1)
     window.addEventListener('tg-novel-ratings-changed', fn)
     return () => window.removeEventListener('tg-novel-ratings-changed', fn)
+  }, [])
+  useEffect(() => {
+    let cancelled = false
+    const pull = async () => {
+      const items = await fetchHomeStats()
+      if (cancelled) return
+      setHomeStats(items)
+    }
+    pull()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   /** 仅关键词命中（未套首页筛选），用于空态区分「无命中」与「有命中但被筛选掉」 */
@@ -119,15 +133,25 @@ export default function HomePage() {
   }, [isSearchMode, searchTrim])
 
   const displayedNovels = useMemo(() => {
+    const withStats = (list) =>
+      list.map((n) => {
+        const s = homeStats?.[String(n.id)] ?? {}
+        return {
+          ...n,
+          cardViewCount: Number(s?.viewCount) >= 0 ? Number(s.viewCount) : 0,
+          cardFavoriteCount: Number(s?.favoriteCount) >= 0 ? Number(s.favoriteCount) : 0,
+          cardRatingPoints: Number(s?.ratingPoints) >= 0 ? Number(s.ratingPoints) : 0,
+        }
+      })
     if (isSearchMode) {
       const hit = searchKeywordHits ?? []
       const filtered = filterNovelsByHomeCriteria(hit, appliedCriteria)
-      return buildHomeOrderedNovels(filtered, sortKey, sortDesc)
+      return buildHomeOrderedNovels(withStats(filtered), sortKey, sortDesc)
     }
     const pool = authorShelfFilter ? novels.filter((n) => n.author === authorShelfFilter) : novels
     const filtered = filterNovelsByHomeCriteria(pool, appliedCriteria)
-    return buildHomeOrderedNovels(filtered, sortKey, sortDesc)
-  }, [appliedCriteria, authorShelfFilter, isSearchMode, reviewRatingTick, searchKeywordHits, sortDesc, sortKey])
+    return buildHomeOrderedNovels(withStats(filtered), sortKey, sortDesc)
+  }, [appliedCriteria, authorShelfFilter, homeStats, isSearchMode, reviewRatingTick, searchKeywordHits, sortDesc, sortKey])
 
   const filterHadNoResults = useMemo(() => {
     if (!appliedCriteria || isDefaultHomeFilterCriteria(appliedCriteria)) return false

@@ -8,7 +8,6 @@ import {
   getMeatCategoryByWordCount,
   commentPointsToStars,
 } from '../lib/novelDisplay.js'
-import { getReviewAggregatedRating } from '../lib/novelReviewRatings.js'
 
 function StarRow({ commentPoints }) {
   const p = Number(commentPoints)
@@ -65,10 +64,10 @@ export default function HomeNovelCard({
   const latestRel = formatLatestChapterRelativeLabel(n)
   const themes = Array.isArray(n.listThemes) ? n.listThemes : []
   const tags = n.tags ?? []
-  const views = n.viewCount ?? Math.round((n.viewsWan ?? 0) * 10000)
-  const favs = n.favoriteCount ?? Math.round((n.favoritesK ?? 0) * 1000)
+  const views = Number.isFinite(Number(n.cardViewCount)) ? Math.max(0, Number(n.cardViewCount)) : 0
+  const favs = Number.isFinite(Number(n.cardFavoriteCount)) ? Math.max(0, Number(n.cardFavoriteCount)) : 0
   const meatCat = getMeatCategoryByWordCount(n)
-  const commentPoints = getReviewAggregatedRating(n.id, n.rating)
+  const commentPoints = Number.isFinite(Number(n.cardRatingPoints)) ? Math.max(0, Number(n.cardRatingPoints)) : 0
 
   return (
     <div className="tg-novel-card">
