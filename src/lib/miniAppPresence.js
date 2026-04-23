@@ -1,3 +1,5 @@
+import { apiUrl } from './apiBase.js'
+
 function isTelegramMiniApp() {
   try {
     const w = window.Telegram?.WebApp
@@ -72,7 +74,7 @@ export async function registerPresencePing(pathname = '', adminOnline = false) {
   const bucket = detectDeviceBucket()
   const memberId = getMemberId()
   try {
-    await fetch('/api/presence/ping', {
+    await fetch(apiUrl('/api/presence/ping'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -88,7 +90,7 @@ export async function registerPresencePing(pathname = '', adminOnline = false) {
 
 export async function readActiveMembers5m() {
   try {
-    const res = await fetch('/api/presence/online', { cache: 'no-store' })
+    const res = await fetch(apiUrl('/api/presence/online'), { cache: 'no-store' })
     if (!res.ok) throw new Error('presence online failed')
     const data = await res.json()
     return {
@@ -106,7 +108,7 @@ export async function reportMetricEvent(type) {
   const t = String(type || '').toLowerCase()
   if (!t) return
   try {
-    await fetch('/api/metrics/tx-event', {
+    await fetch(apiUrl('/api/metrics/tx-event'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: t }),
@@ -119,7 +121,7 @@ export async function reportMetricEvent(type) {
 /** 写入阅读记录（管理端「阅读记录管理」列表）；成功后会派发 `tg-admin-records-changed` */
 export async function appendReadingRecord(record) {
   try {
-    const res = await fetch('/api/reading-records/append', {
+    const res = await fetch(apiUrl('/api/reading-records/append'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(record),
@@ -134,9 +136,14 @@ export async function appendReadingRecord(record) {
 
 export async function fetchNovelViewCount(novelId, baseCount = 0) {
   try {
-    const res = await fetch(`/api/novel-views?novelId=${encodeURIComponent(String(novelId || ''))}&base=${encodeURIComponent(String(baseCount || 0))}`, {
+    const res = await fetch(
+      apiUrl(
+        `/api/novel-views?novelId=${encodeURIComponent(String(novelId || ''))}&base=${encodeURIComponent(String(baseCount || 0))}`,
+      ),
+      {
       cache: 'no-store',
-    })
+      },
+    )
     if (!res.ok) throw new Error('fetch novel views failed')
     const data = await res.json()
     const count = Number(data?.count)
@@ -150,7 +157,7 @@ export async function fetchNovelViewCount(novelId, baseCount = 0) {
 
 export async function incrementNovelViewCount(novelId, delta = 1, baseCount = 0) {
   try {
-    const res = await fetch('/api/novel-views/increment', {
+    const res = await fetch(apiUrl('/api/novel-views/increment'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

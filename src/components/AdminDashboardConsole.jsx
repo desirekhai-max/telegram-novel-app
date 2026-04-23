@@ -25,6 +25,7 @@ import {
   toDateOnly,
 } from '../lib/adminDateTimePickerUtils.js'
 import { novels } from '../data/novels.js'
+import { apiUrl } from '../lib/apiBase.js'
 
 /**
  * 后台「控制台」总览：演示数据 + 与书架 novels 数量联动一项
@@ -113,7 +114,7 @@ export default function AdminDashboardConsole() {
           const d = toDateOnly(startTrim)
           if (d) qs.set('date', d)
         }
-        const res = await fetch(`/api/presence/online?${qs}`, { cache: 'no-store' })
+        const res = await fetch(apiUrl(`/api/presence/online?${qs}`), { cache: 'no-store' })
         if (!res.ok) return
         const data = await res.json()
         setReadToday(Number(data?.counts?.readToday || 0))

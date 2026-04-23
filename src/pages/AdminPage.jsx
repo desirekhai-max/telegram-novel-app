@@ -27,6 +27,7 @@ import {
 import { formatTelegramDisplayName, useTelegramUser } from '../hooks/useTelegramUser.js'
 import { logoutAdmin } from '../lib/adminAuth.js'
 import { readActiveMembers5m } from '../lib/miniAppPresence.js'
+import { apiUrl } from '../lib/apiBase.js'
 
 const NAV = [
   { id: 'dashboard', label: '控制台', icon: Gauge },
@@ -271,7 +272,7 @@ export default function AdminPage() {
 
   const fetchReadingRecords = useCallback(async () => {
     try {
-      const res = await fetch('/api/reading-records', { cache: 'no-store' })
+      const res = await fetch(apiUrl('/api/reading-records'), { cache: 'no-store' })
       if (!res.ok) return
       const data = await res.json()
       setReadRecordsSource(Array.isArray(data?.items) ? data.items : [])
