@@ -1,0 +1,494 @@
+import http from 'node:http'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const HOST = '127.0.0.1'
+const PORT = 8787
+const ONLINE_WINDOW_MS = 45 * 1000
+const COIN_TO_RIEL = 1 // 100金币=100瑞尔 -> 1金币=1瑞尔
+const RIEL_PER_USD = 4000
+const PHNOM_PENH_UTC_OFFSET_HOURS = 7
+const PHNOM_PENH_SETTLEMENT_HOUR = 9 // 每天早上9点结算
+const records = new Map()
+const knownMembers = new Set()
+const paidMembers = new Set()
+const memberFirstSeenAt = new Map()
+const memberPaidAt = new Map()
+const txMetrics = {
+  readEvents: [],
+  orderEvents: [],
+  successEvents: [],
+  failedEvents: [],
+  manualEvents: [],
+  coinBuyMemberEvents: [],
+  firstDepositMemberEvents: [],
+  withdrawalUsdEvents: [],
+  sellUsdEvents: [],
+  payUsdEvents: [],
+}
+const novelViews = new Map()
+
+const READ_RECORDS_CAP = 2000
+/** @type {object[]} */
+let readRecords = []
+
+function normalizeReadRecordIn(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const readChapter = String(raw.readChapter || '').slice(0, 250)
+  const out = {
+    memberName: String(raw.memberName || '').slice(0, 120),
+    memberId: String(raw.memberId || '').slice(0, 64),
+    memberAccount: String(raw.memberAccount || '').slice(0, 120),
+    memberLevel: String(raw.memberLevel || '').slice(0, 64),
+    memberOrder: String(raw.memberOrder || '').slice(0, 32),
+    shelfTitle: String(raw.shelfTitle || '').slice(0, 200),
+    readChapter,
+    readAt: String(raw.readAt || '').slice(0, 32),
+    ts: Number(raw.ts) && Number.isFinite(Number(raw.ts)) ? Number(raw.ts) : now(),
+  }
+  if (!out.shelfTitle) return null
+  return out
+}
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const DATA_FILE = path.join(__dirname, 'presence-data.json')
+
+function loadPersistedMembers() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) return
+    const raw = fs.readFileSync(DATA_FILE, 'utf8')
+    const parsed = JSON.parse(raw)
+    const members = Array.isArray(parsed?.knownMembers) ? parsed.knownMembers : []
+    const paid = Array.isArray(parsed?.paidMembers) ? parsed.paidMembers : []
+    const firstSeenObj = parsed?.memberFirstSeenAt && typeof parsed.memberFirstSeenAt === 'object'
+      ? parsed.memberFirstSeenAt
+      : {}
+    const paidAtObj = parsed?.memberPaidAt && typeof parsed.memberPaidAt === 'object'
+      ? parsed.memberPaidAt
+      : {}
+    const tx = parsed?.txMetrics && typeof parsed.txMetrics === 'object' ? parsed.txMetrics : {}
+    for (const id of members) {
+      if (id) knownMembers.add(String(id))
+    }
+    for (const id of paid) {
+      if (id) paidMembers.add(String(id))
+    }
+    for (const [id, ts] of Object.entries(firstSeenObj)) {
+      if (id && Number(ts)) memberFirstSeenAt.set(String(id), Number(ts))
+    }
+    for (const [id, ts] of Object.entries(paidAtObj)) {
+      if (id && Number(ts)) memberPaidAt.set(String(id), Number(ts))
+    }
+    txMetrics.readEvents = Array.isArray(tx.readEvents) ? tx.readEvents.map(Number).filter(Boolean) : []
+    txMetrics.orderEvents = Array.isArray(tx.orderEvents) ? tx.orderEvents.map(Number).filter(Boolean) : []
+    txMetrics.successEvents = Array.isArray(tx.successEvents) ? tx.successEvents.map(Number).filter(Boolean) : []
+    txMetrics.failedEvents = Array.isArray(tx.failedEvents) ? tx.failedEvents.map(Number).filter(Boolean) : []
+    txMetrics.manualEvents = Array.isArray(tx.manualEvents) ? tx.manualEvents.map(Number).filter(Boolean) : []
+    txMetrics.coinBuyMemberEvents = Array.isArray(tx.coinBuyMemberEvents)
+      ? tx.coinBuyMemberEvents.map(Number).filter(Boolean)
+      : []
+    txMetrics.firstDepositMemberEvents = Array.isArray(tx.firstDepositMemberEvents)
+      ? tx.firstDepositMemberEvents.map(Number).filter(Boolean)
+      : []
+    txMetrics.withdrawalUsdEvents = Array.isArray(tx.withdrawalUsdEvents)
+      ? tx.withdrawalUsdEvents
+          .map((e) => ({ ts: Number(e?.ts), amount: Number(e?.amount || 0) }))
+          .filter((e) => e.ts && Number.isFinite(e.amount))
+      : []
+    txMetrics.sellUsdEvents = Array.isArray(tx.sellUsdEvents)
+      ? tx.sellUsdEvents
+          .map((e) => ({ ts: Number(e?.ts), amount: Number(e?.amount || 0) }))
+          .filter((e) => e.ts && Number.isFinite(e.amount))
+      : []
+    txMetrics.payUsdEvents = Array.isArray(tx.payUsdEvents)
+      ? tx.payUsdEvents
+          .map((e) => ({ ts: Number(e?.ts), amount: Number(e?.amount || 0) }))
+          .filter((e) => e.ts && Number.isFinite(e.amount))
+      : []
+    const novelViewsObj = parsed?.novelViews && typeof parsed.novelViews === 'object'
+      ? parsed.novelViews
+      : {}
+    for (const [novelId, count] of Object.entries(novelViewsObj)) {
+      const n = Number(count)
+      if (novelId && Number.isFinite(n) && n >= 0) {
+        novelViews.set(String(novelId), Math.floor(n))
+      }
+    }
+    readRecords = Array.isArray(parsed.readRecords)
+      ? parsed.readRecords.map(normalizeReadRecordIn).filter(Boolean)
+      : []
+    readRecords = readRecords.slice(0, READ_RECORDS_CAP)
+  } catch {
+    /* ignore corrupted file */
+  }
+}
+
+function persistMembers() {
+  try {
+    const payload = JSON.stringify({
+      knownMembers: [...knownMembers],
+      paidMembers: [...paidMembers],
+      memberFirstSeenAt: Object.fromEntries(memberFirstSeenAt),
+      memberPaidAt: Object.fromEntries(memberPaidAt),
+      txMetrics,
+      novelViews: Object.fromEntries(novelViews),
+      readRecords: readRecords.slice(0, READ_RECORDS_CAP),
+    })
+    fs.writeFileSync(DATA_FILE, payload, 'utf8')
+  } catch {
+    /* ignore file system failures */
+  }
+}
+
+function resolveNovelViewCount(novelId, baseCount = 0) {
+  const key = String(novelId || '').trim()
+  if (!key) return 0
+  const base = Number(baseCount)
+  const safeBase = Number.isFinite(base) && base >= 0 ? Math.floor(base) : 0
+  const existing = novelViews.get(key)
+  if (Number.isFinite(existing) && existing >= 0) return existing
+  novelViews.set(key, safeBase)
+  persistMembers()
+  return safeBase
+}
+
+function now() {
+  return Date.now()
+}
+
+function toUsdFromRiel(rielAmount) {
+  const riel = Number(rielAmount || 0)
+  if (!Number.isFinite(riel) || riel <= 0) return 0
+  return riel / RIEL_PER_USD
+}
+
+function getSettlementStartMs(nowMs = Date.now()) {
+  const tzOffsetMs = PHNOM_PENH_UTC_OFFSET_HOURS * 60 * 60 * 1000
+  const shifted = new Date(nowMs + tzOffsetMs)
+  const y = shifted.getUTCFullYear()
+  const m = shifted.getUTCMonth()
+  const d = shifted.getUTCDate()
+
+  // 先取 Phnom Penh 当天 00:00，再加上 09:00 结算点，最后转回 UTC 毫秒
+  const localDayStartMs = Date.UTC(y, m, d, 0, 0, 0, 0)
+  const settlementLocalMs = localDayStartMs + PHNOM_PENH_SETTLEMENT_HOUR * 60 * 60 * 1000
+  const settlementUtcMs = settlementLocalMs - tzOffsetMs
+
+  // 若当前时间早于今天 09:00（柬时），则归到昨天 09:00 起算
+  return nowMs >= settlementUtcMs ? settlementUtcMs : settlementUtcMs - 24 * 60 * 60 * 1000
+}
+
+function getSettlementRangeByDate(dateText) {
+  const text = String(dateText || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null
+  const [y, m, d] = text.split('-').map(Number)
+  if (!y || !m || !d) return null
+  const tzOffsetMs = PHNOM_PENH_UTC_OFFSET_HOURS * 60 * 60 * 1000
+  // dateText 视为 Phnom Penh 本地日期，当天结算点是 09:00
+  const localSettlementMs = Date.UTC(y, m - 1, d, PHNOM_PENH_SETTLEMENT_HOUR, 0, 0, 0)
+  const startMs = localSettlementMs - tzOffsetMs
+  const endMs = startMs + 24 * 60 * 60 * 1000
+  return { startMs, endMs }
+}
+
+/** 解析 `YYYY-MM-DD HH:mm:ss` 为 UTC 毫秒（与 getSettlementRangeByDate 相同：按柬时墙钟再减偏移） */
+function parsePhnomPenhLocalDateTime(text) {
+  const m = String(text || '')
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/)
+  if (!m) return null
+  const y = Number(m[1])
+  const mo = Number(m[2])
+  const d = Number(m[3])
+  const hh = Number(m[4])
+  const mi = Number(m[5])
+  const ss = Number(m[6])
+  if (![y, mo, d, hh, mi, ss].every((n) => Number.isFinite(n))) return null
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || hh > 23 || mi > 59 || ss > 59) return null
+  const tzOffsetMs = PHNOM_PENH_UTC_OFFSET_HOURS * 60 * 60 * 1000
+  const localMs = Date.UTC(y, mo - 1, d, hh, mi, ss, 0)
+  return localMs - tzOffsetMs
+}
+
+function prune() {
+  const threshold = now() - ONLINE_WINDOW_MS
+  for (const [key, rec] of records.entries()) {
+    if (Number(rec?.lastSeenAt || 0) < threshold) records.delete(key)
+  }
+}
+
+function normalizeDevice(input) {
+  const v = String(input || '').toLowerCase()
+  if (v === 'android') return 'android'
+  if (v === 'ios') return 'ios'
+  return 'web'
+}
+
+function makeCounts(rangeStartMs, rangeEndMs) {
+  prune()
+  const periodStartMs = Number.isFinite(rangeStartMs) ? rangeStartMs : getSettlementStartMs(now())
+  const periodEndMs = Number.isFinite(rangeEndMs) ? rangeEndMs : periodStartMs + 24 * 60 * 60 * 1000
+
+  let android = 0
+  let ios = 0
+  let web = 0
+  let admin = 0
+  let registeredToday = 0
+  let paidToday = 0
+
+  const inRange = (ts) => Number(ts) >= periodStartMs && Number(ts) < periodEndMs
+  const toTodayCount = (arr) => arr.filter((ts) => inRange(ts)).length
+  const toTodayUsd = (arr) =>
+    arr.reduce((sum, e) => (inRange(e?.ts) ? sum + Number(e?.amount || 0) : sum), 0)
+  const orderToday = toTodayCount(txMetrics.orderEvents)
+  const successToday = toTodayCount(txMetrics.successEvents)
+  const failedToday = toTodayCount(txMetrics.failedEvents)
+  const manualToday = toTodayCount(txMetrics.manualEvents)
+  const readToday = toTodayCount(txMetrics.readEvents)
+  const coinBuyMemberToday = toTodayCount(txMetrics.coinBuyMemberEvents)
+  const firstDepositMemberToday = toTodayCount(txMetrics.firstDepositMemberEvents)
+  const withdrawalUsdToday = toTodayUsd(txMetrics.withdrawalUsdEvents)
+  const sellUsdToday = toTodayUsd(txMetrics.sellUsdEvents)
+  const payUsdToday = toTodayUsd(txMetrics.payUsdEvents)
+
+  for (const ts of memberFirstSeenAt.values()) {
+    if (inRange(ts)) registeredToday += 1
+  }
+  for (const ts of memberPaidAt.values()) {
+    if (inRange(ts)) paidToday += 1
+  }
+
+  for (const rec of records.values()) {
+    // 同一 member 只计入一个桶：后台优先，其次设备端
+    if (rec.isAdmin) {
+      admin += 1
+      continue
+    }
+    if (rec.device === 'android') android += 1
+    else if (rec.device === 'ios') ios += 1
+    else web += 1
+  }
+  return {
+    android,
+    ios,
+    web,
+    admin,
+    registeredTotal: knownMembers.size,
+    paidTotal: paidMembers.size,
+    registeredToday,
+    paidToday,
+    readToday,
+    orderToday,
+    successToday,
+    failedToday,
+    manualToday,
+    coinBuyMemberToday,
+    firstDepositMemberToday,
+    withdrawalUsdToday,
+    payoutSuccessUsdToday: withdrawalUsdToday,
+    sellUsdToday,
+    payUsdToday,
+    orderTotal: txMetrics.orderEvents.length,
+    successTotal: txMetrics.successEvents.length,
+    failedTotal: txMetrics.failedEvents.length,
+    manualTotal: txMetrics.manualEvents.length,
+    readTotal: txMetrics.readEvents.length,
+    payoutSuccessUsdTotal: txMetrics.withdrawalUsdEvents.reduce((sum, e) => sum + Number(e?.amount || 0), 0),
+  }
+}
+
+function parseJsonBody(req) {
+  return new Promise((resolve) => {
+    let raw = ''
+    req.on('data', (c) => {
+      raw += c
+      if (raw.length > 1024 * 64) req.destroy()
+    })
+    req.on('end', () => {
+      try {
+        resolve(raw ? JSON.parse(raw) : {})
+      } catch {
+        resolve({})
+      }
+    })
+    req.on('error', () => resolve({}))
+  })
+}
+
+function sendJson(res, code, payload) {
+  res.writeHead(code, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  })
+  res.end(JSON.stringify(payload))
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
+  if (req.method === 'OPTIONS') return sendJson(res, 204, {})
+
+  if (req.method === 'POST' && url.pathname === '/api/presence/ping') {
+    const body = await parseJsonBody(req)
+    const memberId = String(body.memberId || '').trim()
+    if (!memberId) return sendJson(res, 400, { ok: false, error: 'memberId required' })
+    const device = normalizeDevice(body.device)
+    const isAdmin = Boolean(body.isAdmin)
+    if (!knownMembers.has(memberId)) {
+      knownMembers.add(memberId)
+      memberFirstSeenAt.set(memberId, now())
+      persistMembers()
+    }
+    if (body.paidSuccess && !paidMembers.has(memberId)) {
+      paidMembers.add(memberId)
+      memberPaidAt.set(memberId, now())
+      persistMembers()
+    }
+    records.set(memberId, { device, isAdmin, lastSeenAt: now() })
+    return sendJson(res, 200, { ok: true, counts: makeCounts() })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/presence/payment-success') {
+    const body = await parseJsonBody(req)
+    const memberId = String(body.memberId || '').trim()
+    if (!memberId) return sendJson(res, 400, { ok: false, error: 'memberId required' })
+    if (!knownMembers.has(memberId)) {
+      knownMembers.add(memberId)
+      memberFirstSeenAt.set(memberId, now())
+    }
+    if (!paidMembers.has(memberId)) {
+      paidMembers.add(memberId)
+      memberPaidAt.set(memberId, now())
+    }
+    persistMembers()
+    return sendJson(res, 200, { ok: true, counts: makeCounts() })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/metrics/tx-event') {
+    const body = await parseJsonBody(req)
+    const eventType = String(body.type || '').toLowerCase()
+    const ts = now()
+    if (eventType === 'read') txMetrics.readEvents.push(ts)
+    else if (eventType === 'order') txMetrics.orderEvents.push(ts)
+    else if (eventType === 'success') txMetrics.successEvents.push(ts)
+    else if (eventType === 'failed') txMetrics.failedEvents.push(ts)
+    else if (eventType === 'manual') txMetrics.manualEvents.push(ts)
+    else if (eventType === 'coinbuymember' || eventType === 'coin-buy-member') txMetrics.coinBuyMemberEvents.push(ts)
+    else if (eventType === 'firstdepositmember' || eventType === 'first-deposit-member') {
+      txMetrics.firstDepositMemberEvents.push(ts)
+    } else if (
+      eventType === 'withdrawalusd' ||
+      eventType === 'withdrawal-usd' ||
+      eventType === 'withdrawal-success-usd' ||
+      eventType === 'payout-success-usd'
+    ) {
+      txMetrics.withdrawalUsdEvents.push({ ts, amount: Number(body.amount || 0) })
+    } else if (eventType === 'sellusd' || eventType === 'sell-usd') {
+      txMetrics.sellUsdEvents.push({ ts, amount: Number(body.amount || 0) })
+    } else if (eventType === 'coin-order' || eventType === 'coin-order-success') {
+      const status = String(body.status || '').toLowerCase()
+      // 仅“成功交易”累计
+      if (status !== 'success' && status !== 'completed') {
+        return sendJson(res, 200, { ok: true, ignored: true, reason: 'order not successful', counts: makeCounts() })
+      }
+      const coins = Number(body.coins || 0)
+      const rielAmount = Number(body.rielAmount || coins * COIN_TO_RIEL)
+      const usd = toUsdFromRiel(rielAmount)
+      txMetrics.sellUsdEvents.push({ ts, amount: usd })
+    } else if (
+      eventType === 'payusd' ||
+      eventType === 'pay-usd' ||
+      eventType === 'vip-order-success-usd' ||
+      eventType === 'vip-package-success-usd'
+    ) {
+      const status = String(body.status || '').toLowerCase()
+      // 第三行第5卡：仅“系统审核成功”的VIP付费订单累计（美金直累加）
+      if (status && status !== 'success' && status !== 'completed') {
+        return sendJson(res, 200, { ok: true, ignored: true, reason: 'vip order not successful', counts: makeCounts() })
+      }
+      const amount = Number(body.amount || 0)
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return sendJson(res, 400, { ok: false, error: 'amount must be positive usd number' })
+      }
+      txMetrics.payUsdEvents.push({ ts, amount })
+    }
+    else return sendJson(res, 400, { ok: false, error: 'invalid type' })
+    persistMembers()
+    return sendJson(res, 200, { ok: true, counts: makeCounts() })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/reading-records/append') {
+    const body = await parseJsonBody(req)
+    const rec = normalizeReadRecordIn(body)
+    if (!rec) return sendJson(res, 400, { ok: false, error: 'invalid record' })
+    readRecords.unshift(rec)
+    readRecords = readRecords.slice(0, READ_RECORDS_CAP)
+    persistMembers()
+    return sendJson(res, 200, { ok: true })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/novel-views') {
+    const novelId = String(url.searchParams.get('novelId') || '').trim()
+    if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
+    const baseCount = Number(url.searchParams.get('base') || 0)
+    const count = resolveNovelViewCount(novelId, baseCount)
+    return sendJson(res, 200, { ok: true, novelId, count })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/novel-views/increment') {
+    const body = await parseJsonBody(req)
+    const novelId = String(body.novelId || '').trim()
+    if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
+    const baseCount = Number(body.baseCount || 0)
+    const deltaRaw = Number(body.delta || 1)
+    const delta = Number.isFinite(deltaRaw) && deltaRaw > 0 ? Math.floor(deltaRaw) : 1
+    const current = resolveNovelViewCount(novelId, baseCount)
+    const next = current + delta
+    novelViews.set(novelId, next)
+    persistMembers()
+    return sendJson(res, 200, { ok: true, novelId, count: next })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/reading-records') {
+    return sendJson(res, 200, { ok: true, items: readRecords })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/presence/online') {
+    const dateText = url.searchParams.get('date')
+    const startQ = url.searchParams.get('start')
+    const endQ = url.searchParams.get('end')
+    let range = null
+    if (startQ && endQ) {
+      const t0 = parsePhnomPenhLocalDateTime(String(startQ))
+      const t1 = parsePhnomPenhLocalDateTime(String(endQ))
+      if (t0 != null && t1 != null) {
+        const lo = Math.min(t0, t1)
+        const hi = Math.max(t0, t1)
+        const endMs = hi + 1000
+        range = { startMs: lo, endMs: endMs > lo ? endMs : lo + 1000 }
+      }
+    }
+    if (!range && dateText) {
+      range = getSettlementRangeByDate(dateText)
+    }
+    const counts = range ? makeCounts(range.startMs, range.endMs) : makeCounts()
+    return sendJson(res, 200, {
+      ok: true,
+      counts,
+      windowMs: ONLINE_WINDOW_MS,
+      period: range || null,
+    })
+  }
+
+  return sendJson(res, 404, { ok: false, error: 'not found' })
+})
+
+loadPersistedMembers()
+server.listen(PORT, HOST, () => {
+  // eslint-disable-next-line no-console
+  console.log(`[presence] listening at http://${HOST}:${PORT}`)
+})

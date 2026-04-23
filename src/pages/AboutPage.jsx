@@ -1,0 +1,58 @@
+import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
+import { tryOpenTelegramMeLink } from '../lib/telegramWebApp.js'
+
+export default function AboutPage() {
+  return (
+    <div className="tg-app tg-app--about">
+      <BrandTabToolbar title="អំពីយើងខ្ញុំ" titleLang="km" backTo="/account" />
+      <main className="tg-list-wrap flex flex-1 flex-col gap-5 px-6 py-8">
+        <p
+          className="mx-auto max-w-md text-center text-[1.05rem] font-medium leading-relaxed text-white/90"
+          lang="km"
+        >
+          ស្វាគមន៍មកកាន់ពិភពនិទានប្រលោមលោក (69KKH Meta)!
+        </p>
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          {`69KKH គឺជាកម្មវិធី Telegram Mini App ឈានមុខគេ ដែលផ្តល់ជូននូវបទពិសោធន៍អានរឿងនិទានសម្រាប់មនុស្សពេញវ័យបែបថ្មី។ យើងប្រើប្រាស់បច្ចេកវិទ្យា Web 3.0 ដើម្បីធានាថាការអានរបស់លោកអ្នកគឺមាន "ឯកជនភាពខ្ពស់បំផុត" និង "សុវត្ថិភាពបំផុត"។`}
+        </p>
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          {`នៅក្នុងបណ្ណាល័យ 69KKH យើងនេះមានរឿងនិទានរាប់ពាន់ដែលត្រូវបានសម្រិតសម្រាំងយ៉ាងពិសេស។ មិនថាជាសាច់រឿងបែបមនោសញ្ចេតនាជ្រាលជ្រៅ ឬបែបប្លែកៗដែលអ្នកមិនហ៊ានសាកល្បងក្នុងពិភពពិត ទីនេះគឺជា "ឋានសួគ៌សម្ងាត់" ដែលអនុញ្ញាតឱ្យអ្នករំដោះរាល់ចំណង់ និងការស្រមៃឱ្យក្លាយជាការពិត។`}
+        </p>
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          {`ចាប់តាំងពីការដាក់ឱ្យដំណើរការជាផ្លូវការក្នុងឆ្នាំ ២០២៦ នេះ 69KKH បានក្លាយជាកម្មវិធីអានរឿងដែលទទួលបានការពេញនិយមបំផុតភ្លាមៗ។ ជារៀងរាល់ថ្ងៃ យើងមានអ្នកចូលអានយ៉ាងច្រើនកុះកររហូតដល់ ១ លាននាក់ ដែលនេះជាសក្ខីភាពបញ្ជាក់ពីគុណភាព និងភាពទាក់ទាញនៃមាតិការបស់យើង។`}
+        </p>
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          {`69KKH គឺជាអាណាចក្រកម្សាន្តដែលបង្កើតឡើងយ៉ាងពិសេសសម្រាប់សមាជិក VIP។ យើងលុបបំបាត់រាល់បញ្ហាដែលរំខានលោកអ្នកនៅលើផ្លាតហ្វមដទៃ ដើម្បីផ្តល់ជូននូវបរិយាកាសអានដ៏ល្អបំផុត និងសុវត្ថិភាពបំផុត។`}
+        </p>
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          {`នៅទីនេះ លោកអ្នកនឹងមិនជួបប្រទះនូវផ្ទាំងពាណិជ្ជកម្មរំខានភ្នែក គ្មានការឆបោក និងគ្មានមេរោគបង្កហានិភ័យឡើយ។ អ្វីដែលលោកអ្នកទទួលបាន គឺពិភពកម្សាន្តដ៏ស្អាតជានិច្ច ងាយស្រួលរកសាច់រឿងដែលចូលចិត្ត និងការការពារឯកជនភាពយ៉ាងតឹងរ៉ឹងបំផុត។`}
+        </p>
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          {`69KKH ប្តេជ្ញាក្លាយជាផ្លាតហ្វមឈានមុខគេលំដាប់លេខ ១ ក្នុងវិស័យកម្សាន្តសម្រាប់មនុស្សពេញវ័យ។ យើងបង្កើតនូវសហគមន៍អភិជនមួយ ដែលអនុញ្ញាតឱ្យលោកអ្នករំដោះខ្លួនពីការរឹតត្បិត បំភ្លេចរាល់ភាពតានតឹង និងរីករាយជាមួយការបញ្ចេញសភាវគតិពិតរបស់ខ្លួនយ៉ាងពេញទំហឹងក្នុងនាមជាសមាជិក VIP ផ្តាច់មុខរបស់យើង!`}
+        </p>
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          ប្រសិនបើលោកអ្នកមានសំណួរ ឬមតិយោបល់ណាមួយ សូមទាក់ទងមកយើងខ្ញុំគ្រប់ពេលវេលា។ លោកអ្នកអាចទំនាក់ទំនងមកកាន់យើងខ្ញុំតាមរយៈ Email:{' '}
+          <a
+            href="mailto:support@69kkh.com"
+            className="font-mono text-[var(--tg-blue)] underline-offset-2 transition-colors hover:text-[var(--tg-blue-hover)] hover:underline"
+          >
+            support@69kkh.com
+          </a>
+          {' '}
+          ឬ Telegram:{' '}
+          <a
+            href="https://t.me/VIP_69kkh"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--tg-blue)] underline-offset-2 transition-colors hover:text-[var(--tg-blue-hover)] hover:underline"
+            onClick={(e) => {
+              if (tryOpenTelegramMeLink('https://t.me/VIP_69kkh')) e.preventDefault()
+            }}
+          >
+            @VIP_69kkh
+          </a>
+        </p>
+      </main>
+    </div>
+  )
+}
