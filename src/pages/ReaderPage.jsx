@@ -550,20 +550,41 @@ export default function ReaderPage() {
     const nextVote = currentVote === targetVote ? null : targetVote
     const voterId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
     const action = nextVote === 'up' ? 'up' : nextVote === 'down' ? 'down' : 'clear'
-    const resp = await voteNovelReviewVerbose(novel.id, commentId, voterId, action)
-    if (!resp.ok) return
+    // Optimistically update the local UI so tap feedback is immediate.
     setCommentVotes((prev) => ({ ...prev, [commentId]: nextVote }))
     setReviewItems((prev) =>
-      prev.map((it) =>
-        String(it?.id) === String(commentId)
-          ? {
-              ...it,
-              likes: Number.isFinite(resp.likes) ? Math.max(0, Math.floor(resp.likes)) : Number(it?.likes ?? 0),
-              dislikes: Number.isFinite(resp.dislikes) ? Math.max(0, Math.floor(resp.dislikes)) : Number(it?.dislikes ?? 0),
-            }
-          : it,
-      ),
+      prev.map((it) => {
+        if (String(it?.id) !== String(commentId)) return it
+        const baseLikes = Number(it?.likes ?? 0)
+        const baseDislikes = Number(it?.dislikes ?? 0)
+        let likes = baseLikes
+        let dislikes = baseDislikes
+        if (currentVote === 'up') likes = Math.max(0, likes - 1)
+        if (currentVote === 'down') dislikes = Math.max(0, dislikes - 1)
+        if (nextVote === 'up') likes += 1
+        if (nextVote === 'down') dislikes += 1
+        return { ...it, likes, dislikes }
+      }),
     )
+    const resp = await voteNovelReviewVerbose(novel.id, commentId, voterId, action)
+    if (resp.ok) {
+      setReviewItems((prev) =>
+        prev.map((it) =>
+          String(it?.id) === String(commentId)
+            ? {
+                ...it,
+                likes: Number.isFinite(resp.likes) ? Math.max(0, Math.floor(resp.likes)) : Number(it?.likes ?? 0),
+                dislikes: Number.isFinite(resp.dislikes) ? Math.max(0, Math.floor(resp.dislikes)) : Number(it?.dislikes ?? 0),
+              }
+            : it,
+        ),
+      )
+    }
+    // Always refresh from server to keep multi-account totals consistent.
+    const refreshed = await fetchNovelReviews(novel.id)
+    if (Array.isArray(refreshed) && refreshed.length > 0) {
+      setReviewItems(refreshed)
+    }
   }
   const onOpenChapter = (chapterIndex) => {
     if (!ensureMiniAppLoggedIn()) return
