@@ -3,8 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const HOST = '127.0.0.1'
-const PORT = 8787
+const HOST = process.env.HOST || '0.0.0.0'
+const PORT = Number(process.env.PORT || 8787)
 const ONLINE_WINDOW_MS = 45 * 1000
 const COIN_TO_RIEL = 1 // 100金币=100瑞尔 -> 1金币=1瑞尔
 const RIEL_PER_USD = 4000
