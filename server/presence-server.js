@@ -262,6 +262,26 @@ function resolveNovelLikeUsers(novelId) {
   return users
 }
 
+function resetInteractionData() {
+  txMetrics.readEvents = []
+  txMetrics.orderEvents = []
+  txMetrics.successEvents = []
+  txMetrics.failedEvents = []
+  txMetrics.manualEvents = []
+  txMetrics.coinBuyMemberEvents = []
+  txMetrics.firstDepositMemberEvents = []
+  txMetrics.withdrawalUsdEvents = []
+  txMetrics.sellUsdEvents = []
+  txMetrics.payUsdEvents = []
+  novelViews.clear()
+  novelReviews.clear()
+  novelReplies.clear()
+  novelReviewVotes.clear()
+  novelLikes.clear()
+  readRecords = []
+  persistMembers()
+}
+
 function resolveNovelViewCount(novelId, baseCount = 0) {
   const key = String(novelId || '').trim()
   if (!key) return 0
@@ -637,6 +657,11 @@ const server = http.createServer(async (req, res) => {
     novelLikes.set(novelId, { users: [...users] })
     persistMembers()
     return sendJson(res, 200, { ok: true, novelId, count: users.size, liked: shouldLike })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/admin/reset-interactions') {
+    resetInteractionData()
+    return sendJson(res, 200, { ok: true })
   }
 
   if (req.method === 'GET' && url.pathname === '/api/replies') {
