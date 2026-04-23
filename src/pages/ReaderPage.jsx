@@ -20,15 +20,12 @@ import {
   parseCoinBalance,
   parseVipExpireAtMs,
 } from '../lib/memberTier.js'
-import {
-  appendNovelReviewEntry,
-  getNovelReviewItems,
-  snapshotMissingReviewMemberTiers,
-} from '../lib/novelReviewRatings.js'
 import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
 import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
 import {
   appendReadingRecord,
+  appendNovelReview,
+  fetchNovelReviews,
   fetchNovelViewCount,
   getPresenceMemberId,
   incrementNovelViewCount,
@@ -170,7 +167,7 @@ export default function ReaderPage() {
   const [likeBump, setLikeBump] = useState(false)
   const [commentVotesHydrated, setCommentVotesHydrated] = useState(false)
   const [nowTs, setNowTs] = useState(() => Date.now())
-  const [reviewTick, setReviewTick] = useState(0)
+  const [reviewItems, setReviewItems] = useState([])
   const [startReadPageOpen, setStartReadPageOpen] = useState(false)
   const [readingChapterIndex, setReadingChapterIndex] = useState(null)
   const [articleHeaderCompact, setArticleHeaderCompact] = useState(false)
@@ -295,10 +292,18 @@ export default function ReaderPage() {
     return () => window.clearInterval(timer)
   }, [])
   useEffect(() => {
-    const onRatingsChanged = () => setReviewTick((v) => v + 1)
-    window.addEventListener('tg-novel-ratings-changed', onRatingsChanged)
-    return () => window.removeEventListener('tg-novel-ratings-changed', onRatingsChanged)
-  }, [])
+    if (!novel) return
+    let cancelled = false
+    const pull = async () => {
+      const items = await fetchNovelReviews(novel.id)
+      if (cancelled) return
+      setReviewItems(items)
+    }
+    pull()
+    return () => {
+      cancelled = true
+    }
+  }, [novel])
 
   useEffect(() => {
     if (!startReadPageOpen) return undefined
@@ -344,17 +349,6 @@ export default function ReaderPage() {
     swipeDxRef.current = dx
   }
 
-  const reviewItems = useMemo(() => (novel ? getNovelReviewItems(novel.id) : []), [novel, reviewTick])
-  useEffect(() => {
-    if (!novel) return
-    const changed = snapshotMissingReviewMemberTiers(novel.id, (it) =>
-      inferSnapshotTier({ row: it, tgUser, viewerMemberTier }),
-    )
-    if (changed) {
-      setReviewTick((v) => v + 1)
-      window.dispatchEvent(new CustomEvent('tg-novel-ratings-changed'))
-    }
-  }, [novel, tgUser, viewerMemberTier])
   const chapterRows = useMemo(() => {
     if (!novel) return []
     const source = novel.chapters ?? []
@@ -494,16 +488,17 @@ export default function ReaderPage() {
     const text = replyDraft.trim()
     if (!text || !replyTarget?.id) return
     if (replyTarget.mode === 'comment') {
-      appendNovelReviewEntry(novel.id, {
+      void appendNovelReview(novel.id, {
         score: 1,
         text,
         userName: tgUser ? formatTelegramDisplayName(tgUser) : 'A',
         userAvatar: tgUser?.photo_url ?? null,
         userId: tgUser?.id,
         memberTier: viewerMemberTier,
+      }).then(() => fetchNovelReviews(novel.id)).then((items) => {
+        if (Array.isArray(items)) setReviewItems(items)
       })
       setCommentSort('latest')
-      setReviewTick((v) => v + 1)
       onCloseReplyModal()
       return
     }

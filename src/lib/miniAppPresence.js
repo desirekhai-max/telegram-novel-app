@@ -175,3 +175,34 @@ export async function incrementNovelViewCount(novelId, delta = 1, baseCount = 0)
   }
   return null
 }
+
+export async function fetchNovelReviews(novelId) {
+  try {
+    const res = await fetch(apiUrl(`/api/reviews?novelId=${encodeURIComponent(String(novelId || ''))}`), {
+      cache: 'no-store',
+    })
+    if (!res.ok) throw new Error('fetch reviews failed')
+    const data = await res.json()
+    return Array.isArray(data?.items) ? data.items : []
+  } catch {
+    return []
+  }
+}
+
+export async function appendNovelReview(novelId, entry) {
+  try {
+    const res = await fetch(apiUrl('/api/reviews/append'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        novelId: String(novelId || ''),
+        entry,
+      }),
+    })
+    if (!res.ok) throw new Error('append review failed')
+    const data = await res.json()
+    return data?.item ?? null
+  } catch {
+    return null
+  }
+}

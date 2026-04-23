@@ -28,10 +28,32 @@ const txMetrics = {
   payUsdEvents: [],
 }
 const novelViews = new Map()
+const novelReviews = new Map()
 
 const READ_RECORDS_CAP = 2000
 /** @type {object[]} */
 let readRecords = []
+
+function normalizeReviewIn(raw, novelId = '') {
+  if (!raw || typeof raw !== 'object') return null
+  const scoreRaw = Number(raw.score)
+  const score = Number.isFinite(scoreRaw) ? Math.min(10, Math.max(0, scoreRaw)) : 0
+  if (score <= 0) return null
+  const atRaw = Number(raw.at ?? raw.createdAt ?? raw.time)
+  const at = Number.isFinite(atRaw) && atRaw > 0 ? atRaw : now()
+  const id = String(raw.id || `rv-${novelId || 'novel'}-${at}-${Math.floor(Math.random() * 100000)}`).slice(0, 120)
+  const userIdRaw = Number(raw.userId)
+  return {
+    id,
+    score,
+    text: String(raw.text || '').slice(0, 500),
+    at,
+    userName: String(raw.userName || raw.name || 'A').slice(0, 120),
+    userAvatar: raw.userAvatar ?? raw.avatar ?? null,
+    userId: Number.isFinite(userIdRaw) ? userIdRaw : undefined,
+    memberTier: String(raw.memberTier || '').slice(0, 32),
+  }
+}
 
 function normalizeReadRecordIn(raw) {
   if (!raw || typeof raw !== 'object') return null
@@ -116,6 +138,13 @@ function loadPersistedMembers() {
         novelViews.set(String(novelId), Math.floor(n))
       }
     }
+    const novelReviewsObj = parsed?.novelReviews && typeof parsed.novelReviews === 'object'
+      ? parsed.novelReviews
+      : {}
+    for (const [novelId, row] of Object.entries(novelReviewsObj)) {
+      const items = Array.isArray(row?.items) ? row.items.map((it) => normalizeReviewIn(it, novelId)).filter(Boolean) : []
+      novelReviews.set(String(novelId), { items })
+    }
     readRecords = Array.isArray(parsed.readRecords)
       ? parsed.readRecords.map(normalizeReadRecordIn).filter(Boolean)
       : []
@@ -134,12 +163,21 @@ function persistMembers() {
       memberPaidAt: Object.fromEntries(memberPaidAt),
       txMetrics,
       novelViews: Object.fromEntries(novelViews),
+      novelReviews: Object.fromEntries(novelReviews),
       readRecords: readRecords.slice(0, READ_RECORDS_CAP),
     })
     fs.writeFileSync(DATA_FILE, payload, 'utf8')
   } catch {
     /* ignore file system failures */
   }
+}
+
+function resolveNovelReviews(novelId) {
+  const key = String(novelId || '').trim()
+  if (!key) return []
+  const row = novelReviews.get(key)
+  const items = Array.isArray(row?.items) ? row.items : []
+  return items
 }
 
 function resolveNovelViewCount(novelId, baseCount = 0) {
@@ -429,6 +467,28 @@ const server = http.createServer(async (req, res) => {
     readRecords = readRecords.slice(0, READ_RECORDS_CAP)
     persistMembers()
     return sendJson(res, 200, { ok: true })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/reviews') {
+    const novelId = String(url.searchParams.get('novelId') || '').trim()
+    if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
+    const items = resolveNovelReviews(novelId)
+      .slice()
+      .sort((a, b) => Number(b?.at || 0) - Number(a?.at || 0))
+    return sendJson(res, 200, { ok: true, novelId, items })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/reviews/append') {
+    const body = await parseJsonBody(req)
+    const novelId = String(body.novelId || '').trim()
+    if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
+    const item = normalizeReviewIn(body.entry ?? body, novelId)
+    if (!item) return sendJson(res, 400, { ok: false, error: 'invalid review entry' })
+    const items = resolveNovelReviews(novelId).slice()
+    items.push(item)
+    novelReviews.set(novelId, { items })
+    persistMembers()
+    return sendJson(res, 200, { ok: true, novelId, item })
   }
 
   if (req.method === 'GET' && url.pathname === '/api/novel-views') {
