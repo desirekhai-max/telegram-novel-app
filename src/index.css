@@ -3603,6 +3603,16 @@ body.tg-desktop-admin #root {
   background: linear-gradient(90deg, #7e2fff, #1792ff);
 }
 
+.tg-reply-modal__submit:disabled {
+  opacity: 0.72;
+}
+
+.tg-reply-modal__error {
+  margin: 10px 2px 0;
+  color: #ff8f8f;
+  font-size: 13px;
+}
+
 .tg-chapter + .tg-chapter {
   margin-top: 2.5rem;
 }

@@ -160,6 +160,8 @@ export default function ReaderPage() {
   const [repliesHydrated, setRepliesHydrated] = useState(false)
   const [replyTarget, setReplyTarget] = useState(null)
   const [replyDraft, setReplyDraft] = useState('')
+  const [replySubmitPending, setReplySubmitPending] = useState(false)
+  const [replySubmitError, setReplySubmitError] = useState('')
   const [likedDetail, setLikedDetail] = useState(false)
   const [detailLikeHydrated, setDetailLikeHydrated] = useState(false)
   const [likeCount, setLikeCount] = useState(0)
@@ -473,31 +475,48 @@ export default function ReaderPage() {
     if (!ensureMiniAppLoggedIn()) return
     setReplyTarget({ id: targetId, name: targetName, mode: 'reply' })
     setReplyDraft('')
+    setReplySubmitError('')
   }
   const onOpenCommentModal = () => {
     if (!ensureMiniAppLoggedIn()) return
     setReplyTarget({ id: `novel-${novel.id}`, name: novel.title, mode: 'comment' })
     setReplyDraft('')
+    setReplySubmitError('')
   }
   const onCloseReplyModal = () => {
     setReplyTarget(null)
     setReplyDraft('')
+    setReplySubmitPending(false)
+    setReplySubmitError('')
   }
-  const onSubmitReply = () => {
+  const onSubmitReply = async () => {
     if (!ensureMiniAppLoggedIn()) return
+    if (replySubmitPending) return
     const text = replyDraft.trim()
     if (!text || !replyTarget?.id) return
     if (replyTarget.mode === 'comment') {
-      void appendNovelReview(novel.id, {
+      setReplySubmitPending(true)
+      setReplySubmitError('')
+      const saved = await appendNovelReview(novel.id, {
         score: 1,
         text,
         userName: tgUser ? formatTelegramDisplayName(tgUser) : 'A',
         userAvatar: tgUser?.photo_url ?? null,
         userId: tgUser?.id,
         memberTier: viewerMemberTier,
-      }).then(() => fetchNovelReviews(novel.id)).then((items) => {
-        if (Array.isArray(items)) setReviewItems(items)
       })
+      if (!saved) {
+        setReplySubmitPending(false)
+        setReplySubmitError('提交失败，请稍后重试')
+        return
+      }
+      const items = await fetchNovelReviews(novel.id)
+      if (Array.isArray(items) && items.length > 0) {
+        setReviewItems(items)
+      } else {
+        setReviewItems((prev) => [saved, ...prev])
+      }
+      setReplySubmitPending(false)
       setCommentSort('latest')
       onCloseReplyModal()
       return
@@ -1293,8 +1312,14 @@ export default function ReaderPage() {
               />
               <span className="tg-reply-modal__counter">{replyDraft.length}/500</span>
             </div>
-            <button type="button" className="tg-reply-modal__submit" onClick={onSubmitReply}>
-              提交មតិ
+            {replySubmitError ? <p className="tg-reply-modal__error">{replySubmitError}</p> : null}
+            <button
+              type="button"
+              className="tg-reply-modal__submit"
+              onClick={onSubmitReply}
+              disabled={replySubmitPending}
+            >
+              {replySubmitPending ? '提交中...' : '提交មតិ'}
             </button>
           </div>
         </div>
