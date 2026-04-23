@@ -278,10 +278,15 @@ function buildHomeStats() {
   const stats = {}
   for (const id of ids) {
     const novelId = String(id)
+    const reviews = resolveNovelReviews(novelId)
+    const replies = resolveNovelReplies(novelId)
+    const lastReviewAt = reviews.reduce((m, it) => Math.max(m, Number(it?.at || 0)), 0)
+    const lastReplyAt = replies.reduce((m, it) => Math.max(m, Number(it?.at || 0)), 0)
+    const lastUpdateAtMs = Math.max(lastReviewAt, lastReplyAt)
     const viewCount = resolveNovelViewCount(novelId, 0)
     const favoriteCount = resolveNovelLikeUsers(novelId).length
-    const ratingPoints = getNovelCommentPoints(novelId)
-    stats[novelId] = { viewCount, favoriteCount, ratingPoints }
+    const ratingPoints = Math.min(100, reviews.length + replies.length)
+    stats[novelId] = { viewCount, favoriteCount, ratingPoints, lastUpdateAtMs }
   }
   return stats
 }

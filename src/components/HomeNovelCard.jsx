@@ -61,7 +61,9 @@ export default function HomeNovelCard({
   const showOriginal = n.source === 'original'
   const chapters = n.chapters ?? []
   const latestTitle = chapters.length ? `ភាគទី${chapters.length}` : '暂无章节'
-  const latestRel = formatLatestChapterRelativeLabel(n)
+  const latestRel = Number(n.cardUpdatedAtMs) > 0
+    ? formatLatestChapterRelativeLabel({ updatedAtMs: Number(n.cardUpdatedAtMs) })
+    : formatLatestChapterRelativeLabel(n)
   const themes = Array.isArray(n.listThemes) ? n.listThemes : []
   const tags = n.tags ?? []
   const views = Number.isFinite(Number(n.cardViewCount)) ? Math.max(0, Number(n.cardViewCount)) : 0

@@ -11,6 +11,8 @@ function num(n, fallback = 0) {
  * 无该字段时再用 `updatedAtMs`（纯 API 时间戳场景）。
  */
 function getLastContentUpdateMs(n, nowMs = Date.now()) {
+  const serverUpdatedAt = num(n.cardUpdatedAtMs, 0)
+  if (serverUpdatedAt > 0) return serverUpdatedAt
   const mins = Number(n.lastChapterMinutesAgo)
   if (Number.isFinite(mins) && mins >= 0) {
     return nowMs - mins * 60_000

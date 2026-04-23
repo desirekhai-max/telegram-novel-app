@@ -121,8 +121,10 @@ export default function HomePage() {
       setHomeStats(items)
     }
     pull()
+    const timer = window.setInterval(pull, 15000)
     return () => {
       cancelled = true
+      window.clearInterval(timer)
     }
   }, [])
 
@@ -141,6 +143,7 @@ export default function HomePage() {
           cardViewCount: Number(s?.viewCount) >= 0 ? Number(s.viewCount) : 0,
           cardFavoriteCount: Number(s?.favoriteCount) >= 0 ? Number(s.favoriteCount) : 0,
           cardRatingPoints: Number(s?.ratingPoints) >= 0 ? Number(s.ratingPoints) : 0,
+          cardUpdatedAtMs: Number(s?.lastUpdateAtMs) > 0 ? Number(s.lastUpdateAtMs) : 0,
         }
       })
     if (isSearchMode) {
