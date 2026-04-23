@@ -213,7 +213,7 @@ export default function ReaderPage() {
     void fetchNovelViewCount(novel.id, safeBaseViewCount).then((count) => {
       setViewCount(count)
     })
-    const baseLikeCount = Number(novel.likeCount ?? 0)
+    const baseLikeCount = 0
     const likerId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
     setLikeCount(Math.max(0, baseLikeCount))
     void fetchNovelLikeState(novel.id, likerId, baseLikeCount).then((state) => {
@@ -232,7 +232,7 @@ export default function ReaderPage() {
       setCommentVotesHydrated(true)
     }
     setLikeBump(false)
-  }, [novel])
+  }, [novel, tgUser?.id])
   useEffect(() => {
     if (!novel || !commentVotesHydrated) return
     let all = {}
@@ -287,10 +287,33 @@ export default function ReaderPage() {
       setExtraReplies(groupedReplies)
     }
     pull()
+    const timer = window.setInterval(pull, 15000)
     return () => {
       cancelled = true
+      window.clearInterval(timer)
     }
   }, [novel, tgUser?.first_name, tgUser?.photo_url])
+
+  useEffect(() => {
+    if (!novel) return
+    let cancelled = false
+    const sync = async () => {
+      const likerId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
+      const [latestViewCount, latestLikeState] = await Promise.all([
+        fetchNovelViewCount(novel.id, 0),
+        fetchNovelLikeState(novel.id, likerId, 0),
+      ])
+      if (cancelled) return
+      setViewCount(Math.max(0, Number(latestViewCount) || 0))
+      setLikedDetail(Boolean(latestLikeState?.liked))
+      setLikeCount(Math.max(0, Number(latestLikeState?.count) || 0))
+    }
+    const timer = window.setInterval(sync, 15000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [novel, tgUser?.id])
 
   useEffect(() => {
     if (!startReadPageOpen) return undefined
