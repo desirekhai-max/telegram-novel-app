@@ -44,6 +44,7 @@ const CATALOG_MIN_COUNT = 15
 const REPLY_STORAGE_KEY = 'tg_novel_reply_threads_v1'
 const DETAIL_LIKE_STORAGE_KEY = 'tg_novel_detail_likes_v1'
 const COMMENT_VOTES_STORAGE_KEY = 'tg_novel_comment_votes_v1'
+const COMMENT_SUBMIT_RETRY_MS = 450
 
 function chapterHasReadableBody(novel, chapterIndex) {
   if (!novel || !Number.isFinite(chapterIndex) || chapterIndex < 0) return false
@@ -506,8 +507,27 @@ export default function ReaderPage() {
         memberTier: viewerMemberTier,
       })
       if (!saved) {
+        const retryItems = await fetchNovelReviews(novel.id)
+        const hasSameText = retryItems.some((it) => String(it?.text || '').trim() === text)
+        if (hasSameText) {
+          setReviewItems(retryItems)
+          setReplySubmitPending(false)
+          setCommentSort('latest')
+          onCloseReplyModal()
+          return
+        }
+        await new Promise((r) => window.setTimeout(r, COMMENT_SUBMIT_RETRY_MS))
+        const retryItems2 = await fetchNovelReviews(novel.id)
+        const hasSameText2 = retryItems2.some((it) => String(it?.text || '').trim() === text)
+        if (hasSameText2) {
+          setReviewItems(retryItems2)
+          setReplySubmitPending(false)
+          setCommentSort('latest')
+          onCloseReplyModal()
+          return
+        }
         setReplySubmitPending(false)
-        setReplySubmitError('提交失败，请稍后重试')
+        setReplySubmitError('提交失败，请检查网络或稍后重试')
         return
       }
       const items = await fetchNovelReviews(novel.id)

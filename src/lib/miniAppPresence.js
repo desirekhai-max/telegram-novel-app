@@ -178,9 +178,12 @@ export async function incrementNovelViewCount(novelId, delta = 1, baseCount = 0)
 
 export async function fetchNovelReviews(novelId) {
   try {
-    const res = await fetch(apiUrl(`/api/reviews?novelId=${encodeURIComponent(String(novelId || ''))}`), {
+    const res = await fetch(
+      apiUrl(`/api/reviews?novelId=${encodeURIComponent(String(novelId || ''))}&t=${Date.now()}`),
+      {
       cache: 'no-store',
-    })
+      },
+    )
     if (!res.ok) throw new Error('fetch reviews failed')
     const data = await res.json()
     return Array.isArray(data?.items) ? data.items : []
@@ -199,7 +202,10 @@ export async function appendNovelReview(novelId, entry) {
         entry,
       }),
     })
-    if (!res.ok) throw new Error('append review failed')
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(text || `append review failed: ${res.status}`)
+    }
     const data = await res.json()
     return data?.item ?? null
   } catch {
