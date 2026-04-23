@@ -208,8 +208,7 @@ export default function ReaderPage() {
     if (!novel) return
     setDetailLikeHydrated(false)
     setCommentVotesHydrated(false)
-    const baseViewCount = Number(novel.viewCount ?? Math.round((novel.viewsWan ?? 0) * 10000))
-    const safeBaseViewCount = Number.isFinite(baseViewCount) && baseViewCount > 0 ? baseViewCount : 0
+    const safeBaseViewCount = 0
     setViewCount(safeBaseViewCount)
     void fetchNovelViewCount(novel.id, safeBaseViewCount).then((count) => {
       setViewCount(count)
@@ -589,8 +588,7 @@ export default function ReaderPage() {
     }
     if (!chapterHasReadableBody(novel, chapterIndex)) return
     reportReadOnChapterOpen(novel, chapterIndex, tgUser, viewerMemberTier)
-    const baseViewCount = Number(novel.viewCount ?? Math.round((novel.viewsWan ?? 0) * 10000))
-    const safeBaseViewCount = Number.isFinite(baseViewCount) && baseViewCount > 0 ? baseViewCount : 0
+    const safeBaseViewCount = 0
     const optimisticNext = viewCount + 1
     setViewCount(optimisticNext)
     void incrementNovelViewCount(novel.id, 1, safeBaseViewCount).then((serverCount) => {
