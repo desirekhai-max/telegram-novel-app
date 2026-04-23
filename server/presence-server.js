@@ -30,6 +30,7 @@ const txMetrics = {
 const novelViews = new Map()
 const novelReviews = new Map()
 const novelReplies = new Map()
+const novelReviewVotes = new Map()
 
 const READ_RECORDS_CAP = 2000
 /** @type {object[]} */
@@ -73,6 +74,15 @@ function normalizeReplyIn(raw, novelId = '', commentId = '') {
     userAvatar: raw.userAvatar ?? raw.avatar ?? null,
     userId: Number.isFinite(userIdRaw) ? userIdRaw : undefined,
     memberTier: String(raw.memberTier || '').slice(0, 32),
+  }
+}
+
+function normalizeVoteEntryIn(raw) {
+  const up = Array.isArray(raw?.up) ? raw.up.map((v) => String(v || '').trim()).filter(Boolean) : []
+  const down = Array.isArray(raw?.down) ? raw.down.map((v) => String(v || '').trim()).filter(Boolean) : []
+  return {
+    up: [...new Set(up)],
+    down: [...new Set(down)],
   }
 }
 
@@ -173,6 +183,16 @@ function loadPersistedMembers() {
       const items = Array.isArray(row?.items) ? row.items.map((it) => normalizeReplyIn(it, novelId)).filter(Boolean) : []
       novelReplies.set(String(novelId), { items })
     }
+    const novelReviewVotesObj = parsed?.novelReviewVotes && typeof parsed.novelReviewVotes === 'object'
+      ? parsed.novelReviewVotes
+      : {}
+    for (const [novelId, row] of Object.entries(novelReviewVotesObj)) {
+      const votesRaw = row && typeof row === 'object' ? row : {}
+      const votes = Object.fromEntries(
+        Object.entries(votesRaw).map(([commentId, voteRow]) => [String(commentId), normalizeVoteEntryIn(voteRow)]),
+      )
+      novelReviewVotes.set(String(novelId), votes)
+    }
     readRecords = Array.isArray(parsed.readRecords)
       ? parsed.readRecords.map(normalizeReadRecordIn).filter(Boolean)
       : []
@@ -193,6 +213,7 @@ function persistMembers() {
       novelViews: Object.fromEntries(novelViews),
       novelReviews: Object.fromEntries(novelReviews),
       novelReplies: Object.fromEntries(novelReplies),
+      novelReviewVotes: Object.fromEntries(novelReviewVotes),
       readRecords: readRecords.slice(0, READ_RECORDS_CAP),
     })
     fs.writeFileSync(DATA_FILE, payload, 'utf8')
@@ -215,6 +236,13 @@ function resolveNovelReplies(novelId) {
   const row = novelReplies.get(key)
   const items = Array.isArray(row?.items) ? row.items : []
   return items
+}
+
+function resolveNovelReviewVotes(novelId) {
+  const key = String(novelId || '').trim()
+  if (!key) return {}
+  const row = novelReviewVotes.get(key)
+  return row && typeof row === 'object' ? row : {}
 }
 
 function resolveNovelViewCount(novelId, baseCount = 0) {
@@ -509,9 +537,18 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/reviews') {
     const novelId = String(url.searchParams.get('novelId') || '').trim()
     if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
+    const votes = resolveNovelReviewVotes(novelId)
     const items = resolveNovelReviews(novelId)
       .slice()
       .sort((a, b) => Number(b?.at || 0) - Number(a?.at || 0))
+      .map((it) => {
+        const voteRow = normalizeVoteEntryIn(votes[String(it.id)] || {})
+        return {
+          ...it,
+          likes: voteRow.up.length,
+          dislikes: voteRow.down.length,
+        }
+      })
     return sendJson(res, 200, { ok: true, novelId, items })
   }
 
@@ -526,6 +563,38 @@ const server = http.createServer(async (req, res) => {
     novelReviews.set(novelId, { items })
     persistMembers()
     return sendJson(res, 200, { ok: true, novelId, item })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/reviews/vote') {
+    const body = await parseJsonBody(req)
+    const novelId = String(body.novelId || '').trim()
+    if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
+    const commentId = String(body.commentId || '').trim()
+    if (!commentId) return sendJson(res, 400, { ok: false, error: 'commentId required' })
+    const voterId = String(body.voterId || '').trim()
+    if (!voterId) return sendJson(res, 400, { ok: false, error: 'voterId required' })
+    const action = String(body.action || '').toLowerCase()
+    if (action !== 'up' && action !== 'down' && action !== 'clear') {
+      return sendJson(res, 400, { ok: false, error: 'action must be up/down/clear' })
+    }
+    const allVotes = { ...resolveNovelReviewVotes(novelId) }
+    const voteRow = normalizeVoteEntryIn(allVotes[commentId] || {})
+    const upSet = new Set(voteRow.up)
+    const downSet = new Set(voteRow.down)
+    upSet.delete(voterId)
+    downSet.delete(voterId)
+    if (action === 'up') upSet.add(voterId)
+    if (action === 'down') downSet.add(voterId)
+    allVotes[commentId] = { up: [...upSet], down: [...downSet] }
+    novelReviewVotes.set(novelId, allVotes)
+    persistMembers()
+    return sendJson(res, 200, {
+      ok: true,
+      novelId,
+      commentId,
+      likes: upSet.size,
+      dislikes: downSet.size,
+    })
   }
 
   if (req.method === 'GET' && url.pathname === '/api/replies') {

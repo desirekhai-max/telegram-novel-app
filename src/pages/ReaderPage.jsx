@@ -32,6 +32,7 @@ import {
   getPresenceMemberId,
   incrementNovelViewCount,
   reportMetricEvent,
+  voteNovelReviewVerbose,
 } from '../lib/miniAppPresence.js'
 import { buildOrderNo } from '../lib/orderNo.js'
 import { saveLastRead } from '../lib/readerStorage.js'
@@ -542,6 +543,27 @@ export default function ReaderPage() {
     setLikeCount((c) => Math.max(0, c + (next ? 1 : -1)))
     setLikeBump(true)
     window.setTimeout(() => setLikeBump(false), 220)
+  }
+  const onVoteComment = async (commentId, currentVote, targetVote) => {
+    if (!ensureMiniAppLoggedIn()) return
+    if (!novel?.id || !commentId) return
+    const nextVote = currentVote === targetVote ? null : targetVote
+    const voterId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
+    const action = nextVote === 'up' ? 'up' : nextVote === 'down' ? 'down' : 'clear'
+    const resp = await voteNovelReviewVerbose(novel.id, commentId, voterId, action)
+    if (!resp.ok) return
+    setCommentVotes((prev) => ({ ...prev, [commentId]: nextVote }))
+    setReviewItems((prev) =>
+      prev.map((it) =>
+        String(it?.id) === String(commentId)
+          ? {
+              ...it,
+              likes: Number.isFinite(resp.likes) ? Math.max(0, Math.floor(resp.likes)) : Number(it?.likes ?? 0),
+              dislikes: Number.isFinite(resp.dislikes) ? Math.max(0, Math.floor(resp.dislikes)) : Number(it?.dislikes ?? 0),
+            }
+          : it,
+      ),
+    )
   }
   const onOpenChapter = (chapterIndex) => {
     if (!ensureMiniAppLoggedIn()) return
@@ -1057,8 +1079,8 @@ export default function ReaderPage() {
                     const vote = commentVotes[it.id]
                     const baseUp = Number(it.likes ?? 0)
                     const baseDown = Number(it.dislikes ?? 0)
-                    const upCount = baseUp + (vote === 'up' ? 1 : 0)
-                    const downCount = baseDown + (vote === 'down' ? 1 : 0)
+                    const upCount = baseUp
+                    const downCount = baseDown
                     return (
                       <>
                   <button
@@ -1066,11 +1088,7 @@ export default function ReaderPage() {
                     aria-label="ចូលចិត្តមតិ"
                     className={commentVotes[it.id] === 'up' ? 'is-active' : ''}
                     onClick={() => {
-                      if (!ensureMiniAppLoggedIn()) return
-                      setCommentVotes((prev) => ({
-                        ...prev,
-                        [it.id]: prev[it.id] === 'up' ? null : 'up',
-                      }))
+                      void onVoteComment(it.id, vote, 'up')
                     }}
                   >
                     {(upCount > 0) ? (
@@ -1085,11 +1103,7 @@ export default function ReaderPage() {
                     aria-label="点踩មតិ"
                     className={commentVotes[it.id] === 'down' ? 'is-active' : ''}
                     onClick={() => {
-                      if (!ensureMiniAppLoggedIn()) return
-                      setCommentVotes((prev) => ({
-                        ...prev,
-                        [it.id]: prev[it.id] === 'down' ? null : 'down',
-                      }))
+                      void onVoteComment(it.id, vote, 'down')
                     }}
                   >
                     {downCount > 0 ? <span>{downCount}</span> : null}

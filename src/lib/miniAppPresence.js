@@ -290,3 +290,45 @@ export async function appendNovelReplyVerbose(novelId, parentCommentId, entry) {
     }
   }
 }
+
+export async function voteNovelReviewVerbose(novelId, commentId, voterId, action) {
+  try {
+    const endpoint = apiUrl('/api/reviews/vote')
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        novelId: String(novelId || ''),
+        commentId: String(commentId || ''),
+        voterId: String(voterId || ''),
+        action: String(action || ''),
+      }),
+    })
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '')
+      return {
+        ok: false,
+        likes: null,
+        dislikes: null,
+        error: `HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`,
+        endpoint,
+      }
+    }
+    const data = await res.json().catch(() => ({}))
+    return {
+      ok: Boolean(data?.ok),
+      likes: Number(data?.likes),
+      dislikes: Number(data?.dislikes),
+      error: '',
+      endpoint,
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      likes: null,
+      dislikes: null,
+      error: err instanceof Error ? err.message : 'network error',
+      endpoint: apiUrl('/api/reviews/vote'),
+    }
+  }
+}
