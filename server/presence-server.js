@@ -58,14 +58,19 @@ function decodeBase32Secret(secret) {
   let bits = ''
   for (const ch of clean) {
     const idx = alphabet.indexOf(ch)
-    if (idx < 0) return null
+    if (idx < 0) {
+      console.log('[TOTP] Invalid Base32 character:', ch)
+      return null
+    }
     bits += idx.toString(2).padStart(5, '0')
   }
   const bytes = []
   for (let i = 0; i + 8 <= bits.length; i += 8) {
     bytes.push(Number.parseInt(bits.slice(i, i + 8), 2))
   }
-  return Buffer.from(bytes)
+  const result = Buffer.from(bytes)
+  console.log('[TOTP] Decoded secret: length=' + String(secret || '').length + ' chars, buffer=' + result.length + ' bytes')
+  return result
 }
 
 function buildTotpCode(secretBuf, counter) {
@@ -77,23 +82,41 @@ function buildTotpCode(secretBuf, counter) {
     | ((hash[offset + 1] & 0xff) << 16)
     | ((hash[offset + 2] & 0xff) << 8)
     | (hash[offset + 3] & 0xff)
-  return String(binCode % 1_000_000).padStart(6, '0')
+  const code = String(binCode % 1_000_000).padStart(6, '0')
+  console.log('[TOTP] buildTotpCode(counter=' + counter + ') = ' + code)
+  return code
 }
 
 function verifyAdminOtp(code) {
   const otp = String(code || '').trim()
-  if (!otp) return false
-
-  if (ADMIN_OTP_SECRET) {
-    const secretBuf = decodeBase32Secret(ADMIN_OTP_SECRET)
-    if (!secretBuf || secretBuf.length === 0) return false
-    const currentCounter = Math.floor(now() / 1000 / 30)
-    for (let step = -1; step <= 1; step += 1) {
-      if (buildTotpCode(secretBuf, currentCounter + step) === otp) return true
-    }
+  console.log('[TOTP] verifyAdminOtp called with code:', otp)
+  if (!otp) {
+    console.log('[TOTP] Empty OTP code')
     return false
   }
 
+  if (ADMIN_OTP_SECRET) {
+    console.log('[TOTP] Using ADMIN_OTP_SECRET (length=' + ADMIN_OTP_SECRET.length + ')')
+    const secretBuf = decodeBase32Secret(ADMIN_OTP_SECRET)
+    if (!secretBuf || secretBuf.length === 0) {
+      console.log('[TOTP] Failed to decode secret')
+      return false
+    }
+    const currentCounter = Math.floor(now() / 1000 / 30)
+    console.log('[TOTP] Current time counter:', currentCounter)
+
+    for (let step = -1; step <= 1; step += 1) {
+      const generatedCode = buildTotpCode(secretBuf, currentCounter + step)
+      if (generatedCode === otp) {
+        console.log('[TOTP] MATCH FOUND at step', step)
+        return true
+      }
+    }
+    console.log('[TOTP] No match found in window')
+    return false
+  }
+
+  console.log('[TOTP] No ADMIN_OTP_SECRET, using static ADMIN_OTP')
   return otp === ADMIN_OTP
 }
 
