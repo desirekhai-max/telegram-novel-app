@@ -4,6 +4,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import bcrypt from 'bcrypt'
 
 const HOST = process.env.HOST || '0.0.0.0'
 const PORT = Number(process.env.PORT || 8787)
@@ -39,7 +40,7 @@ const READ_RECORDS_CAP = 2000
 /** @type {object[]} */
 let readRecords = []
 const ADMIN_USER = String(process.env.ADMIN_USER || '69KKH')
-const ADMIN_PASS = String(process.env.ADMIN_PASS || 'AA112233')
+const ADMIN_PASSWORD_HASH = String(process.env.ADMIN_PASSWORD_HASH || '')
 const ADMIN_OTP_SECRET = String(process.env.ADMIN_OTP_SECRET || '').trim()
 const ADMIN_OTP = String(process.env.ADMIN_OTP || '123456')
 const ADMIN_LEGACY_USER = String(process.env.ADMIN_LEGACY_USER || 'admin')
@@ -637,9 +638,34 @@ const server = http.createServer(async (req, res) => {
     if (!username || !password || !otp) {
       return sendJson(res, 400, { ok: false, error: 'username/password/otp required' })
     }
-    if (username !== ADMIN_USER || password !== ADMIN_PASS || !verifyAdminOtp(otp)) {
+
+    // Validate username
+    if (username !== ADMIN_USER) {
       return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
     }
+
+    // Validate password using bcrypt
+    if (!ADMIN_PASSWORD_HASH) {
+      return sendJson(res, 500, { ok: false, error: 'ADMIN_PASSWORD_HASH not configured' })
+    }
+
+    let passwordValid = false
+    try {
+      passwordValid = await bcrypt.compare(password, ADMIN_PASSWORD_HASH)
+    } catch (err) {
+      console.log('[AUTH] bcrypt compare error:', err.message)
+      return sendJson(res, 500, { ok: false, error: 'password validation error' })
+    }
+
+    if (!passwordValid) {
+      return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
+    }
+
+    // Validate TOTP
+    if (!verifyAdminOtp(otp)) {
+      return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
+    }
+
     const token = crypto.randomBytes(24).toString('hex')
     adminSessions.set(token, { username, createdAt: now(), expiresAt: now() + ADMIN_TOKEN_TTL_MS })
     return sendJson(res, 200, { ok: true, token, username, expiresInMs: ADMIN_TOKEN_TTL_MS })
