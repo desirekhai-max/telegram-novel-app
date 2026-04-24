@@ -41,7 +41,6 @@ let readRecords = []
 const ADMIN_USER = String(process.env.ADMIN_USER || '69KKH')
 const ADMIN_PASS = String(process.env.ADMIN_PASS || 'AA112233')
 const ADMIN_OTP_SECRET = String(process.env.ADMIN_OTP_SECRET || '').trim()
-const ADMIN_OTP = String(process.env.ADMIN_OTP || '123456')
 const ADMIN_LEGACY_USER = String(process.env.ADMIN_LEGACY_USER || 'admin')
 const ADMIN_LEGACY_PASS = String(process.env.ADMIN_LEGACY_PASS || 'admin123')
 const ADMIN_LEGACY_OTP = String(process.env.ADMIN_LEGACY_OTP || '123456')
@@ -84,17 +83,21 @@ function verifyAdminOtp(code) {
   const otp = String(code || '').trim()
   if (!otp) return false
 
-  if (ADMIN_OTP_SECRET) {
-    const secretBuf = decodeBase32Secret(ADMIN_OTP_SECRET)
-    if (!secretBuf || secretBuf.length === 0) return false
-    const currentCounter = Math.floor(now() / 1000 / 30)
-    for (let step = -1; step <= 1; step += 1) {
-      if (buildTotpCode(secretBuf, currentCounter + step) === otp) return true
-    }
-    return false
-  }
+  if (!ADMIN_OTP_SECRET) return false
 
-  return otp === ADMIN_OTP
+  const secretBuf = decodeBase32Secret(ADMIN_OTP_SECRET)
+  if (!secretBuf || secretBuf.length === 0) return false
+  const currentCounter = Math.floor(now() / 1000 / 30)
+  for (let step = -1; step <= 1; step += 1) {
+    if (buildTotpCode(secretBuf, currentCounter + step) === otp) return true
+  }
+  return false
+}
+
+function verifyAdminPassword(password) {
+  const inputPassword = String(password || '')
+  if (!inputPassword) return false
+  return inputPassword === ADMIN_PASS
 }
 
 function normalizeReviewIn(raw, novelId = '') {
@@ -552,7 +555,7 @@ function sendJson(res, code, payload) {
     'Cache-Control': 'no-store',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   })
   res.end(JSON.stringify(payload))
 }
@@ -637,7 +640,8 @@ const server = http.createServer(async (req, res) => {
     if (!username || !password || !otp) {
       return sendJson(res, 400, { ok: false, error: 'username/password/otp required' })
     }
-    if (username !== ADMIN_USER || password !== ADMIN_PASS || !verifyAdminOtp(otp)) {
+    const passwordOk = verifyAdminPassword(password)
+    if (username !== ADMIN_USER || !passwordOk || !verifyAdminOtp(otp)) {
       return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
     }
     const token = crypto.randomBytes(24).toString('hex')
