@@ -564,6 +564,18 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 500, { ok: false, error: 'ADMIN_OTP_SECRET not configured' })
     }
 
+    console.log('[TOTP] Secret is configured, length:', ADMIN_OTP_SECRET.length)
+    const currentCounter = Math.floor(Date.now() / 1000 / 30)
+    console.log('[TOTP] Current counter:', currentCounter)
+    const generatedCodes = [-1, 0, 1].map((step) =>
+      speakeasy.totp({ secret: ADMIN_OTP_SECRET, encoding: 'base32', counter: currentCounter + step })
+    )
+    generatedCodes.forEach((code, i) => {
+      console.log(`[TOTP] Generated code for step ${i - 1}:`, code)
+    })
+    console.log('[TOTP] Received OTP:', otp)
+    console.log('[TOTP] Expected codes:', generatedCodes)
+
     const isValidOtp = speakeasy.totp.verify({
       secret: ADMIN_OTP_SECRET,
       encoding: 'base32',
@@ -572,8 +584,10 @@ const server = http.createServer(async (req, res) => {
     })
 
     if (!isValidOtp) {
+      console.log('[TOTP] Verification FAILED')
       return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
     }
+    console.log('[TOTP] Verification SUCCESS')
     const token = crypto.randomBytes(24).toString('hex')
     adminSessions.set(token, { username, createdAt: now(), expiresAt: now() + ADMIN_TOKEN_TTL_MS })
     return sendJson(res, 200, { ok: true, token, username, expiresInMs: ADMIN_TOKEN_TTL_MS })
