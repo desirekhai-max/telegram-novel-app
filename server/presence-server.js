@@ -1,3 +1,4 @@
+import speakeasy from 'speakeasy'
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -40,7 +41,7 @@ const READ_RECORDS_CAP = 2000
 let readRecords = []
 const ADMIN_USER = String(process.env.ADMIN_USER || '69KKH')
 const ADMIN_PASS = String(process.env.ADMIN_PASS || 'AA112233')
-const ADMIN_OTP = String(process.env.ADMIN_OTP || '123456')
+const ADMIN_OTP_SECRET = String(process.env.ADMIN_OTP_SECRET || '')
 const ADMIN_TOKEN_TTL_MS = 12 * 60 * 60 * 1000
 const adminSessions = new Map()
 
@@ -553,7 +554,24 @@ const server = http.createServer(async (req, res) => {
     if (!username || !password || !otp) {
       return sendJson(res, 400, { ok: false, error: 'username/password/otp required' })
     }
-    if (username !== ADMIN_USER || password !== ADMIN_PASS || otp !== ADMIN_OTP) {
+    // Validate username & password first
+    if (username !== ADMIN_USER || password !== ADMIN_PASS) {
+      return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
+    }
+
+    // Validate TOTP code against ADMIN_OTP_SECRET
+    if (!ADMIN_OTP_SECRET) {
+      return sendJson(res, 500, { ok: false, error: 'ADMIN_OTP_SECRET not configured' })
+    }
+
+    const isValidOtp = speakeasy.totp.verify({
+      secret: ADMIN_OTP_SECRET,
+      encoding: 'base32',
+      token: otp,
+      window: 1  // Allow ±1 time step (±30 seconds)
+    })
+
+    if (!isValidOtp) {
       return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
     }
     const token = crypto.randomBytes(24).toString('hex')
