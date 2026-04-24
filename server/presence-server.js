@@ -40,9 +40,62 @@ const READ_RECORDS_CAP = 2000
 let readRecords = []
 const ADMIN_USER = String(process.env.ADMIN_USER || '69KKH')
 const ADMIN_PASS = String(process.env.ADMIN_PASS || 'AA112233')
+const ADMIN_OTP_SECRET = String(process.env.ADMIN_OTP_SECRET || '').trim()
 const ADMIN_OTP = String(process.env.ADMIN_OTP || '123456')
+const ADMIN_LEGACY_USER = String(process.env.ADMIN_LEGACY_USER || 'admin')
+const ADMIN_LEGACY_PASS = String(process.env.ADMIN_LEGACY_PASS || 'admin123')
+const ADMIN_LEGACY_OTP = String(process.env.ADMIN_LEGACY_OTP || '123456')
 const ADMIN_TOKEN_TTL_MS = 12 * 60 * 60 * 1000
 const adminSessions = new Map()
+const adminLegacySessions = new Map()
+
+function decodeBase32Secret(secret) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  const clean = String(secret || '')
+    .toUpperCase()
+    .replace(/=+$/g, '')
+    .replace(/\s+/g, '')
+  let bits = ''
+  for (const ch of clean) {
+    const idx = alphabet.indexOf(ch)
+    if (idx < 0) return null
+    bits += idx.toString(2).padStart(5, '0')
+  }
+  const bytes = []
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    bytes.push(Number.parseInt(bits.slice(i, i + 8), 2))
+  }
+  return Buffer.from(bytes)
+}
+
+function buildTotpCode(secretBuf, counter) {
+  const counterBuf = Buffer.alloc(8)
+  counterBuf.writeBigUInt64BE(BigInt(counter))
+  const hash = crypto.createHmac('sha1', secretBuf).update(counterBuf).digest()
+  const offset = hash[hash.length - 1] & 0x0f
+  const binCode = ((hash[offset] & 0x7f) << 24)
+    | ((hash[offset + 1] & 0xff) << 16)
+    | ((hash[offset + 2] & 0xff) << 8)
+    | (hash[offset + 3] & 0xff)
+  return String(binCode % 1_000_000).padStart(6, '0')
+}
+
+function verifyAdminOtp(code) {
+  const otp = String(code || '').trim()
+  if (!otp) return false
+
+  if (ADMIN_OTP_SECRET) {
+    const secretBuf = decodeBase32Secret(ADMIN_OTP_SECRET)
+    if (!secretBuf || secretBuf.length === 0) return false
+    const currentCounter = Math.floor(now() / 1000 / 30)
+    for (let step = -1; step <= 1; step += 1) {
+      if (buildTotpCode(secretBuf, currentCounter + step) === otp) return true
+    }
+    return false
+  }
+
+  return otp === ADMIN_OTP
+}
 
 function normalizeReviewIn(raw, novelId = '') {
   if (!raw || typeof raw !== 'object') return null
@@ -541,6 +594,37 @@ function requireAdmin(req, res) {
   return token
 }
 
+function pruneLegacyAdminSessions() {
+  const t = now()
+  for (const [token, rec] of adminLegacySessions.entries()) {
+    if (!rec || Number(rec.expiresAt) <= t) adminLegacySessions.delete(token)
+  }
+}
+
+function isLegacyAdminTokenValid(token) {
+  if (!token) return false
+  pruneLegacyAdminSessions()
+  const rec = adminLegacySessions.get(token)
+  return Boolean(rec && Number(rec.expiresAt) > now())
+}
+
+function getLegacyAdminSession(token) {
+  if (!token) return null
+  pruneLegacyAdminSessions()
+  const rec = adminLegacySessions.get(token)
+  if (!rec || Number(rec.expiresAt) <= now()) return null
+  return rec
+}
+
+function requireLegacyAdmin(req, res) {
+  const token = extractBearerToken(req)
+  if (!isLegacyAdminTokenValid(token)) {
+    sendJson(res, 401, { ok: false, error: 'legacy admin unauthorized' })
+    return null
+  }
+  return token
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
   if (req.method === 'OPTIONS') return sendJson(res, 204, {})
@@ -553,7 +637,7 @@ const server = http.createServer(async (req, res) => {
     if (!username || !password || !otp) {
       return sendJson(res, 400, { ok: false, error: 'username/password/otp required' })
     }
-    if (username !== ADMIN_USER || password !== ADMIN_PASS || otp !== ADMIN_OTP) {
+    if (username !== ADMIN_USER || password !== ADMIN_PASS || !verifyAdminOtp(otp)) {
       return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
     }
     const token = crypto.randomBytes(24).toString('hex')
@@ -571,6 +655,35 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/admin/logout') {
     const token = extractBearerToken(req)
     if (token) adminSessions.delete(token)
+    return sendJson(res, 200, { ok: true })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/admin-legacy/login') {
+    const body = await parseJsonBody(req)
+    const username = String(body.username || '').trim()
+    const password = String(body.password || '').trim()
+    const otp = String(body.otp || '').trim()
+    if (!username || !password || !otp) {
+      return sendJson(res, 400, { ok: false, error: 'username/password/otp required' })
+    }
+    if (username !== ADMIN_LEGACY_USER || password !== ADMIN_LEGACY_PASS || otp !== ADMIN_LEGACY_OTP) {
+      return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
+    }
+    const token = crypto.randomBytes(24).toString('hex')
+    adminLegacySessions.set(token, { username, createdAt: now(), expiresAt: now() + ADMIN_TOKEN_TTL_MS })
+    return sendJson(res, 200, { ok: true, token, username, expiresInMs: ADMIN_TOKEN_TTL_MS })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin-legacy/session') {
+    const token = extractBearerToken(req)
+    const session = getLegacyAdminSession(token)
+    if (!session) return sendJson(res, 401, { ok: false, error: 'legacy admin unauthorized' })
+    return sendJson(res, 200, { ok: true, username: String(session.username || ADMIN_LEGACY_USER) })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/admin-legacy/logout') {
+    const token = extractBearerToken(req)
+    if (token) adminLegacySessions.delete(token)
     return sendJson(res, 200, { ok: true })
   }
 
@@ -767,6 +880,12 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true })
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/admin-legacy/reset-interactions') {
+    if (!requireLegacyAdmin(req, res)) return
+    resetInteractionData()
+    return sendJson(res, 200, { ok: true })
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/home-stats') {
     return sendJson(res, 200, { ok: true, items: buildHomeStats() })
   }
@@ -822,6 +941,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/reading-records') {
     if (!requireAdmin(req, res)) return
+    return sendJson(res, 200, { ok: true, items: readRecords })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin-legacy/reading-records') {
+    if (!requireLegacyAdmin(req, res)) return
     return sendJson(res, 200, { ok: true, items: readRecords })
   }
 
