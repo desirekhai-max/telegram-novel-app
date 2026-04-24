@@ -25,7 +25,7 @@ import {
   toDateOnly,
 } from '../lib/adminDateTimePickerUtils.js'
 import { formatTelegramDisplayName, useTelegramUser } from '../hooks/useTelegramUser.js'
-import { logoutAdmin } from '../lib/adminAuth.js'
+import { getAdminAuthHeaders, getAdminUsername, logoutAdmin } from '../lib/adminAuth.js'
 import { readActiveMembers5m } from '../lib/miniAppPresence.js'
 import { apiUrl } from '../lib/apiBase.js'
 
@@ -41,7 +41,6 @@ const NAV = [
   { id: 'settings', label: '系统设置', icon: Settings },
 ]
 
-const ADMIN_DISPLAY_NAME = 'shunshun'
 const ADMIN_ACTIVE_TAB_KEY = 'tg-admin-active-tab'
 
 const PLACEHOLDER = {
@@ -225,6 +224,7 @@ export default function AdminPage() {
   const endDateMenuRef = useRef(null)
   const listsFilterSnapshotRef = useRef({})
   const [activeId, setActiveId] = useState(getInitialAdminTab)
+  const [adminDisplayName, setAdminDisplayName] = useState(() => getAdminUsername() || '管理员')
   const [sidebarWide, setSidebarWide] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [activeMembers, setActiveMembers] = useState({ android: 0, ios: 0, web: 0, admin: 0 })
@@ -272,7 +272,10 @@ export default function AdminPage() {
 
   const fetchReadingRecords = useCallback(async () => {
     try {
-      const res = await fetch(apiUrl('/api/reading-records'), { cache: 'no-store' })
+      const res = await fetch(apiUrl('/api/reading-records'), {
+        cache: 'no-store',
+        headers: { ...getAdminAuthHeaders() },
+      })
       if (!res.ok) return
       const data = await res.json()
       setReadRecordsSource(Array.isArray(data?.items) ? data.items : [])
@@ -414,6 +417,11 @@ export default function AdminPage() {
     window.sessionStorage.setItem(ADMIN_ACTIVE_TAB_KEY, activeId)
   }, [activeId])
 
+  useEffect(() => {
+    const next = getAdminUsername()
+    if (next) setAdminDisplayName(next)
+  }, [])
+
   /** 阅读记录页：按所选间隔触发（列表接口未接时也可监听 `tg-admin-records-auto-refresh`） */
   useEffect(() => {
     if (activeId !== 'lists' || listsAutoRefreshSec <= 0) return undefined
@@ -444,7 +452,7 @@ export default function AdminPage() {
 
   const onLogout = () => {
     window.sessionStorage.removeItem(ADMIN_ACTIVE_TAB_KEY)
-    logoutAdmin()
+    void logoutAdmin()
     navigate('/admin-login', { replace: true })
   }
 
@@ -514,7 +522,7 @@ export default function AdminPage() {
               </span>
               <span className="tg-admin-userchip__meta">
                 <span className="tg-admin-userchip__welcome">欢迎光临</span>
-                <span className="tg-admin-userchip__name">{ADMIN_DISPLAY_NAME}</span>
+                <span className="tg-admin-userchip__name">{adminDisplayName}</span>
               </span>
               <span className="tg-admin-userchip__caret" aria-hidden />
             </button>

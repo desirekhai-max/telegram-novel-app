@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import AmbientBackdrop from './components/AmbientBackdrop.jsx'
 import BottomNav from './components/BottomNav.jsx'
 import { AppChromeProvider } from './contexts/AppChromeProvider.jsx'
 import { useAppChrome } from './contexts/useAppChrome.js'
-import { isAdminAuthed } from './lib/adminAuth.js'
+import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
 import { registerPresencePing } from './lib/miniAppPresence.js'
 import PageTransitionLayout from './layouts/PageTransitionLayout.jsx'
 import AboutPage from './pages/AboutPage.jsx'
@@ -18,7 +18,23 @@ import TasksPage from './pages/TasksPage.jsx'
 import VipPage from './pages/VipPage.jsx'
 
 function AdminGuard() {
-  return isAdminAuthed() ? <AdminPage /> : <Navigate to="/admin-login?redirect=/admin" replace />
+  const hasToken = isAdminAuthed()
+  const [status, setStatus] = useState(() => (hasToken ? 'checking' : 'denied'))
+
+  useEffect(() => {
+    let active = true
+    if (!hasToken) return () => { active = false }
+    void verifyAdminSession().then((ok) => {
+      if (!active) return
+      setStatus(ok ? 'allowed' : 'denied')
+    })
+    return () => {
+      active = false
+    }
+  }, [hasToken])
+
+  if (status === 'checking') return null
+  return status === 'allowed' ? <AdminPage /> : <Navigate to="/admin-login?redirect=/admin" replace />
 }
 
 function AppShell() {

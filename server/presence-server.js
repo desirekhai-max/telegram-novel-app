@@ -1,6 +1,8 @@
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
+import crypto from 'node:crypto'
+import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const HOST = process.env.HOST || '0.0.0.0'
@@ -36,6 +38,11 @@ const novelLikes = new Map()
 const READ_RECORDS_CAP = 2000
 /** @type {object[]} */
 let readRecords = []
+const ADMIN_USER = String(process.env.ADMIN_USER || '69KKH')
+const ADMIN_PASS = String(process.env.ADMIN_PASS || 'AA112233')
+const ADMIN_OTP = String(process.env.ADMIN_OTP || '123456')
+const ADMIN_TOKEN_TTL_MS = 12 * 60 * 60 * 1000
+const adminSessions = new Map()
 
 function normalizeReviewIn(raw, novelId = '') {
   if (!raw || typeof raw !== 'object') return null
@@ -497,9 +504,75 @@ function sendJson(res, code, payload) {
   res.end(JSON.stringify(payload))
 }
 
+function extractBearerToken(req) {
+  const raw = String(req.headers.authorization || '')
+  const m = raw.match(/^Bearer\s+(.+)$/i)
+  return m ? String(m[1]).trim() : ''
+}
+
+function pruneAdminSessions() {
+  const t = now()
+  for (const [token, rec] of adminSessions.entries()) {
+    if (!rec || Number(rec.expiresAt) <= t) adminSessions.delete(token)
+  }
+}
+
+function isAdminTokenValid(token) {
+  if (!token) return false
+  pruneAdminSessions()
+  const rec = adminSessions.get(token)
+  return Boolean(rec && Number(rec.expiresAt) > now())
+}
+
+function getAdminSession(token) {
+  if (!token) return null
+  pruneAdminSessions()
+  const rec = adminSessions.get(token)
+  if (!rec || Number(rec.expiresAt) <= now()) return null
+  return rec
+}
+
+function requireAdmin(req, res) {
+  const token = extractBearerToken(req)
+  if (!isAdminTokenValid(token)) {
+    sendJson(res, 401, { ok: false, error: 'admin unauthorized' })
+    return null
+  }
+  return token
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
   if (req.method === 'OPTIONS') return sendJson(res, 204, {})
+
+  if (req.method === 'POST' && url.pathname === '/api/admin/login') {
+    const body = await parseJsonBody(req)
+    const username = String(body.username || '').trim()
+    const password = String(body.password || '').trim()
+    const otp = String(body.otp || '').trim()
+    if (!username || !password || !otp) {
+      return sendJson(res, 400, { ok: false, error: 'username/password/otp required' })
+    }
+    if (username !== ADMIN_USER || password !== ADMIN_PASS || otp !== ADMIN_OTP) {
+      return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
+    }
+    const token = crypto.randomBytes(24).toString('hex')
+    adminSessions.set(token, { username, createdAt: now(), expiresAt: now() + ADMIN_TOKEN_TTL_MS })
+    return sendJson(res, 200, { ok: true, token, username, expiresInMs: ADMIN_TOKEN_TTL_MS })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin/session') {
+    const token = extractBearerToken(req)
+    const session = getAdminSession(token)
+    if (!session) return sendJson(res, 401, { ok: false, error: 'admin unauthorized' })
+    return sendJson(res, 200, { ok: true, username: String(session.username || ADMIN_USER) })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/admin/logout') {
+    const token = extractBearerToken(req)
+    if (token) adminSessions.delete(token)
+    return sendJson(res, 200, { ok: true })
+  }
 
   if (req.method === 'POST' && url.pathname === '/api/presence/ping') {
     const body = await parseJsonBody(req)
@@ -689,6 +762,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/admin/reset-interactions') {
+    if (!requireAdmin(req, res)) return
     resetInteractionData()
     return sendJson(res, 200, { ok: true })
   }
@@ -747,6 +821,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/reading-records') {
+    if (!requireAdmin(req, res)) return
     return sendJson(res, 200, { ok: true, items: readRecords })
   }
 

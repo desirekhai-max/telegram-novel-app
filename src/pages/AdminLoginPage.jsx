@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { loginAdmin } from '../lib/adminAuth.js'
 
-const DEV_GOOGLE_OTP = '123456'
 const LOGIN_PAGE_TIMEOUT_MS = 5 * 60 * 1000
 
 function makeCaptcha() {
@@ -34,6 +33,7 @@ export default function AdminLoginPage() {
   const [otpCode, setOtpCode] = useState('')
   const [otpError, setOtpError] = useState('')
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [pageIssuedAt] = useState(() => Date.now())
 
   const redirectTo = new URLSearchParams(location.search).get('redirect') || '/admin'
@@ -50,20 +50,13 @@ export default function AdminLoginPage() {
       setCaptchaCode(makeCaptcha())
       return
     }
-    const ok = loginAdmin(username, password)
-    if (!ok) {
-      setError('账号或密码错误')
-      setCaptcha('')
-      setCaptchaCode(makeCaptcha())
-      return
-    }
     setError('')
     setOtpCode('')
     setOtpError('')
     setOtpOpen(true)
   }
 
-  const onSubmitOtp = () => {
+  const onSubmitOtp = async () => {
     if (Date.now() - pageIssuedAt > LOGIN_PAGE_TIMEOUT_MS) {
       setOtpError('请求校验失败，请刷新页面重试')
       return
@@ -72,8 +65,11 @@ export default function AdminLoginPage() {
       setOtpError('请输入 6 位数字验证码')
       return
     }
-    if (otpCode.trim() !== DEV_GOOGLE_OTP) {
-      setOtpError('Google 验证码错误')
+    setSubmitting(true)
+    const result = await loginAdmin(username, password, otpCode)
+    setSubmitting(false)
+    if (!result.ok) {
+      setOtpError(result.error || '账号、密码或动态码错误')
       return
     }
     setOtpOpen(false)
@@ -181,8 +177,13 @@ export default function AdminLoginPage() {
               >
                 取消
               </button>
-              <button type="button" className="tg-admin-otp__btn tg-admin-otp__btn--submit" onClick={onSubmitOtp}>
-                登录
+              <button
+                type="button"
+                className="tg-admin-otp__btn tg-admin-otp__btn--submit"
+                onClick={onSubmitOtp}
+                disabled={submitting}
+              >
+                {submitting ? '校验中...' : '登录'}
               </button>
             </div>
           </div>
