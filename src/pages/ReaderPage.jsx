@@ -1,31 +1,44 @@
-import { AlertCircle, Bell, ChevronDown, ChevronUp, Eye, Heart, ListOrdered, MessageCircle, Search, SendHorizontal, Star, ThumbsDown, X } from 'lucide-react'
+import {
+  AlertCircle,
+  Bell,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Heart,
+  ListOrdered,
+  MessageCircle,
+  Search,
+  SendHorizontal,
+  Star,
+  X,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, NavLink, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import BottomNav from '../components/BottomNav.jsx'
-import HomePage from './HomePage.jsx'
+import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getNovelById } from '../data/novels'
 import { formatTelegramDisplayName, useTelegramUser } from '../hooks/useTelegramUser.js'
+import { useViewerProfile } from '../hooks/useViewerProfile.js'
 import {
   commentPointsToStars,
-  formatChapterRelativeTime,
+  formatLatestChapterRelativeLabel,
   formatWordCountFooter,
   getDisplayWordCountWan,
   getMeatCategoryByWordCount,
 } from '../lib/novelDisplay.js'
 import { CommentMemberBadges } from '../components/CommentMemberBadges.jsx'
-import { usePremiumPreview } from '../hooks/usePremiumPreview.js'
-import {
-  computeMemberTier,
-  normalizeStoredMemberTier,
-  parseCoinBalance,
-  parseVipExpireAtMs,
-} from '../lib/memberTier.js'
+import ReaderWatermarkOverlay from '../components/ReaderWatermarkOverlay.jsx'
+import { useReadingContentProtection } from '../hooks/useReadingContentProtection.js'
+import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
+import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount.js'
+import { normalizeStoredMemberTier } from '../lib/memberTier.js'
 import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
+import { tryOpenTelegramMeLink } from '../lib/telegramWebApp.js'
 import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
 import {
   appendNovelReplyVerbose,
+  appendNovelReportVerbose,
   appendReadingRecord,
   appendNovelReviewVerbose,
+  fetchNovelFavoriteState,
   fetchNovelLikeState,
   fetchNovelReplies,
   fetchNovelReviews,
@@ -33,21 +46,77 @@ import {
   getPresenceMemberId,
   incrementNovelViewCount,
   reportMetricEvent,
+  toggleNovelFavoriteVerbose,
   toggleNovelLikeVerbose,
   voteNovelReviewVerbose,
 } from '../lib/miniAppPresence.js'
 import { buildOrderNo } from '../lib/orderNo.js'
-import { saveLastRead } from '../lib/readerStorage.js'
+import {
+  formatReaderSubmitErrorKm,
+  READER_ARTICLE_AUTHOR_LABEL_KM,
+  READER_ARTICLE_AUTHOR_UNKNOWN_KM,
+  READER_ARTICLE_WORD_COUNT_LABEL_KM,
+  READER_ARTICLE_WORD_UNIT_KM,
+  READER_BACK_TO_LIST_KM,
+  READER_NOVEL_NOT_FOUND_DESC_KM,
+  READER_NOVEL_NOT_FOUND_TITLE_KM,
+  READER_NO_BODY_KM,
+  READER_NO_CHAPTER_YET_KM,
+  READER_SHARE_DETAIL_FALLBACK_KM,
+  READER_THEME_UNCATEGORIZED_KM,
+  READER_VIP_CHAPTER_GATE_DESC_KM,
+  READER_VIP_CHAPTER_GATE_TITLE_KM,
+} from '../lib/errorMessagesKm.js'
+import { persistAndBroadcastDetailStats } from '../lib/novelDetailStatsSync.js'
+import { mergeDisplayedCount, getSeedFavoriteCount, getSeedLikeCount, getSeedViewCount } from '../lib/novelSeedStats.js'
+import { bumpLocalViewMax } from '../lib/novelViewCountLocal.js'
+import { appendReadingHistoryLocal, saveLastRead } from '../lib/readerStorage.js'
 
-function chapterAccessLabel(idx, memberTier) {
+function chapterAccessLabel(idx, isVipReader) {
   if (idx === 0) return 'ឥតគិតថ្លៃ'
-  const isVipTier = memberTier === 'vip' || memberTier === 'vip_gold'
-  return isVipTier ? 'សមាជិកVIP' : 'ចុះឈ្មោះសមាជិក'
+  if (isVipReader) return 'VIP'
+  return 'សមាជិកVIP'
 }
 
 const CATALOG_MIN_COUNT = 15
 const COMMENT_VOTES_STORAGE_KEY = 'tg_novel_comment_votes_v1'
 const COMMENT_SUBMIT_RETRY_MS = 450
+const DETAIL_INTERACTIONS_STORAGE_KEY = 'tg_novel_detail_interactions_v1'
+
+function readDetailInteractions() {
+  try {
+    const raw = localStorage.getItem(DETAIL_INTERACTIONS_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeDetailInteractions(next) {
+  try {
+    localStorage.setItem(DETAIL_INTERACTIONS_STORAGE_KEY, JSON.stringify(next))
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
+function resolveInteractionByNovelId(all, novelId) {
+  const row = all?.[String(novelId)]
+  if (!row || typeof row !== 'object') return null
+  const out = {}
+  if (typeof row.liked === 'boolean') out.liked = row.liked
+  if (typeof row.favorited === 'boolean') out.favorited = row.favorited
+  return Object.keys(out).length ? out : null
+}
+
+function mergeCountByLocalPreference(serverCount, serverState, localState) {
+  const base = Math.max(0, Number(serverCount) || 0)
+  if (typeof localState !== 'boolean') return { count: base, state: Boolean(serverState) }
+  if (localState === Boolean(serverState)) return { count: base, state: localState }
+  if (localState) return { count: base + 1, state: true }
+  return { count: Math.max(0, base - 1), state: false }
+}
 
 function chapterHasReadableBody(novel, chapterIndex) {
   if (!novel || !Number.isFinite(chapterIndex) || chapterIndex < 0) return false
@@ -57,6 +126,14 @@ function chapterHasReadableBody(novel, chapterIndex) {
   return body.some((p) => String(p ?? '').trim().length > 0)
 }
 
+function findFirstReadableChapterIndex(novel) {
+  const chapters = novel?.chapters ?? []
+  for (let i = 0; i < chapters.length; i += 1) {
+    if (chapterHasReadableBody(novel, i)) return i
+  }
+  return -1
+}
+
 function displayMemberIdForRecord(tgUser) {
   if (tgUser?.id != null) return String(tgUser.id)
   const raw = getPresenceMemberId()
@@ -64,7 +141,7 @@ function displayMemberIdForRecord(tgUser) {
   return raw.length > 24 ? `${raw.slice(0, 20)}…` : raw
 }
 
-function reportReadOnChapterOpen(novel, chapterIndex, tgUser, memberTier) {
+function reportReadOnChapterOpen(novel, chapterIndex, tgUser, isVipReader) {
   if (!chapterHasReadableBody(novel, chapterIndex)) return
   void reportMetricEvent('read')
   const readAt = formatReadingRecordInstant()
@@ -80,8 +157,15 @@ function reportReadOnChapterOpen(novel, chapterIndex, tgUser, memberTier) {
     memberName: tgUser ? formatTelegramDisplayName(tgUser) : 'ភ្ញៀវ',
     memberId: displayMemberIdForRecord(tgUser),
     memberAccount: tgUser?.username ? `@${tgUser.username}` : '',
-    memberLevel: chapterAccessLabel(chapterIndex, memberTier),
+    memberLevel: chapterAccessLabel(chapterIndex, isVipReader),
     memberOrder,
+    shelfTitle: String(novel?.title || ''),
+    readChapter,
+    readAt,
+    ts,
+  })
+  appendReadingHistoryLocal({
+    novelId: String(novel?.id || ''),
     shelfTitle: String(novel?.title || ''),
     readChapter,
     readAt,
@@ -107,36 +191,89 @@ function formatCommentTimeAgo(ts, nowMs = Date.now()) {
   return `${Math.max(1, year)} ឆ្នាំមុន`
 }
 
-function resolveCommentRowMemberTier({ row }) {
-  const stored = normalizeStoredMemberTier(row.memberTier)
-  if (stored) return stored
-  return 'normal'
+function normalizeStoredRole(row) {
+  return String(row?.memberRole || '').toLowerCase().trim() === 'author' ? 'author' : ''
+}
+
+function buildCommentBadgeProps(row) {
+  return {
+    tier: normalizeStoredMemberTier(row?.memberTier) || 'normal',
+    role: normalizeStoredRole(row),
+    vipActive: Boolean(row?.vipActive),
+  }
+}
+
+function buildReplyThreadTree(replies) {
+  const list = Array.isArray(replies) ? replies : []
+  const ordered = [...list].sort((a, b) => Number(a?.at || 0) - Number(b?.at || 0))
+  const byId = new Map()
+  ordered.forEach((r) => {
+    byId.set(String(r?.id || ''), { ...r, children: [] })
+  })
+  const roots = []
+  ordered.forEach((r, idx) => {
+    const node = byId.get(String(r?.id || ''))
+    if (!node) return
+    const pid = String(r?.parentReplyId || '').trim()
+    if (pid && byId.has(pid)) {
+      const parentNode = byId.get(pid)
+      if (!node.replyToName) {
+        node.replyToName = String(parentNode?.name || '').trim()
+      }
+      parentNode.children.push(node)
+      return
+    }
+    // 兼容旧数据：如果没有 parentReplyId，但有 replyToName，则尽量挂到被回复人的最近一条回复下。
+    const replyToName = String(r?.replyToName || '').trim()
+    if (replyToName) {
+      for (let i = idx - 1; i >= 0; i -= 1) {
+        const prev = ordered[i]
+        if (String(prev?.name || '').trim() !== replyToName) continue
+        const prevId = String(prev?.id || '')
+        if (!prevId || !byId.has(prevId)) continue
+        byId.get(prevId).children.push(node)
+        return
+      }
+      // 已带「回复给谁」但未匹配到同名节点（常见：回复主评论作者）：顶层展示，勿挂到上一条以免 ▶ 显示成自己
+      roots.push(node)
+      return
+    }
+    // 再兜底：如果没有明确指向，就接到上一条回复下面，避免“互相回复”丢层级。
+    if (idx > 0) {
+      const prev = ordered[idx - 1]
+      const prevId = String(prev?.id || '')
+      if (prevId && byId.has(prevId)) {
+        const parentNode = byId.get(prevId)
+        if (!node.replyToName) {
+          node.replyToName = String(parentNode?.name || '').trim()
+        }
+        parentNode.children.push(node)
+        return
+      }
+    }
+    roots.push(node)
+  })
+  const sortNodes = (arr) => {
+    arr.sort((a, b) => Number(a?.at || 0) - Number(b?.at || 0))
+    arr.forEach((n) => sortNodes(n.children))
+  }
+  sortNodes(roots)
+  return roots
 }
 
 export default function ReaderPage() {
   const { id } = useParams()
+  const location = useLocation()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const premiumPreview = usePremiumPreview()
+  const cameFromSaved = location.state?.from === 'saved'
+  const edgeSwipeHandlers = useEdgeSwipeBack({
+    triggerRatio: 0.1,
+    instantBack: true,
+    followGesture: !cameFromSaved,
+  })
   const tgUser = useTelegramUser()
-  const userForTier = useMemo(() => {
-    if (!tgUser) return null
-    if (!premiumPreview) return tgUser
-    return { ...tgUser, is_premium: true }
-  }, [tgUser, premiumPreview])
-  const vipExpireAtMs = useMemo(() => parseVipExpireAtMs(searchParams.get('vip_expire')), [searchParams])
-  const coinBalance = useMemo(() => parseCoinBalance(searchParams.get('ucoin')), [searchParams])
-  const viewerMemberTier = useMemo(
-    () =>
-      computeMemberTier({
-        user: userForTier,
-        memberTierQuery: String(searchParams.get('member_tier') || ''),
-        vipExpireAtMs,
-        coinBalance,
-      }),
-    [coinBalance, searchParams, userForTier, vipExpireAtMs],
-  )
-  const isVipTier = viewerMemberTier === 'vip' || viewerMemberTier === 'vip_gold'
+  const { viewerProfile } = useViewerProfile(tgUser)
+  const unreadNotificationCount = useUnreadNotificationCount(tgUser)
   const novel = getNovelById(id)
   const [introExpanded, setIntroExpanded] = useState(false)
   const [catalogDesc, setCatalogDesc] = useState(false)
@@ -148,39 +285,48 @@ export default function ReaderPage() {
   const [replyDraft, setReplyDraft] = useState('')
   const [replySubmitPending, setReplySubmitPending] = useState(false)
   const [replySubmitError, setReplySubmitError] = useState('')
+  const [reportModalOpen, setReportModalOpen] = useState(false)
+  const [reportDraft, setReportDraft] = useState('')
+  const [reportSubmitPending, setReportSubmitPending] = useState(false)
+  const [reportSubmitError, setReportSubmitError] = useState('')
   const [likedDetail, setLikedDetail] = useState(false)
   const [detailLikeHydrated, setDetailLikeHydrated] = useState(false)
   const [likeCount, setLikeCount] = useState(0)
+  const [favoritedDetail, setFavoritedDetail] = useState(false)
+  const [favoriteCount, setFavoriteCount] = useState(0)
   const [viewCount, setViewCount] = useState(0)
   const [likeBump, setLikeBump] = useState(false)
   const [commentVotesHydrated, setCommentVotesHydrated] = useState(false)
   const [nowTs, setNowTs] = useState(() => Date.now())
+  /**
+   * 章节门控：
+   * - 第 1 章：全部身份可读
+   * - 第 2 章及以后：仅后端已激活 VIP 可读
+   * - 普通会员 / 作者会员均不可读
+   */
+  const isVipReader = Boolean(viewerProfile.vipActive)
   const [reviewItems, setReviewItems] = useState([])
   const [startReadPageOpen, setStartReadPageOpen] = useState(false)
+  const [chapterVipGateOpen, setChapterVipGateOpen] = useState(false)
   const [readingChapterIndex, setReadingChapterIndex] = useState(null)
   const [articleHeaderCompact, setArticleHeaderCompact] = useState(false)
-  const swipeRef = useRef({ startX: 0, startY: 0, tracking: false, axis: null })
-  const swipeDxRef = useRef(0)
-  const swipeResetTimerRef = useRef(0)
-  const swipeSheetRef = useRef(null)
   const articleSwipeRef = useRef({ startX: 0, startY: 0, tracking: false, axis: null })
   const articleSwipeDxRef = useRef(0)
   const articleSwipeResetTimerRef = useRef(0)
+  const articleOverlayRef = useRef(null)
+  const articleScrollRef = useRef(null)
   const articleLayerRef = useRef(null)
+  const readerDetailScrollRef = useRef(null)
   const [vipJumpingChapterIndex, setVipJumpingChapterIndex] = useState(null)
   const vipJumpTimerRef = useRef(0)
   const catalogSectionRef = useRef(null)
+  const commentFeedSectionRef = useRef(null)
+  const lastFocusedCommentRef = useRef('')
+  const highlightTimerRef = useRef(0)
+  const [highlightTargetId, setHighlightTargetId] = useState('')
+  const [expandedReplyMap, setExpandedReplyMap] = useState({})
   const isMiniAppLoggedIn = Boolean(tgUser)
 
-  const onOpenStartReadPage = () => {
-    // Telegram Mini App 能读取到当前用户信息 => 视为已登录，直接进入目录。
-    if (isMiniAppLoggedIn) {
-      catalogSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      return
-    }
-    // 普通网页环境读取不到 tgUser => 视为未登录，弹登录提示页。
-    setStartReadPageOpen(true)
-  }
   const ensureMiniAppLoggedIn = () => {
     if (isMiniAppLoggedIn) return true
     setStartReadPageOpen(true)
@@ -195,11 +341,119 @@ export default function ReaderPage() {
     setStartReadPageOpen(false)
     navigate('/account')
   }
+  const onCloseChapterVipGate = () => setChapterVipGateOpen(false)
+  const onGoVipFromChapterGate = () => {
+    setChapterVipGateOpen(false)
+    navigate('/vip')
+  }
+
+  const scrollReadingArticleToTop = () => {
+    const el = articleScrollRef.current
+    if (!el) return
+    el.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const scrollToCommentFeedSection = () => {
+    const el = commentFeedSectionRef.current
+    if (!el) return
+    const wrap = readerDetailScrollRef.current
+    if (wrap) {
+      window.requestAnimationFrame(() => {
+        const top = el.offsetTop - 10
+        wrap.scrollTop = Math.max(0, top)
+      })
+      return
+    }
+    window.requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'auto', block: 'start' })
+    })
+  }
+
+  const scrollToTargetElement = (elementId) => {
+    const idText = String(elementId || '').trim()
+    if (!idText) return false
+    const target = document.getElementById(idText)
+    if (!target) return false
+    const wrap = readerDetailScrollRef.current
+    if (wrap) {
+      const targetTop = target.offsetTop
+      const centeredTop = Math.max(0, targetTop - (wrap.clientHeight - target.clientHeight) / 2)
+      window.requestAnimationFrame(() => {
+        wrap.scrollTop = centeredTop
+      })
+    } else {
+      window.requestAnimationFrame(() => {
+        target.scrollIntoView({ behavior: 'auto', block: 'center' })
+      })
+    }
+    if (highlightTimerRef.current) {
+      window.clearTimeout(highlightTimerRef.current)
+      highlightTimerRef.current = 0
+    }
+    setHighlightTargetId(idText)
+    highlightTimerRef.current = window.setTimeout(() => {
+      setHighlightTargetId('')
+      highlightTimerRef.current = 0
+    }, 1700)
+    return true
+  }
+
+  const scrollToTargetComment = (commentId, replyId) => {
+    const rid = String(replyId || '').trim()
+    if (rid) return scrollToTargetElement(`tg-reply-${rid}`)
+    const cid = String(commentId || '').trim()
+    if (!cid) return false
+    return scrollToTargetElement(`tg-comment-${cid}`)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) {
+        window.clearTimeout(highlightTimerRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!novel) return
     saveLastRead({ id: novel.id, title: novel.title })
   }, [novel, tgUser?.id])
+
+  useEffect(() => {
+    const focusCommentId = String(location.state?.focusCommentId || '').trim()
+    const focusReplyId = String(location.state?.focusReplyId || '').trim()
+    if (!focusCommentId && !focusReplyId) return
+    const token = `${location.key || ''}:${focusCommentId}:${focusReplyId}`
+    if (lastFocusedCommentRef.current === token) return
+    setCommentSort('latest')
+    setSearchDraft('')
+    if (focusCommentId) {
+      setExpandedReplyMap((prev) => ({ ...prev, [focusCommentId]: true }))
+    }
+    if (focusReplyId) {
+      // 通知目标可能在折叠区：先展开所有评论线程，确保目标 reply DOM 一定会渲染出来。
+      setExpandedReplyMap((prev) => {
+        const next = { ...prev }
+        for (const it of reviewItems) {
+          const id = String(it?.id || '').trim()
+          if (id) next[id] = true
+        }
+        if (focusCommentId) next[focusCommentId] = true
+        return next
+      })
+    }
+    let tries = 0
+    const maxTries = 120
+    const timer = window.setInterval(() => {
+      tries += 1
+      const located = scrollToTargetComment(focusCommentId, focusReplyId)
+      if (located || tries >= maxTries) {
+        if (located) lastFocusedCommentRef.current = token
+        window.clearInterval(timer)
+      }
+    }, 80)
+    return () => window.clearInterval(timer)
+  }, [location.key, location.state?.focusCommentId, location.state?.focusReplyId, reviewItems, extraReplies])
 
   useEffect(() => {
     setArticleHeaderCompact(false)
@@ -208,17 +462,36 @@ export default function ReaderPage() {
     if (!novel) return
     setDetailLikeHydrated(false)
     setCommentVotesHydrated(false)
-    const safeBaseViewCount = 0
+    const safeBaseViewCount = getSeedViewCount(novel)
     setViewCount(safeBaseViewCount)
     void fetchNovelViewCount(novel.id, safeBaseViewCount).then((count) => {
-      setViewCount(count)
+      setViewCount(mergeDisplayedCount(safeBaseViewCount, count))
     })
-    const baseLikeCount = 0
+    const baseLikeCount = getSeedLikeCount(novel)
+    const baseFavoriteCount = getSeedFavoriteCount(novel)
     const likerId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
+    const localInteractions = resolveInteractionByNovelId(readDetailInteractions(), novel.id)
     setLikeCount(Math.max(0, baseLikeCount))
-    void fetchNovelLikeState(novel.id, likerId, baseLikeCount).then((state) => {
-      setLikedDetail(Boolean(state?.liked))
-      setLikeCount(Math.max(0, Number(state?.count) || 0))
+    setFavoriteCount(baseFavoriteCount)
+    setFavoritedDetail(false)
+    void Promise.all([
+      fetchNovelLikeState(novel.id, likerId, baseLikeCount),
+      fetchNovelFavoriteState(novel.id, likerId, baseFavoriteCount),
+    ]).then(([likeState, favoriteState]) => {
+      const mergedLike = mergeCountByLocalPreference(
+        mergeDisplayedCount(baseLikeCount, Number(likeState?.count) || 0),
+        Boolean(likeState?.liked),
+        localInteractions?.liked,
+      )
+      const mergedFavorite = mergeCountByLocalPreference(
+        mergeDisplayedCount(baseFavoriteCount, Number(favoriteState?.count) || 0),
+        Boolean(favoriteState?.favorited),
+        localInteractions?.favorited,
+      )
+      setLikedDetail(mergedLike.state)
+      setLikeCount(mergedLike.count)
+      setFavoritedDetail(mergedFavorite.state)
+      setFavoriteCount(mergedFavorite.count)
       setDetailLikeHydrated(true)
     })
     try {
@@ -273,7 +546,12 @@ export default function ReaderPage() {
           id: String(row?.id || `${key}-${row?.at || Date.now()}`),
           name: String(row?.userName ?? row?.name ?? tgUser?.first_name ?? 'A'),
           userId: row?.userId,
+          replyToUserId: row?.replyToUserId,
           memberTier: row?.memberTier,
+          memberRole: row?.memberRole,
+          vipActive: row?.vipActive,
+          parentReplyId: String(row?.parentReplyId || '').trim(),
+          replyToName: String(row?.replyToName || '').trim(),
           avatar: row?.userAvatar ?? row?.avatar ?? tgUser?.photo_url ?? null,
           text: String(row?.text || '').trim(),
           at: Number(row?.at || Date.now()),
@@ -299,14 +577,31 @@ export default function ReaderPage() {
     let cancelled = false
     const sync = async () => {
       const likerId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
-      const [latestViewCount, latestLikeState] = await Promise.all([
-        fetchNovelViewCount(novel.id, 0),
-        fetchNovelLikeState(novel.id, likerId, 0),
+      const localInteractions = resolveInteractionByNovelId(readDetailInteractions(), novel.id)
+      const seedV = getSeedViewCount(novel)
+      const seedL = getSeedLikeCount(novel)
+      const seedF = getSeedFavoriteCount(novel)
+      const [latestViewCount, latestLikeState, latestFavoriteState] = await Promise.all([
+        fetchNovelViewCount(novel.id, seedV),
+        fetchNovelLikeState(novel.id, likerId, seedL),
+        fetchNovelFavoriteState(novel.id, likerId, seedF),
       ])
       if (cancelled) return
-      setViewCount(Math.max(0, Number(latestViewCount) || 0))
-      setLikedDetail(Boolean(latestLikeState?.liked))
-      setLikeCount(Math.max(0, Number(latestLikeState?.count) || 0))
+      setViewCount(mergeDisplayedCount(seedV, latestViewCount))
+      const mergedLike = mergeCountByLocalPreference(
+        mergeDisplayedCount(seedL, Number(latestLikeState?.count) || 0),
+        Boolean(latestLikeState?.liked),
+        localInteractions?.liked,
+      )
+      const mergedFavorite = mergeCountByLocalPreference(
+        mergeDisplayedCount(seedF, Number(latestFavoriteState?.count) || 0),
+        Boolean(latestFavoriteState?.favorited),
+        localInteractions?.favorited,
+      )
+      setLikedDetail(mergedLike.state)
+      setLikeCount(mergedLike.count)
+      setFavoritedDetail(mergedFavorite.state)
+      setFavoriteCount(mergedFavorite.count)
     }
     const timer = window.setInterval(sync, 15000)
     return () => {
@@ -314,6 +609,27 @@ export default function ReaderPage() {
       window.clearInterval(timer)
     }
   }, [novel, tgUser?.id])
+
+  /** 将详情当前展示的三项统计同步给首页卡片（sessionStorage + 事件），与详情数字一致 */
+  useEffect(() => {
+    if (!novel?.id) return undefined
+    const id = String(novel.id)
+    let raf1 = 0
+    let raf2 = 0
+    raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        persistAndBroadcastDetailStats(id, {
+          viewCount,
+          likeCount,
+          favoriteCount,
+        })
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(raf1)
+      window.cancelAnimationFrame(raf2)
+    }
+  }, [novel?.id, viewCount, likeCount, favoriteCount])
 
   useEffect(() => {
     if (!startReadPageOpen) return undefined
@@ -327,9 +643,6 @@ export default function ReaderPage() {
     () => () => {
       if (vipJumpTimerRef.current) {
         window.clearTimeout(vipJumpTimerRef.current)
-      }
-      if (swipeResetTimerRef.current) {
-        window.clearTimeout(swipeResetTimerRef.current)
       }
       if (articleSwipeResetTimerRef.current) {
         window.clearTimeout(articleSwipeResetTimerRef.current)
@@ -347,18 +660,6 @@ export default function ReaderPage() {
     el.style.transform = `translate3d(${dx}px, 0, 0)`
     articleSwipeDxRef.current = dx
   }
-  const applySwipeSheetTransform = (dx, animate) => {
-    const el = swipeSheetRef.current
-    if (!el) {
-      swipeDxRef.current = dx
-      return
-    }
-    el.style.transition = animate ? 'transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1)' : 'none'
-    el.style.transform = `translate3d(${dx}px, 0, 0)`
-    el.style.boxShadow = dx > 0 ? '-14px 0 28px rgba(0, 0, 0, 0.42)' : 'none'
-    swipeDxRef.current = dx
-  }
-
   const chapterRows = useMemo(() => {
     if (!novel) return []
     const source = novel.chapters ?? []
@@ -369,11 +670,11 @@ export default function ReaderPage() {
         id: `${novel.id}-${idx + 1}`,
         chapterIndex: idx,
         title: `ភាគទី${idx + 1}`,
-        access: chapterAccessLabel(idx, viewerMemberTier),
+        access: chapterAccessLabel(idx, isVipReader),
         rawTitle: ch?.title ?? `ភាគទី${idx + 1}`,
       }
     })
-  }, [novel, viewerMemberTier])
+  }, [novel, isVipReader])
   const displayedChapterRows = useMemo(
     () => (catalogDesc ? [...chapterRows].reverse() : chapterRows),
     [catalogDesc, chapterRows],
@@ -388,6 +689,8 @@ export default function ReaderPage() {
           name: String(it.userName ?? it.name ?? tgUser?.first_name ?? `Reader_${idx + 1}`),
           userId: it.userId,
           memberTier: it.memberTier,
+          memberRole: it.memberRole,
+          vipActive: it.vipActive,
           avatar: it.userAvatar ?? it.avatar ?? tgUser?.photo_url ?? null,
           text: it.text || '…',
           ago: formatCommentTimeAgo(it.at, nowTs),
@@ -425,10 +728,21 @@ export default function ReaderPage() {
     })
   }, [commentFeed, commentSort])
 
-  const onOpenReplyModal = (targetId, targetName) => {
+  const onOpenReplyModal = (targetId, targetName, replyToName = '', parentReplyId = '', replyToUserId = null) => {
     if (!ensureMiniAppLoggedIn()) return
-    setReplyTarget({ id: targetId, name: targetName, mode: 'reply' })
-    setReplyDraft('')
+    setReplyTarget({
+      id: targetId,
+      name: targetName,
+      mode: 'reply',
+      replyToName: String(replyToName || '').trim(),
+      parentReplyId: String(parentReplyId || '').trim(),
+      replyToUserId: Number.isFinite(Number(replyToUserId)) ? Number(replyToUserId) : null,
+    })
+    setReplyDraft((prev) => {
+      const trimmed = String(prev || '').trim()
+      if (trimmed) return prev
+      return ''
+    })
     setReplySubmitError('')
   }
   const onOpenCommentModal = () => {
@@ -442,6 +756,39 @@ export default function ReaderPage() {
     setReplyDraft('')
     setReplySubmitPending(false)
     setReplySubmitError('')
+  }
+  const onOpenReportModal = () => {
+    if (!ensureMiniAppLoggedIn()) return
+    setReportModalOpen(true)
+    setReportDraft('')
+    setReportSubmitError('')
+  }
+  const onCloseReportModal = () => {
+    setReportModalOpen(false)
+    setReportDraft('')
+    setReportSubmitPending(false)
+    setReportSubmitError('')
+  }
+  const onSubmitReport = async () => {
+    if (!ensureMiniAppLoggedIn()) return
+    if (reportSubmitPending) return
+    const text = reportDraft.trim()
+    if (!text) return
+    setReportSubmitPending(true)
+    setReportSubmitError('')
+    const { item, error, endpoint } = await appendNovelReportVerbose(novel.id, {
+      text,
+      novelTitle: novel.title,
+      userName: tgUser ? formatTelegramDisplayName(tgUser) : 'A',
+      userAvatar: tgUser?.photo_url ?? null,
+      userId: tgUser?.id,
+    })
+    if (!item) {
+      setReportSubmitPending(false)
+      setReportSubmitError(formatReaderSubmitErrorKm(error ?? '', endpoint ?? ''))
+      return
+    }
+    onCloseReportModal()
   }
   const onSubmitReply = async () => {
     if (!ensureMiniAppLoggedIn()) return
@@ -457,7 +804,6 @@ export default function ReaderPage() {
         userName: tgUser ? formatTelegramDisplayName(tgUser) : 'A',
         userAvatar: tgUser?.photo_url ?? null,
         userId: tgUser?.id,
-        memberTier: viewerMemberTier,
       })
       if (!saved) {
         const retryItems = await fetchNovelReviews(novel.id)
@@ -467,6 +813,7 @@ export default function ReaderPage() {
           setReplySubmitPending(false)
           setCommentSort('latest')
           onCloseReplyModal()
+          scrollToCommentFeedSection()
           return
         }
         await new Promise((r) => window.setTimeout(r, COMMENT_SUBMIT_RETRY_MS))
@@ -477,11 +824,11 @@ export default function ReaderPage() {
           setReplySubmitPending(false)
           setCommentSort('latest')
           onCloseReplyModal()
+          scrollToCommentFeedSection()
           return
         }
         setReplySubmitPending(false)
-        const details = submitError ? `（${submitError}）` : ''
-        setReplySubmitError(`提交失败，请检查网络或稍后重试${details}\n接口：${submitEndpoint}`)
+        setReplySubmitError(formatReaderSubmitErrorKm(submitError ?? '', submitEndpoint ?? ''))
         return
       }
       const items = await fetchNovelReviews(novel.id)
@@ -492,7 +839,11 @@ export default function ReaderPage() {
       }
       setReplySubmitPending(false)
       setCommentSort('latest')
-      onCloseReplyModal()
+      setReplyDraft('')
+      setReplySubmitPending(false)
+      setReplySubmitError('')
+      setReplyTarget(null)
+      scrollToCommentFeedSection()
       return
     }
     setReplySubmitPending(true)
@@ -505,13 +856,16 @@ export default function ReaderPage() {
         userName: tgUser ? formatTelegramDisplayName(tgUser) : 'A',
         userAvatar: tgUser?.photo_url ?? null,
         userId: tgUser?.id,
-        memberTier: viewerMemberTier,
+        replyToName: String(replyTarget?.replyToName || '').trim(),
+        parentReplyId: String(replyTarget?.parentReplyId || '').trim(),
+        replyToUserId: Number.isFinite(Number(replyTarget?.replyToUserId))
+          ? Number(replyTarget.replyToUserId)
+          : undefined,
       },
     )
     if (!savedReply) {
       setReplySubmitPending(false)
-      const details = replyError ? `（${replyError}）` : ''
-      setReplySubmitError(`提交失败，请检查网络或稍后重试${details}\n接口：${replyEndpoint}`)
+      setReplySubmitError(formatReaderSubmitErrorKm(replyError ?? '', replyEndpoint ?? ''))
       return
     }
     const replies = await fetchNovelReplies(novel.id)
@@ -522,7 +876,12 @@ export default function ReaderPage() {
         id: String(row?.id || `${key}-${row?.at || Date.now()}`),
         name: String(row?.userName ?? row?.name ?? tgUser?.first_name ?? 'A'),
         userId: row?.userId,
+        replyToUserId: row?.replyToUserId,
         memberTier: row?.memberTier,
+        memberRole: row?.memberRole,
+        vipActive: row?.vipActive,
+        parentReplyId: String(row?.parentReplyId || '').trim(),
+        replyToName: String(row?.replyToName || '').trim(),
         avatar: row?.userAvatar ?? row?.avatar ?? tgUser?.photo_url ?? null,
         text: String(row?.text || '').trim(),
         at: Number(row?.at || Date.now()),
@@ -534,8 +893,14 @@ export default function ReaderPage() {
       return acc
     }, {})
     setExtraReplies(groupedReplies)
+    const expandCommentId = replyTarget?.id != null ? String(replyTarget.id) : ''
+    if (expandCommentId) {
+      setExpandedReplyMap((prev) => ({ ...prev, [expandCommentId]: true }))
+    }
     setReplySubmitPending(false)
-    onCloseReplyModal()
+    setReplySubmitError('')
+    setReplyDraft('')
+    setReplyTarget(null)
   }
   const onToggleDetailLike = () => {
     if (!ensureMiniAppLoggedIn()) return
@@ -543,6 +908,12 @@ export default function ReaderPage() {
     const next = !likedDetail
     setLikedDetail(next)
     setLikeCount((c) => Math.max(0, c + (next ? 1 : -1)))
+    const all = readDetailInteractions()
+    const prev = resolveInteractionByNovelId(all, novel.id) ?? {}
+    writeDetailInteractions({
+      ...all,
+      [String(novel.id)]: { ...prev, liked: next },
+    })
     setLikeBump(true)
     window.setTimeout(() => setLikeBump(false), 220)
     const likerId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
@@ -550,9 +921,51 @@ export default function ReaderPage() {
       if (!resp.ok) return
       setLikedDetail(Boolean(resp.liked))
       if (Number.isFinite(resp.count)) {
-        setLikeCount(Math.max(0, Math.floor(Number(resp.count))))
+        setLikeCount(mergeDisplayedCount(getSeedLikeCount(novel), resp.count))
       }
     })
+  }
+  const onToggleDetailFavorite = () => {
+    if (!ensureMiniAppLoggedIn()) return
+    if (!novel?.id) return
+    const next = !favoritedDetail
+    setFavoritedDetail(next)
+    setFavoriteCount((c) => Math.max(0, c + (next ? 1 : -1)))
+    const all = readDetailInteractions()
+    const prev = resolveInteractionByNovelId(all, novel.id) ?? {}
+    writeDetailInteractions({
+      ...all,
+      [String(novel.id)]: {
+        ...prev,
+        favorited: next,
+        favoritedAtMs: next ? Date.now() : null,
+      },
+    })
+    const userId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
+    void toggleNovelFavoriteVerbose(novel.id, userId, next).then((resp) => {
+      if (!resp.ok) return
+      setFavoritedDetail(Boolean(resp.favorited))
+      if (Number.isFinite(resp.count)) {
+        setFavoriteCount(mergeDisplayedCount(getSeedFavoriteCount(novel), resp.count))
+      }
+    })
+  }
+  const onShareToTelegramFriend = () => {
+    const novelId = String(novel?.id || '').trim()
+    if (!novelId) return
+    let detailUrl = `/read/${encodeURIComponent(novelId)}`
+    try {
+      detailUrl = new URL(detailUrl, window.location.origin).toString()
+    } catch {
+      // Keep relative path fallback.
+    }
+    const shareTitle = `«${novel?.title || READER_SHARE_DETAIL_FALLBACK_KM}»`
+    const authorLine = `${READER_ARTICLE_AUTHOR_LABEL_KM}: ${String(novel?.author || '').trim() || '—'}`
+    // 只展示一条「小说详情」链接（url）；正文不含链接。封面由预览爬虫请求 /read/:id 时 Vite 中间件返回 og:image（开发/preview）。
+    const shareText = `${shareTitle}\n${authorLine}`
+    const tgShareUrl = `https://t.me/share/url?url=${encodeURIComponent(detailUrl)}&text=${encodeURIComponent(shareText)}`
+    if (tryOpenTelegramMeLink(tgShareUrl)) return
+    window.open(tgShareUrl, '_blank', 'noopener,noreferrer')
   }
   const onVoteComment = async (commentId, currentVote, targetVote) => {
     if (!ensureMiniAppLoggedIn()) return
@@ -576,7 +989,16 @@ export default function ReaderPage() {
         return { ...it, likes, dislikes }
       }),
     )
-    const resp = await voteNovelReviewVerbose(novel.id, commentId, voterId, action)
+    const resp = await voteNovelReviewVerbose(
+      novel.id,
+      commentId,
+      voterId,
+      action,
+      {
+        name: String(tgUser ? formatTelegramDisplayName(tgUser) : '').trim(),
+        avatar: String(tgUser?.photo_url || '').trim(),
+      },
+    )
     if (resp.ok) {
       setReviewItems((prev) =>
         prev.map((it) =>
@@ -598,24 +1020,18 @@ export default function ReaderPage() {
   }
   const onOpenChapter = (chapterIndex) => {
     if (!ensureMiniAppLoggedIn()) return
-    if (chapterIndex > 0 && !isVipTier) {
-      if (vipJumpTimerRef.current) {
-        window.clearTimeout(vipJumpTimerRef.current)
-      }
-      setVipJumpingChapterIndex(chapterIndex)
-      vipJumpTimerRef.current = window.setTimeout(() => {
-        setVipJumpingChapterIndex(null)
-        navigate('/vip')
-      }, 220)
+    if (!isVipReader && chapterIndex > 0) {
+      setChapterVipGateOpen(true)
       return
     }
     if (!chapterHasReadableBody(novel, chapterIndex)) return
-    reportReadOnChapterOpen(novel, chapterIndex, tgUser, viewerMemberTier)
-    const safeBaseViewCount = 0
+    reportReadOnChapterOpen(novel, chapterIndex, tgUser, isVipReader)
+    const safeBaseViewCount = getSeedViewCount(novel)
     const optimisticNext = viewCount + 1
     setViewCount(optimisticNext)
+    bumpLocalViewMax(novel.id, optimisticNext)
     void incrementNovelViewCount(novel.id, 1, safeBaseViewCount).then((serverCount) => {
-      if (serverCount != null) setViewCount(serverCount)
+      if (serverCount != null) setViewCount(mergeDisplayedCount(safeBaseViewCount, serverCount))
     })
     if (articleSwipeResetTimerRef.current) {
       window.clearTimeout(articleSwipeResetTimerRef.current)
@@ -623,13 +1039,29 @@ export default function ReaderPage() {
     }
     articleSwipeDxRef.current = 0
     setReadingChapterIndex(chapterIndex)
+    setArticleHeaderCompact(false)
+    scrollReadingArticleToTop()
+  }
+
+  const onOpenStartReadPage = () => {
+    if (isMiniAppLoggedIn) {
+      const firstReadableChapterIndex = findFirstReadableChapterIndex(novel)
+      if (firstReadableChapterIndex >= 0) {
+        onOpenChapter(firstReadableChapterIndex)
+        return
+      }
+      catalogSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
+    // 普通网页环境读取不到 tgUser => 视为未登录，弹登录提示页。
+    setStartReadPageOpen(true)
   }
 
   if (!novel) {
     return (
       <div className="tg-app tg-app--reader">
         <header className="tg-toolbar tg-toolbar--reader">
-          <Link to="/" className="tg-back" aria-label="返回">
+          <Link to="/" className="tg-back" aria-label="ត្រឡប់">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <path
                 d="M14 6L8 12l6 6"
@@ -640,14 +1072,14 @@ export default function ReaderPage() {
               />
             </svg>
           </Link>
-          <span className="tg-toolbar__title tg-toolbar__title--muted">
-            未找到
+          <span className="tg-toolbar__title tg-toolbar__title--muted" lang="km">
+            {READER_NOVEL_NOT_FOUND_TITLE_KM}
           </span>
         </header>
         <div className="tg-empty">
-          <p>这本书不存在或已下架。</p>
+          <p lang="km">{READER_NOVEL_NOT_FOUND_DESC_KM}</p>
           <Link to="/" className="tg-link">
-            返回列表
+            {READER_BACK_TO_LIST_KM}
           </Link>
         </div>
       </div>
@@ -672,165 +1104,106 @@ export default function ReaderPage() {
       : []
     : []
   const readingChapterWordCount = readingBody.reduce((sum, p) => sum + [...String(p)].length, 0)
-  const readingMetaLine = `作者：${novel.author || '未知'}    字数：${readingChapterWordCount.toLocaleString('en-US')}字`
+  const readingMetaLine = `${READER_ARTICLE_AUTHOR_LABEL_KM}: ${novel.author || READER_ARTICLE_AUTHOR_UNKNOWN_KM}    ${READER_ARTICLE_WORD_COUNT_LABEL_KM}: ${readingChapterWordCount.toLocaleString('en-US')} ${READER_ARTICLE_WORD_UNIT_KM}`
 
-  const rel = formatChapterRelativeTime(novel.lastChapterMinutesAgo ?? 0)
+  const rel = formatLatestChapterRelativeLabel(novel)
   const latestChapter = (novel.chapters ?? [])[Math.max(0, (novel.chapters ?? []).length - 1)]
   const readingChapterCount = (novel.chapters ?? []).length
+  const readerSwipeHandlers = isReadingChapter ? {} : edgeSwipeHandlers
+  useReadingContentProtection(articleLayerRef, isReadingChapter)
   const onReturnToBookCatalog = () => {
     applyArticleLayerTransform(0, false)
     setReadingChapterIndex(null)
+    setArticleHeaderCompact(false)
+    window.requestAnimationFrame(() => {
+      catalogSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }
 
   return (
     <div
       className="tg-app tg-app--reader"
-      onTouchStart={(e) => {
-        if (isReadingChapter) return
-        const t = e.touches?.[0]
-        if (!t) return
-        swipeRef.current = {
-          startX: t.clientX,
-          startY: t.clientY,
-          tracking: t.clientX <= 36,
-          axis: null,
-        }
-        if (swipeResetTimerRef.current) {
-          window.clearTimeout(swipeResetTimerRef.current)
-          swipeResetTimerRef.current = 0
-        }
-        applySwipeSheetTransform(swipeDxRef.current, false)
-      }}
-      onTouchMove={(e) => {
-        if (isReadingChapter) return
-        const t = e.touches?.[0]
-        const s = swipeRef.current
-        if (!t || !s.tracking) return
-        const dx = t.clientX - s.startX
-        const dy = t.clientY - s.startY
-        if (!s.axis) {
-          const absDx = Math.abs(dx)
-          const absDy = Math.abs(dy)
-          if (absDx < 6 && absDy < 6) return
-          if (dx > 0 && absDx >= absDy * 0.75) {
-            s.axis = 'x'
-          } else {
-            s.axis = 'y'
-            s.tracking = false
-            return
-          }
-        }
-        if (s.axis !== 'x') return
-        e.preventDefault()
-        e.stopPropagation()
-        if (dx <= 0) {
-          applySwipeSheetTransform(0, false)
-          return
-        }
-        applySwipeSheetTransform(Math.min(dx, window.innerWidth * 0.92), false)
-      }}
-      onTouchEnd={() => {
-        if (isReadingChapter) return
-        const s = swipeRef.current
-        if (!s.tracking) return
-        const shouldBack = swipeDxRef.current > window.innerWidth * 0.28
-        swipeRef.current = { startX: 0, startY: 0, tracking: false, axis: null }
-        if (shouldBack) {
-          applySwipeSheetTransform(0, false)
-          navigate('/')
-          return
-        }
-        applySwipeSheetTransform(0, true)
-        swipeResetTimerRef.current = window.setTimeout(() => {
-          applySwipeSheetTransform(0, false)
-          swipeResetTimerRef.current = 0
-        }, 230)
-      }}
-      onTouchCancel={() => {
-        if (isReadingChapter) return
-        swipeRef.current = { startX: 0, startY: 0, tracking: false, axis: null }
-        applySwipeSheetTransform(0, true)
-        swipeResetTimerRef.current = window.setTimeout(() => {
-          applySwipeSheetTransform(0, false)
-          swipeResetTimerRef.current = 0
-        }, 230)
-      }}
+      {...readerSwipeHandlers}
     >
       <div
-        className="tg-reader-swipe-underlay"
-        aria-hidden
+        className={['tg-reader-swipe-sheet', isReadingChapter ? 'tg-reader-swipe-sheet--article-open' : '']
+          .filter(Boolean)
+          .join(' ')}
       >
-        <div
-          className="tg-reader-swipe-underlay__sheet"
-        >
-        <div className="tg-reader-swipe-underlay__home">
-          <HomePage />
-          <div className="tg-reader-swipe-underlay__bottom" aria-hidden>
-            <BottomNav />
-          </div>
-        </div>
-        </div>
-      </div>
-      <div className="tg-reader-swipe-sheet" ref={swipeSheetRef}>
-      <header className="tg-toolbar tg-toolbar--large tg-toolbar--home tg-toolbar--reader-home-fixed">
-        <button
-          type="button"
-          className="tg-toolbar__logo m-0 shrink-0 cursor-pointer leading-none"
-          aria-label="刷新界面"
-          onClick={() => refreshAppFromLogo()}
-        >
-          <img
-            src="/logo.png"
-            alt=""
-            className="tg-toolbar__logo-img tg-toolbar__logo-img--tab"
-            width="120"
-            height="32"
-            decoding="async"
-            fetchPriority="high"
-            loading="eager"
-          />
-        </button>
-        <div className="tg-toolbar__search-slot min-w-0" role="search">
-          <div className="tg-search-field">
-            <span className="tg-search-field__icon" aria-hidden="true">
-              <Search size={17} strokeWidth={2} />
-            </span>
-            <input
-              className="tg-search-field__input"
-              type="text"
-              inputMode="search"
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              placeholder="搜索小说、作者…"
-              value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
-              aria-label="搜索小说、作者或ស្លាក"
+      {!isReadingChapter ? (
+        <header className="tg-toolbar tg-toolbar--large tg-toolbar--home tg-toolbar--reader-home-fixed">
+          <button
+            type="button"
+            className="tg-toolbar__logo m-0 shrink-0 cursor-pointer leading-none"
+            aria-label="ធ្វើទំព័រឡើងវិញ"
+            onClick={() => refreshAppFromLogo()}
+          >
+            <img
+              src="/logo.png"
+              alt=""
+              className="tg-toolbar__logo-img tg-toolbar__logo-img--tab"
+              width="120"
+              height="32"
+              decoding="async"
+              fetchPriority="high"
+              loading="eager"
             />
-            {searchDraft.length > 0 ? (
-              <button
-                type="button"
-                className="tg-search-field__clear"
-                aria-label="清空搜索"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setSearchDraft('')}
-              >
-                <X size={15} strokeWidth={2.25} aria-hidden />
-              </button>
-            ) : null}
+          </button>
+          <div className="tg-toolbar__search-slot min-w-0" role="search">
+            <div className="tg-search-field">
+              <span className="tg-search-field__icon" aria-hidden="true">
+                <Search size={17} strokeWidth={2} />
+              </span>
+              <input
+                className="tg-search-field__input"
+                type="search"
+                enterKeyHint="search"
+                inputMode="search"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="ស្វែងរកសៀវភៅ ឬអ្នកនិពន្ធ..."
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  const nextQuery = searchDraft.trim()
+                  if (!nextQuery) return
+                  navigate('/', { state: { homeSearchQuery: nextQuery } })
+                }}
+                aria-label="ស្វែងរកសៀវភៅ អ្នកនិពន្ធ ឬស្លាក"
+              />
+              {searchDraft.length > 0 ? (
+                <button
+                  type="button"
+                  className="tg-search-field__clear"
+                  aria-label="សម្អាតការស្វែងរក"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setSearchDraft('')}
+                >
+                  <X size={15} strokeWidth={2.25} aria-hidden />
+                </button>
+              ) : null}
+            </div>
           </div>
-        </div>
-        <NavLink
-          to="/notifications"
-          className={({ isActive }) =>
-            ['tg-toolbar-notify', isActive ? 'tg-toolbar-notify--active' : ''].filter(Boolean).join(' ')
-          }
-          aria-label="通知"
-        >
-          <Bell size={20} strokeWidth={2} aria-hidden />
-        </NavLink>
-      </header>
-      <main className="tg-reader-detail" lang="zh-Hans">
+          <NavLink
+            to="/notifications"
+            className={({ isActive }) =>
+              ['tg-toolbar-notify', isActive ? 'tg-toolbar-notify--active' : ''].filter(Boolean).join(' ')
+            }
+            aria-label="ការជូនដំណឹង"
+          >
+            <Bell size={20} strokeWidth={2} aria-hidden />
+            {unreadNotificationCount > 0 ? (
+              <span className="tg-toolbar-notify__badge" aria-label={`មិនទាន់អាន ${unreadNotificationCount}`}>
+                {unreadNotificationCount > 99 ? '99+' : String(unreadNotificationCount)}
+              </span>
+            ) : null}
+          </NavLink>
+        </header>
+      ) : null}
+      <main ref={readerDetailScrollRef} className="tg-reader-detail" lang="km">
         <section className="tg-reader-detail__head">
           <div className={`tg-reader-detail__cover-wrap tg-reader-detail__cover-wrap--${novel.accent}`}>
             {novel.coverUrl ? (
@@ -841,13 +1214,13 @@ export default function ReaderPage() {
           </div>
           <div className="tg-reader-detail__meta">
             <h1 className="tg-reader-detail__title">{novel.title}</h1>
-            <p className="tg-reader-detail__line"><span>ស្ថានភាព：</span>{novel.status === 'completed' ? 'ចប់ហើយ' : 'កំពុងចេញ'}</p>
-            <p className="tg-reader-detail__line"><span>ថ្មីបំផុត：</span>{latestChapter ? `ភាគទី${(novel.chapters ?? []).length}` : '暂无章节'}{rel ? `（${rel}）` : ''}</p>
-            <p className="tg-reader-detail__line"><span>អ្នកនិពន្ធ：</span>{novel.author}</p>
-            <p className="tg-reader-detail__line"><span>ប្រភេទ：</span>{(novel.listThemes ?? []).join('、') || '未分类'}</p>
-            <p className="tg-reader-detail__line"><span>ប្រភព：</span>{novel.source === 'original' ? 'ស្នាដៃដើម' : 'ស្នាដៃសមាជិក'}</p>
+            <p className="tg-reader-detail__line"><span>ស្ថានភាព:</span>{novel.status === 'completed' ? 'ចប់ហើយ' : 'កំពុងចេញ'}</p>
+            <p className="tg-reader-detail__line"><span>ថ្មីបំផុត:</span>{latestChapter ? `ភាគទី${(novel.chapters ?? []).length}` : READER_NO_CHAPTER_YET_KM}{rel ? ` (${rel})` : ''}</p>
+            <p className="tg-reader-detail__line"><span>អ្នកនិពន្ធ:</span>{novel.author}</p>
+            <p className="tg-reader-detail__line"><span>ប្រភេទ:</span>{(novel.listThemes ?? []).join(' · ') || READER_THEME_UNCATEGORIZED_KM}</p>
+            <p className="tg-reader-detail__line"><span>ប្រភព:</span>{novel.source === 'original' ? 'ស្នាដៃដើម' : 'ស្នាដៃសមាជិក'}</p>
             <p className="tg-reader-detail__line tg-reader-detail__rating">
-              <span>ពិន្ទុ：</span>
+              <span>ពិន្ទុ:</span>
               <span className="tabular-nums">{commentPoints > 0 ? Math.floor(commentPoints) : 0}</span>
               <span className="tg-reader-detail__stars" aria-hidden>
                 {Array.from({ length: 5 }, (_, i) => (
@@ -883,7 +1256,7 @@ export default function ReaderPage() {
 
         <div className="tg-reader-detail__intro-head">
           <p className="tg-reader-detail__intro-summary">
-            <span className="tg-reader-detail__intro-label">សេចក្តីសង្ខេប：</span>
+            <span className="tg-reader-detail__intro-label">សេចក្តីសង្ខេប:</span>
             <span
               className={[
                 'tg-reader-detail__intro-text',
@@ -898,7 +1271,7 @@ export default function ReaderPage() {
           <button
             type="button"
             className="tg-reader-detail__intro-chevron"
-            aria-label={introExpanded ? '收起简介' : '展示简介'}
+            aria-label={introExpanded ? 'បិទសេចក្តីសង្ខេប' : 'បង្ហាញសេចក្តីសង្ខេប'}
             onClick={() => setIntroExpanded((v) => !v)}
           >
             {introExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
@@ -907,14 +1280,14 @@ export default function ReaderPage() {
         {introExpanded ? <p className="tg-reader-detail__intro-full">{novel.synopsis}</p> : null}
 
         <p className="tg-reader-detail__tags">
-          <span className="tg-reader-detail__tags-label">ស្លាក：</span>
+          <span className="tg-reader-detail__tags-label">ស្លាក:</span>
           {(novel.tags ?? []).map((t) => (
             <span key={t} className="tg-reader-detail__tag-item"><em>#</em>{t}</span>
           ))}
         </p>
 
         <div className="tg-reader-detail__stats">
-          <span className="tg-reader-detail__stat-item">（{getMeatCategoryByWordCount(novel)}）</span>
+          <span className="tg-reader-detail__stat-item">({getMeatCategoryByWordCount(novel)})</span>
           <span className="tg-reader-detail__stat-item">{formatWordCountFooter(getDisplayWordCountWan(novel))}</span>
           <span className="tg-reader-detail__stat-item">
             <Eye size={13} strokeWidth={1.9} className="tg-reader-detail__stat-icon" />
@@ -924,19 +1297,23 @@ export default function ReaderPage() {
             <Heart size={13} strokeWidth={1.9} className="tg-reader-detail__stat-icon" />
             {likeCount}
           </span>
+          <span className="tg-reader-detail__stat-item">
+            <Star size={13} strokeWidth={1.9} className="tg-reader-detail__stat-icon" />
+            {favoriteCount}
+          </span>
         </div>
 
-        <div className="tg-reader-detail__actions" role="toolbar" aria-label="小说操作">
+        <div className="tg-reader-detail__actions" role="toolbar" aria-label="ប្រតិបត្តិការរឿង">
           <button type="button" className={likedDetail ? 'is-active' : ''} onClick={onToggleDetailLike}><Heart size={16} />ចូលចិត្ត</button>
           <button type="button" onClick={onOpenCommentModal}><MessageCircle size={16} />មតិ</button>
-          <button type="button"><SendHorizontal size={16} />ចែករំលែក</button>
-          <button type="button"><Star size={16} />រក្សាទុក</button>
-          <button type="button"><AlertCircle size={16} />រាយការណ៍</button>
+          <button type="button" onClick={onShareToTelegramFriend}><SendHorizontal size={16} />ចែករំលែក</button>
+          <button type="button" className={favoritedDetail ? 'is-active' : ''} onClick={onToggleDetailFavorite}><Star size={16} />រក្សាទុក</button>
+          <button type="button" onClick={onOpenReportModal}><AlertCircle size={16} />រាយការណ៍</button>
         </div>
 
         <section ref={catalogSectionRef} className="tg-reader-detail__catalog">
           <div className="tg-reader-detail__catalog-head">
-            <h2>មាតិកា：សរុប {chapterRows.length} ភាគ</h2>
+            <h2>មាតិកា: សរុប {chapterRows.length} ភាគ</h2>
             <button
               type="button"
               className="tg-reader-detail__order-label"
@@ -949,7 +1326,7 @@ export default function ReaderPage() {
           <ul className="tg-reader-detail__chapter-list">
             {displayedChapterRows.map((row) => {
               const hasReadableBody = chapterHasReadableBody(novel, row.chapterIndex)
-              const clickable = hasReadableBody || (!isVipTier && row.chapterIndex > 0)
+              const clickable = hasReadableBody || (!isVipReader && row.chapterIndex > 0)
               return (
                 <li
                   key={row.id}
@@ -982,9 +1359,9 @@ export default function ReaderPage() {
               )
             })}
           </ul>
-          <div className="tg-reader-detail__comment-feed-head">
-            <span className="tg-reader-detail__comment-feed-title">មតិទាំងអស់【សរុប{totalCommentCount}】</span>
-            <div className="tg-reader-detail__comment-feed-sort" role="tablist" aria-label="មតិ排序">
+          <div ref={commentFeedSectionRef} className="tg-reader-detail__comment-feed-head">
+            <span className="tg-reader-detail__comment-feed-title">មតិទាំងអស់ (សរុប {totalCommentCount})</span>
+            <div className="tg-reader-detail__comment-feed-sort" role="tablist" aria-label="តម្រៀបមតិ">
               <button
                 type="button"
                 className={['tg-reader-detail__comment-sort-btn', commentSort === 'latest' ? 'is-active' : ''].filter(Boolean).join(' ')}
@@ -1003,9 +1380,13 @@ export default function ReaderPage() {
           </div>
           <div className="tg-reader-detail__comment-feed">
             {displayedCommentFeed.length === 0 ? (
-              <p className="tg-reader-detail__comment-empty">暂无មតិ，来抢沙发吧。</p>
+              <p className="tg-reader-detail__comment-empty">មិនទាន់មានមតិយោបល់ទេ សូមចូលរួមមតិមុនគេ។</p>
             ) : displayedCommentFeed.map((it) => (
-              <article key={it.id} className="tg-reader-detail__comment-item">
+              <article
+                id={`tg-comment-${it.id}`}
+                key={it.id}
+                className="tg-reader-detail__comment-item"
+              >
                 {it.avatar ? (
                   <img src={it.avatar} alt="" className="tg-reader-detail__comment-item-avatar" loading="lazy" decoding="async" />
                 ) : (
@@ -1014,134 +1395,186 @@ export default function ReaderPage() {
                   </div>
                 )}
                 <div className="tg-reader-detail__comment-item-main">
-                  <p className="tg-reader-detail__comment-item-name inline-flex max-w-full min-w-0 items-center gap-1">
-                    <span className="min-w-0 truncate">{it.name}</span>
-                    <CommentMemberBadges
-                      tier={resolveCommentRowMemberTier({ row: it })}
-                    />
-                  </p>
-                  <p className="tg-reader-detail__comment-item-text">{it.text}</p>
+                  <div className="tg-reader-detail__comment-bubble">
+                    <p className="tg-reader-detail__comment-item-name inline-flex max-w-full min-w-0 flex-wrap items-center gap-1">
+                      <span className="min-w-0 truncate">{it.name}</span>
+                      <CommentMemberBadges {...buildCommentBadgeProps(it)} />
+                      <span className="text-white/45">·</span>
+                      <span className="shrink-0 text-[11px] text-white/45">{formatCommentTimeAgo(it.at, nowTs)}</span>
+                    </p>
+                    <p className="tg-reader-detail__comment-item-text">{it.text}</p>
+                  </div>
                   <div className="tg-reader-detail__comment-item-meta">
                     <button
                       type="button"
-                      className="tg-reader-detail__comment-reply-link"
-                      onClick={() => onOpenReplyModal(it.id, it.name)}
+                      className={[
+                        'tg-reader-detail__comment-reply-link',
+                        commentVotes[it.id] === 'up' ? 'is-active' : '',
+                      ].filter(Boolean).join(' ')}
+                      onClick={() => {
+                        const currentVote = commentVotes[it.id]
+                        const nextVote = currentVote === 'up' ? 'clear' : 'up'
+                        void onVoteComment(it.id, currentVote, nextVote)
+                      }}
                     >
-                      Reply
+                      ចូលចិត្ត
                     </button>
-                    <span>{formatCommentTimeAgo(it.at, nowTs)}</span>
+                    <button
+                      type="button"
+                      className="tg-reader-detail__comment-reply-link"
+                      onClick={() => onOpenReplyModal(it.id, it.name, it.name, '', it.userId)}
+                    >
+                      ឆ្លើយតប
+                    </button>
+                    {Number(it.likes ?? 0) > 0 ? <span>{Number(it.likes ?? 0)} ដងចូលចិត្ត</span> : null}
                   </div>
-                  {it.reply ? (
-                    <div className="tg-reader-detail__comment-reply">
-                      {it.reply.avatar ? (
-                        <img
-                          src={it.reply.avatar}
-                          alt=""
-                          className="tg-reader-detail__comment-item-avatar tg-reader-detail__comment-item-avatar--reply"
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      ) : (
-                        <div className="tg-reader-detail__comment-item-avatar tg-reader-detail__comment-item-avatar--ph tg-reader-detail__comment-item-avatar--reply" aria-hidden>
-                          {(it.reply.name?.[0] ?? 'A').toUpperCase()}
-                        </div>
-                      )}
-                      <div className="tg-reader-detail__comment-reply-main">
-                        <p className="tg-reader-detail__comment-item-name inline-flex max-w-full min-w-0 items-center gap-1">
-                          <span className="min-w-0 truncate">{it.reply.name}</span>
-                          <CommentMemberBadges
-                            tier={resolveCommentRowMemberTier({ row: it.reply })}
-                          />
-                        </p>
-                        <p className="tg-reader-detail__comment-item-text">{it.reply.text}</p>
-                        <div className="tg-reader-detail__comment-item-meta">
-                          <button
-                            type="button"
-                            className="tg-reader-detail__comment-reply-link"
-                            onClick={() => onOpenReplyModal(it.id, it.reply.name)}
-                          >
-                            Reply
-                          </button>
-                          <span>{formatCommentTimeAgo(it.reply.at ?? it.at, nowTs)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                  {(extraReplies[it.id] ?? []).map((r) => (
-                    <div key={r.id} className="tg-reader-detail__comment-reply">
-                      {r.avatar ? (
-                        <img
-                          src={r.avatar}
-                          alt=""
-                          className="tg-reader-detail__comment-item-avatar tg-reader-detail__comment-item-avatar--reply"
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      ) : (
-                        <div className="tg-reader-detail__comment-item-avatar tg-reader-detail__comment-item-avatar--ph tg-reader-detail__comment-item-avatar--reply" aria-hidden>
-                          {(r.name?.[0] ?? 'A').toUpperCase()}
-                        </div>
-                      )}
-                      <div className="tg-reader-detail__comment-reply-main">
-                        <p className="tg-reader-detail__comment-item-name inline-flex max-w-full min-w-0 items-center gap-1">
-                          <span className="min-w-0 truncate">{r.name}</span>
-                          <CommentMemberBadges
-                            tier={resolveCommentRowMemberTier({ row: r })}
-                          />
-                        </p>
-                        <p className="tg-reader-detail__comment-item-text">{r.text}</p>
-                        <div className="tg-reader-detail__comment-item-meta">
-                          <button
-                            type="button"
-                            className="tg-reader-detail__comment-reply-link"
-                            onClick={() => onOpenReplyModal(it.id, r.name)}
-                          >
-                            Reply
-                          </button>
-                          <span>{formatCommentTimeAgo(r.at, nowTs)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="tg-reader-detail__comment-item-actions">
                   {(() => {
-                    const vote = commentVotes[it.id]
-                    const baseUp = Number(it.likes ?? 0)
-                    const baseDown = Number(it.dislikes ?? 0)
-                    const upCount = baseUp
-                    const downCount = baseDown
+                    const threadReplies = [
+                      ...(it.reply ? [it.reply] : []),
+                      ...(extraReplies[it.id] ?? []),
+                    ]
+                    if (threadReplies.length === 0) return null
+                    const expanded = Boolean(expandedReplyMap[it.id])
+                    const visibleReplies = expanded ? threadReplies : threadReplies.slice(0, 1)
+                    const replyTree = buildReplyThreadTree(visibleReplies)
+                    const singleReplyToMainName = threadReplies.length === 1 ? String(it.name || '').trim() : ''
+                    const resolveReplyRecipient = (replyToNm) => {
+                      const t = String(replyToNm || '').trim()
+                      if (!t) return null
+                      if (String(it.name || '').trim() === t) return it
+                      for (const row of threadReplies) {
+                        if (String(row?.name || '').trim() === t) return row
+                      }
+                      return null
+                    }
+                    const renderReplyNode = (r, depth = 0, parentName = '') => {
+                      const displayReplyToName = String(r.replyToName || parentName || '').trim()
+                      const recipientBadgeSource = displayReplyToName ? resolveReplyRecipient(displayReplyToName) : null
+                      return (
+                        <div key={`${r.id || `${it.id}-${depth}`}-${depth}`}>
+                          <div
+                            id={`tg-reply-${r.id || `${it.id}-${depth}`}`}
+                            className={[
+                              'tg-reader-detail__comment-reply',
+                              displayReplyToName ? 'tg-reader-detail__comment-reply--to-reply' : '',
+                              depth > 0 ? 'tg-reader-detail__comment-reply--nested' : '',
+                            ].filter(Boolean).join(' ')}
+                          >
+                            {r.avatar ? (
+                              <img
+                                src={r.avatar}
+                                alt=""
+                                className="tg-reader-detail__comment-item-avatar tg-reader-detail__comment-item-avatar--reply"
+                                loading="lazy"
+                                decoding="async"
+                              />
+                            ) : (
+                              <div className="tg-reader-detail__comment-item-avatar tg-reader-detail__comment-item-avatar--ph tg-reader-detail__comment-item-avatar--reply" aria-hidden>
+                                {(r.name?.[0] ?? 'A').toUpperCase()}
+                              </div>
+                            )}
+                            <div className="tg-reader-detail__comment-reply-main">
+                              <div className="tg-reader-detail__comment-bubble tg-reader-detail__comment-bubble--reply">
+                                <p className="tg-reader-detail__comment-item-name inline-flex max-w-full min-w-0 flex-wrap items-center gap-1">
+                                  <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1">
+                                    <span className="min-w-0 truncate">{r.name}</span>
+                                    <CommentMemberBadges {...buildCommentBadgeProps(r)} />
+                                    {displayReplyToName ? (
+                                      <>
+                                        <span className="shrink-0 text-white/75" aria-hidden>
+                                          ▶
+                                        </span>
+                                        <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1">
+                                          <span className="min-w-0 truncate">{displayReplyToName}</span>
+                                          {recipientBadgeSource != null ? (
+                                            <CommentMemberBadges {...buildCommentBadgeProps(recipientBadgeSource)} />
+                                          ) : null}
+                                        </span>
+                                      </>
+                                    ) : null}
+                                  </span>
+                                  <span className="text-white/45">·</span>
+                                  <span className="shrink-0 text-[11px] text-white/45">{formatCommentTimeAgo(r.at, nowTs)}</span>
+                                </p>
+                                <p
+                                  className={[
+                                    'tg-reader-detail__comment-item-text',
+                                    highlightTargetId === `tg-reply-${r.id}` ? 'tg-reader-focus-target--reply' : '',
+                                  ].filter(Boolean).join(' ')}
+                                >
+                                  {r.text}
+                                </p>
+                              </div>
+                              <div className="tg-reader-detail__comment-item-meta">
+                                <button
+                                  type="button"
+                                  className="tg-reader-detail__comment-reply-link"
+                                  onClick={() => onOpenReplyModal(it.id, r.name, r.name, r.id, r.userId)}
+                                >
+                                  ឆ្លើយតប
+                                </button>
+                              </div>
+                              {replyTarget?.mode === 'reply' && replyTarget.id === it.id && replyTarget.parentReplyId === String(r.id || '') ? (
+                                <div className="tg-reader-inline-reply">
+                                  <textarea
+                                    className="tg-reader-inline-reply__textarea"
+                                    value={replyDraft}
+                                    maxLength={500}
+                                    placeholder={`ឆ្លើយតបទៅ ${replyTarget.name}...`}
+                                    onChange={(e) => setReplyDraft(e.target.value)}
+                                  />
+                                  <div className="tg-reader-inline-reply__actions">
+                                    <button type="button" onClick={onCloseReplyModal}>បោះបង់</button>
+                                    <button type="button" disabled={replySubmitPending || replyDraft.trim().length === 0} onClick={onSubmitReply}>
+                                      {replySubmitPending ? 'កំពុងផ្ញើ...' : 'ផ្ញើ'}
+                                    </button>
+                                  </div>
+                                  {replySubmitError ? <p className="tg-reader-inline-reply__error" lang="km">{replySubmitError}</p> : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                          {(r.children ?? []).map((child) => renderReplyNode(child, depth + 1, r.name))}
+                        </div>
+                      )
+                    }
                     return (
                       <>
-                  <button
-                    type="button"
-                    aria-label="ចូលចិត្តមតិ"
-                    className={commentVotes[it.id] === 'up' ? 'is-active' : ''}
-                    onClick={() => {
-                      void onVoteComment(it.id, vote, 'up')
-                    }}
-                  >
-                    {(upCount > 0) ? (
-                      <span>
-                        {upCount}
-                      </span>
-                    ) : null}
-                    <Heart size={18} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="点踩មតិ"
-                    className={commentVotes[it.id] === 'down' ? 'is-active' : ''}
-                    onClick={() => {
-                      void onVoteComment(it.id, vote, 'down')
-                    }}
-                  >
-                    {downCount > 0 ? <span>{downCount}</span> : null}
-                    <ThumbsDown size={18} />
-                  </button>
+                        {threadReplies.length > 1 ? (
+                          <button
+                            type="button"
+                            className="tg-reader-detail__replies-toggle"
+                            onClick={() =>
+                              setExpandedReplyMap((prev) => ({ ...prev, [it.id]: !expanded }))
+                            }
+                          >
+                            {expanded
+                              ? 'លាក់ការឆ្លើយតប'
+                              : `មើលការឆ្លើយតប ${threadReplies.length} ទាំងអស់`}
+                          </button>
+                        ) : null}
+                        {replyTree.map((r) => renderReplyNode(r, 0, singleReplyToMainName))}
                       </>
                     )
                   })()}
+                  {replyTarget?.mode === 'reply' && replyTarget.id === it.id && !replyTarget.parentReplyId ? (
+                    <div className="tg-reader-inline-reply">
+                      <textarea
+                        className="tg-reader-inline-reply__textarea"
+                        value={replyDraft}
+                        maxLength={500}
+                        placeholder={`ឆ្លើយតបទៅ ${replyTarget.name}...`}
+                        onChange={(e) => setReplyDraft(e.target.value)}
+                      />
+                      <div className="tg-reader-inline-reply__actions">
+                        <button type="button" onClick={onCloseReplyModal}>បោះបង់</button>
+                        <button type="button" disabled={replySubmitPending || replyDraft.trim().length === 0} onClick={onSubmitReply}>
+                          {replySubmitPending ? 'កំពុងផ្ញើ...' : 'ផ្ញើ'}
+                        </button>
+                      </div>
+                      {replySubmitError ? <p className="tg-reader-inline-reply__error" lang="km">{replySubmitError}</p> : null}
+                    </div>
+                  ) : null}
                 </div>
               </article>
             ))}
@@ -1150,11 +1583,8 @@ export default function ReaderPage() {
       </main>
       {isReadingChapter ? (
         <div
+          ref={articleOverlayRef}
           className="tg-reader-article-overlay"
-          onScroll={(e) => {
-            const top = e.currentTarget.scrollTop || 0
-            setArticleHeaderCompact(top > 8)
-          }}
           onTouchStart={(e) => {
             const t = e.touches?.[0]
             if (!t) return
@@ -1177,7 +1607,8 @@ export default function ReaderPage() {
             // 顶部继续下拉时阻止 iOS/部分 WebView 回弹，避免出现上方大空白。
             if (!s.tracking) {
               const dy = t.clientY - s.startY
-              if ((e.currentTarget.scrollTop || 0) <= 0 && dy > 0) {
+              const scrollTop = articleScrollRef.current?.scrollTop ?? 0
+              if (scrollTop <= 0 && dy > 0) {
                 if (e.cancelable) e.preventDefault()
               }
               return
@@ -1231,39 +1662,60 @@ export default function ReaderPage() {
             }, 230)
           }}
         >
-          <main className="tg-reader-article" ref={articleLayerRef}>
-            <button
-              type="button"
-              className="tg-reader-article__back"
-              aria-label="ទៅទំព័រដើម"
-              onClick={() => {
-                applyArticleLayerTransform(0, false)
-                setReadingChapterIndex(null)
+          <ReaderWatermarkOverlay tgUser={tgUser} nowTs={nowTs} />
+          <main className="tg-reader-article tg-reader-article--protected" ref={articleLayerRef} lang="km">
+            <div className="tg-reader-article__header">
+              <div className="tg-reader-article__header-inner">
+                <div className="tg-reader-article__header-bar">
+                  <button
+                    type="button"
+                    className="tg-reader-article__chapter-nav-btn tg-reader-article__chapter-nav-btn--emph tg-reader-article__chapter-nav-btn--compact"
+                    aria-label="ទៅទំព័រដើម"
+                    onClick={() => {
+                      applyArticleLayerTransform(0, false)
+                      setReadingChapterIndex(null)
+                    }}
+                  >
+                    {'< ទៅទំព័រដើម'}
+                  </button>
+                  {articleHeaderCompact ? (
+                    <>
+                      <span className="tg-reader-article__header-chip tg-reader-article__header-chip--title">
+                        {readingChapterName}
+                      </span>
+                      <span className="tg-reader-article__header-chip tg-reader-article__header-chip--part">
+                        {readingChapterNoLabel}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+            <div
+              ref={articleScrollRef}
+              className="tg-reader-article__scroll"
+              onScroll={(e) => {
+                const top = e.currentTarget.scrollTop || 0
+                // 至少滚过顶部栏的大致高度后再切换，避免“未触顶先消失”。
+                setArticleHeaderCompact(top > 96)
               }}
             >
-              {'< ទៅទំព័រដើម'}
-              {articleHeaderCompact ? (
-                <>
-                  <span className="tg-reader-article__back-center">{readingChapterName}</span>
-                  <span className="tg-reader-article__back-right">{readingChapterNoLabel}</span>
-                </>
-              ) : null}
-            </button>
-            <h1 className="tg-reader-article__title">{novel.title}</h1>
-            <p className="tg-reader-article__chapter-line">{readingChapterSubtitle}</p>
-            <p className="tg-reader-article__meta-line">{readingMetaLine}</p>
-            <section className="tg-reader-article__body">
-              {readingBody.length > 0 ? (
-                readingBody.map((p, idx) => (
-                  <p key={`${readingChapterIndex}-${idx}`} className="tg-reader-article__p">
-                    {p}
-                  </p>
-                ))
-              ) : (
-                <p className="tg-reader-article__p">暂无正文</p>
-              )}
-            </section>
-            <nav className="tg-reader-article__chapter-nav" aria-label="章节导航">
+              <h1 className="tg-reader-article__title">{novel.title}</h1>
+              <p className="tg-reader-article__chapter-line">{readingChapterSubtitle}</p>
+              <p className="tg-reader-article__meta-line">{readingMetaLine}</p>
+              <section className="tg-reader-article__body">
+                {readingBody.length > 0 ? (
+                  readingBody.map((p, idx) => (
+                    <p key={`${readingChapterIndex}-${idx}`} className="tg-reader-article__p">
+                      {p}
+                    </p>
+                  ))
+                ) : (
+                  <p className="tg-reader-article__p" lang="km">{READER_NO_BODY_KM}</p>
+                )}
+              </section>
+            </div>
+            <nav className="tg-reader-article__chapter-nav" aria-label="រុករកភាគ">
               <div className="tg-reader-article__chapter-nav-cell tg-reader-article__chapter-nav-cell--left">
                 {readingChapterIndex === 0 ? (
                   <span className="tg-reader-article__chapter-nav-muted">ភាគដំបូង</span>
@@ -1297,37 +1749,64 @@ export default function ReaderPage() {
           <button
             type="button"
             className="tg-reader-start-page__backdrop"
-            aria-label="关闭开始阅读页面"
+            aria-label="បិទទំព័រចាប់ផ្តើមអាន"
             onClick={onCloseStartReadPage}
           />
           <div className="tg-reader-start-page__panel">
-            <h3 id="tg-reader-start-page-title" className="tg-reader-start-page__title">
-              系统提示
+            <h3 id="tg-reader-start-page-title" className="tg-reader-start-page__title" lang="km">
+              ការជូនដំណឹង
             </h3>
-            <p className="tg-reader-start-page__desc">
-              已为你打开阅读入口，进入章节目录开始阅读之前必须先登录。
+            <p className="tg-reader-start-page__desc" lang="km">
+              ច្រកចូលអានត្រូវបានបើកហើយ។ សូមចូលគណនីមុននឹងចូលទៅកាន់មាតិកាជំពូកដើម្បីចាប់ផ្តើមអាន។
             </p>
             <div className="tg-reader-start-page__actions">
-              <button type="button" className="tg-reader-start-page__btn tg-reader-start-page__btn--ghost" onClick={onCloseStartReadPage}>
-                稍后再读
+              <button type="button" className="tg-reader-start-page__btn tg-reader-start-page__btn--ghost" onClick={onCloseStartReadPage} lang="km">
+                ចាំពេលក្រោយ
               </button>
-              <button type="button" className="tg-reader-start-page__btn tg-reader-start-page__btn--primary" onClick={onEnterLoginFromStartReadPage}>
-                进入登录
+              <button type="button" className="tg-reader-start-page__btn tg-reader-start-page__btn--primary" onClick={onEnterLoginFromStartReadPage} lang="km">
+                ចូលប្រើឥឡូវនេះ
               </button>
             </div>
           </div>
         </div>
       ) : null}
 
-      {replyTarget ? (
-        <div className="tg-reply-modal" role="dialog" aria-modal="true" aria-label="回复មតិ">
-          <button type="button" className="tg-reply-modal__backdrop" onClick={onCloseReplyModal} aria-label="关闭弹窗" />
+      {chapterVipGateOpen ? (
+        <div className="tg-reader-start-page" role="dialog" aria-modal="true" aria-labelledby="tg-reader-vip-gate-title">
+          <button
+            type="button"
+            className="tg-reader-start-page__backdrop"
+            aria-label="បិទ"
+            onClick={onCloseChapterVipGate}
+          />
+          <div className="tg-reader-start-page__panel">
+            <h3 id="tg-reader-vip-gate-title" className="tg-reader-start-page__title" lang="km">
+              {READER_VIP_CHAPTER_GATE_TITLE_KM}
+            </h3>
+            <p className="tg-reader-start-page__desc" lang="km">
+              {READER_VIP_CHAPTER_GATE_DESC_KM}
+            </p>
+            <div className="tg-reader-start-page__actions">
+              <button type="button" className="tg-reader-start-page__btn tg-reader-start-page__btn--ghost" onClick={onCloseChapterVipGate} lang="km">
+                ចាំពេលក្រោយ
+              </button>
+              <button type="button" className="tg-reader-start-page__btn tg-reader-start-page__btn--primary" onClick={onGoVipFromChapterGate} lang="km">
+                ទិញ VIP
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {replyTarget?.mode === 'comment' ? (
+        <div className="tg-reply-modal" role="dialog" aria-modal="true" aria-label="ឆ្លើយតបមតិ">
+          <button type="button" className="tg-reply-modal__backdrop" onClick={onCloseReplyModal} aria-label="បិទប្រអប់" />
           <div className="tg-reply-modal__panel">
             <div className="tg-reply-modal__head">
               <h3 className="tg-reply-modal__title">
-                {replyTarget.mode === 'comment' ? `给作品：${replyTarget.name}` : `回复：${replyTarget.name}`}
+                {replyTarget.mode === 'comment' ? `ដាក់មតិឱ្យអ្នកនិពន្ធ: ${replyTarget.name}` : `ឆ្លើយតប: ${replyTarget.name}`}
               </h3>
-              <button type="button" className="tg-reply-modal__close" onClick={onCloseReplyModal} aria-label="关闭">
+              <button type="button" className="tg-reply-modal__close" onClick={onCloseReplyModal} aria-label="បិទ">
                 <X size={24} />
               </button>
             </div>
@@ -1335,20 +1814,52 @@ export default function ReaderPage() {
               <textarea
                 className="tg-reply-modal__textarea"
                 maxLength={500}
-                placeholder="请输入回复内容"
+                placeholder="សូមបញ្ចូលមតិរបស់អ្នក..."
                 value={replyDraft}
                 onChange={(e) => setReplyDraft(e.target.value)}
               />
               <span className="tg-reply-modal__counter">{replyDraft.length}/500</span>
             </div>
-            {replySubmitError ? <p className="tg-reply-modal__error">{replySubmitError}</p> : null}
+            {replySubmitError ? <p className="tg-reply-modal__error" lang="km">{replySubmitError}</p> : null}
             <button
               type="button"
               className="tg-reply-modal__submit"
               onClick={onSubmitReply}
               disabled={replySubmitPending}
             >
-              {replySubmitPending ? '提交中...' : '提交មតិ'}
+              {replySubmitPending ? 'កំពុងបញ្ជូន...' : 'ផ្ញើមតិ'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {reportModalOpen ? (
+        <div className="tg-reply-modal" role="dialog" aria-modal="true" aria-label="ផ្ញើរបាយការណ៍">
+          <button type="button" className="tg-reply-modal__backdrop" onClick={onCloseReportModal} aria-label="បិទប្រអប់" />
+          <div className="tg-reply-modal__panel">
+            <div className="tg-reply-modal__head">
+              <h3 className="tg-reply-modal__title">រាយការណ៍: {novel.title}</h3>
+              <button type="button" className="tg-reply-modal__close" onClick={onCloseReportModal} aria-label="បិទ">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="tg-reply-modal__body">
+              <textarea
+                className="tg-reply-modal__textarea"
+                maxLength={500}
+                placeholder="សូមបញ្ចូលមូលហេតុរាយការណ៍..."
+                value={reportDraft}
+                onChange={(e) => setReportDraft(e.target.value)}
+              />
+              <span className="tg-reply-modal__counter">{reportDraft.length}/500</span>
+            </div>
+            {reportSubmitError ? <p className="tg-reply-modal__error" lang="km">{reportSubmitError}</p> : null}
+            <button
+              type="button"
+              className="tg-reply-modal__submit"
+              onClick={onSubmitReport}
+              disabled={reportSubmitPending}
+            >
+              {reportSubmitPending ? 'កំពុងបញ្ជូន...' : 'ផ្ញើរបាយការណ៍'}
             </button>
           </div>
         </div>

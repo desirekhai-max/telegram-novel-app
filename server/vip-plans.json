@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "footerKm": "អាចអានរឿងទាំងអស់បានក្នុងអំឡុងពេលជាសមាជិកVIP",
+  "plans": [
+    {
+      "planId": "vip_entry",
+      "sortOrder": 1,
+      "featured": false,
+      "titleKm": "VIPកម្រិតដំបូង",
+      "flagKm": "សាកល្បងកម្រិតស្រាល",
+      "priceUsdLabel": "$1",
+      "priceHintKm": "បើកប្រើតែម្តង",
+      "durationKm": "អានបាន 3 ម៉ោង",
+      "durationHours": 3,
+      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+    },
+    {
+      "planId": "vip_standard",
+      "sortOrder": 2,
+      "featured": true,
+      "titleKm": "VIPស្តង់ដារ",
+      "flagKm": "ពេញនិយមបំផុត",
+      "priceUsdLabel": "$3",
+      "priceHintKm": "បើកប្រើតែម្តង",
+      "durationKm": "អានបាន 12 ម៉ោង",
+      "durationHours": 12,
+      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+    },
+    {
+      "planId": "vip_premium",
+      "sortOrder": 3,
+      "featured": false,
+      "titleKm": "VIPកម្រិតខ្ពស់",
+      "flagKm": "អានដោយគ្មានកំណត់ ២៤ម៉ោង",
+      "priceUsdLabel": "$5",
+      "priceHintKm": "បើកប្រើតែម្តង",
+      "durationKm": "អានបាន 24 ម៉ោង",
+      "durationHours": 24,
+      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+    }
+  ],
+  "plansAuthor": [
+    {
+      "planId": "vip_entry",
+      "sortOrder": 1,
+      "featured": false,
+      "titleKm": "VIPកម្រិតដំបូង",
+      "flagKm": "សាកល្បងកម្រិតស្រាល · អ្នកនិពន្ធ",
+      "priceUsdLabel": "$1",
+      "priceHintKm": "បើកប្រើតែម្តង",
+      "durationKm": "អានបាន 5 ម៉ោង",
+      "durationHours": 5,
+      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+    },
+    {
+      "planId": "vip_standard",
+      "sortOrder": 2,
+      "featured": true,
+      "titleKm": "VIPស្តង់ដារ",
+      "flagKm": "ពេញនិយមបំផុត · អ្នកនិពន្ធ",
+      "priceUsdLabel": "$3",
+      "priceHintKm": "បើកប្រើតែម្តង",
+      "durationKm": "អានបាន 18 ម៉ោង",
+      "durationHours": 18,
+      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+    },
+    {
+      "planId": "vip_premium",
+      "sortOrder": 3,
+      "featured": false,
+      "titleKm": "VIPកម្រិតខ្ពស់",
+      "flagKm": "អានដោយគ្មានកំណត់ ៣៦ម៉ោង",
+      "priceUsdLabel": "$5",
+      "priceHintKm": "បើកប្រើតែម្តង",
+      "durationKm": "អានបាន 36 ម៉ោង",
+      "durationHours": 36,
+      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+    }
+  ]
+}

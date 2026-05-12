@@ -1,0 +1,59 @@
+{
+  "title": "ចម្រោះ",
+  "closeLabel": "បិទ",
+  "maxSelectedTags": 3,
+  "groups": [
+    {
+      "key": "genre",
+      "title": "ប្រភេទ",
+      "type": "single",
+      "options": [
+        { "value": "all", "label": "គ្រប់ប្រភេទ", "pill": true },
+        { "value": "urban", "label": "都市" },
+        { "value": "campus", "label": "校园" }
+      ]
+    },
+    {
+      "key": "status",
+      "title": "ស្ថានភាព",
+      "type": "single",
+      "options": [
+        { "value": "all", "label": "គ្រប់ស្ថានភាព", "pill": true },
+        { "value": "completed", "label": "រឿងពេញ" },
+        { "value": "ongoing", "label": "កំពុងបន្ត" }
+      ]
+    },
+    {
+      "key": "source",
+      "title": "ប្រភព",
+      "type": "single",
+      "options": [
+        { "value": "all", "label": "គ្រប់ប្រភព", "pill": true },
+        { "value": "original", "label": "ស្នាដៃដើម" },
+        { "value": "upload", "label": "ស្នាដៃសមាជិក" }
+      ]
+    },
+    {
+      "key": "tags",
+      "title": "ស្លាក",
+      "type": "tags",
+      "hintLabel": "ការណែនាំ",
+      "allLabel": "ស្លាកទាំងអស់",
+      "options": [
+        { "value": "1v1", "label": "1v1" },
+        { "value": "HE", "label": "HE" }
+      ]
+    },
+    {
+      "key": "lengthId",
+      "title": "កម្រិត",
+      "type": "single",
+      "options": [
+        { "value": "all", "label": "ទំហំទាំងអស់", "pill": true },
+        { "value": "short", "label": "រឿងខ្លី ក្រោម2ម៉ឺនពាក្យ", "long": true },
+        { "value": "medium", "label": "រឿងមធ្យម 2ម៉ឺន-10ម៉ឺនពាក្យ", "long": true },
+        { "value": "long", "label": "រឿងវែង លើស10ម៉ឺនពាក្យ", "long": true }
+      ]
+    }
+  ]
+}

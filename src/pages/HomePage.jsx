@@ -1,9 +1,13 @@
 import { Bell, ChevronDown, ChevronUp, Filter, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import HomeFilterPanelOverlay from '../components/HomeFilterPanelOverlay.jsx'
 import HomeNovelCard from '../components/HomeNovelCard.jsx'
 import { MAX_SELECTED_FILTER_TAGS } from '../data/homeFilters.js'
+import {
+  DEFAULT_HOME_FILTER_PANEL_CONFIG,
+  fetchHomeFilterPanelConfig,
+} from '../lib/homeFilterPanelConfig.js'
 import { novels } from '../data/novels.js'
 import { useAppChrome } from '../contexts/useAppChrome.js'
 import {
@@ -19,9 +23,18 @@ import {
 } from '../lib/filterNovels.js'
 import { getAppliedFilterChips, removeCriterionFromCriteria } from '../lib/homeFilterChips.js'
 import { buildHomeOrderedNovels } from '../lib/homeListOrder.js'
-import { fetchHomeStats } from '../lib/miniAppPresence.js'
+import { formatHomeSearchFilterEmptyKm } from '../lib/errorMessagesKm.js'
+import {
+  loadPersistedDetailStats,
+  NOVEL_DETAIL_STATS_EVENT,
+} from '../lib/novelDetailStatsSync.js'
+import { mergeDisplayedCount, getSeedFavoriteCount, getSeedLikeCount, getSeedViewCount } from '../lib/novelSeedStats.js'
+import { getLocalViewMax } from '../lib/novelViewCountLocal.js'
+import { fetchHomeStats, fetchNovelFavoriteState, fetchNovelLikeState } from '../lib/miniAppPresence.js'
 import { novelMatchesInlineSearch } from '../lib/novelInlineSearch.js'
 import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
+import { useTelegramUser } from '../hooks/useTelegramUser.js'
+import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount.js'
 
 const SORT_OPTIONS = [
   { id: 'update', label: '​ថ្មីៗ'},
@@ -69,12 +82,18 @@ function buildPageButtonItems(current, total) {
 }
 
 export default function HomePage() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const tgUser = useTelegramUser()
+  const unreadNotificationCount = useUnreadNotificationCount(tgUser)
   /** 顶栏搜索框文案（可随时编辑） */
   const [searchDraft, setSearchDraft] = useState('')
   /** 仅按回车后用于列表筛选；与草稿不一致时视为未提交，不展示搜索卡片 */
   const [committedQuery, setCommittedQuery] = useState('')
   const searchInputRef = useRef(null)
   const [filterOpen, setFilterOpen] = useState(false)
+  /** 首页筛选面板结构（可由后台 JSON 覆盖，缺省与内置默认一致） */
+  const [filterPanelConfig, setFilterPanelConfig] = useState(() => DEFAULT_HOME_FILTER_PANEL_CONFIG)
   const [appliedCriteria, setAppliedCriteria] = useState(null)
   /** 点作者名：只收窄列表，不出现在「已选」标签里 */
   const [authorShelfFilter, setAuthorShelfFilter] = useState(null)
@@ -101,12 +120,38 @@ export default function HomePage() {
   }, [isSearchMode])
 
   useEffect(() => {
+    const incomingQuery = String(location.state?.homeSearchQuery || '').trim()
+    if (!incomingQuery) return
+    setAuthorShelfFilter(null)
+    setSearchDraft(incomingQuery)
+    setCommittedQuery(incomingQuery)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.pathname, location.state, navigate])
+
+  useEffect(() => {
     return () => setHomeSearchInputFocused(false)
   }, [setHomeSearchInputFocused])
+
+  useEffect(() => {
+    const ac = new AbortController()
+    void fetchHomeFilterPanelConfig(ac.signal).then((cfg) => {
+      if (cfg) setFilterPanelConfig(cfg)
+    })
+    return () => ac.abort()
+  }, [])
+
+  const effectiveMaxTags = useMemo(
+    () => filterPanelConfig?.maxSelectedTags ?? MAX_SELECTED_FILTER_TAGS,
+    [filterPanelConfig?.maxSelectedTags],
+  )
 
   /** 阅读页提交评论分后刷新卡片与「评分」排序 */
   const [reviewRatingTick, setReviewRatingTick] = useState(0)
   const [homeStats, setHomeStats] = useState({})
+  const [homeLikeCounts, setHomeLikeCounts] = useState({})
+  const [homeFavoriteCounts, setHomeFavoriteCounts] = useState({})
+  /** 与详情页对齐：详情广播 / sessionStorage 恢复快照 */
+  const [detailStatsSnap, setDetailStatsSnap] = useState(() => loadPersistedDetailStats())
   const [currentPage, setCurrentPage] = useState(1)
   useEffect(() => {
     const fn = () => setReviewRatingTick((t) => t + 1)
@@ -114,14 +159,88 @@ export default function HomePage() {
     return () => window.removeEventListener('tg-novel-ratings-changed', fn)
   }, [])
   useEffect(() => {
+    const fn = (e) => {
+      const d = e?.detail
+      if (!d?.novelId) return
+      const id = String(d.novelId)
+      setDetailStatsSnap((prev) => ({
+        ...prev,
+        [id]: {
+          viewCount: Math.max(0, Math.floor(Number(d.viewCount) || 0)),
+          likeCount: Math.max(0, Math.floor(Number(d.likeCount) || 0)),
+          favoriteCount: Math.max(0, Math.floor(Number(d.favoriteCount) || 0)),
+        },
+      }))
+    }
+    window.addEventListener(NOVEL_DETAIL_STATS_EVENT, fn)
+    return () => window.removeEventListener(NOVEL_DETAIL_STATS_EVENT, fn)
+  }, [])
+  useEffect(() => {
     let cancelled = false
     const pull = async () => {
       const items = await fetchHomeStats()
       if (cancelled) return
-      setHomeStats(items)
+      setHomeStats((prev) => {
+        const nextHasData = items && typeof items === 'object' && Object.keys(items).length > 0
+        if (nextHasData) return items
+        // 网络抖动/接口异常时保留上一帧，避免首页卡片排序来回跳动。
+        return prev
+      })
     }
     pull()
     const timer = window.setInterval(pull, 15000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
+  useEffect(() => {
+    let cancelled = false
+    const pullFavoriteCounts = async () => {
+      const pairs = await Promise.all(
+        novels.map(async (n) => {
+          const novelId = String(n?.id || '').trim()
+          if (!novelId) return null
+          const state = await fetchNovelFavoriteState(novelId, '', getSeedFavoriteCount(n))
+          return [novelId, Math.max(0, Number(state?.count) || 0)]
+        }),
+      )
+      if (cancelled) return
+      const next = {}
+      for (const row of pairs) {
+        if (!row) continue
+        next[row[0]] = row[1]
+      }
+      setHomeFavoriteCounts((prev) => (Object.keys(next).length > 0 ? next : prev))
+    }
+    void pullFavoriteCounts()
+    const timer = window.setInterval(pullFavoriteCounts, 15000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
+  useEffect(() => {
+    let cancelled = false
+    const pullLikeCounts = async () => {
+      const pairs = await Promise.all(
+        novels.map(async (n) => {
+          const novelId = String(n?.id || '').trim()
+          if (!novelId) return null
+          const state = await fetchNovelLikeState(novelId, '', getSeedLikeCount(n))
+          return [novelId, Math.max(0, Number(state?.count) || 0)]
+        }),
+      )
+      if (cancelled) return
+      const next = {}
+      for (const row of pairs) {
+        if (!row) continue
+        next[row[0]] = row[1]
+      }
+      setHomeLikeCounts((prev) => (Object.keys(next).length > 0 ? next : prev))
+    }
+    void pullLikeCounts()
+    const timer = window.setInterval(pullLikeCounts, 15000)
     return () => {
       cancelled = true
       window.clearInterval(timer)
@@ -138,10 +257,27 @@ export default function HomePage() {
     const withStats = (list) =>
       list.map((n) => {
         const s = homeStats?.[String(n.id)] ?? {}
+        const id = String(n.id)
+        const apiView = Number(s?.viewCount) >= 0 ? Number(s.viewCount) : 0
+        const apiLike =
+          Number(homeLikeCounts?.[id]) >= 0 ? Number(homeLikeCounts[id]) : 0
+        const apiFav =
+          Number(homeFavoriteCounts?.[id]) >= 0 ? Number(homeFavoriteCounts[id]) : 0
+        const snap = detailStatsSnap[id]
+        const fromDetail = snap && typeof snap === 'object'
+        const localViewFloor = getLocalViewMax(id)
         return {
           ...n,
-          cardViewCount: Number(s?.viewCount) >= 0 ? Number(s.viewCount) : 0,
-          cardFavoriteCount: Number(s?.favoriteCount) >= 0 ? Number(s.favoriteCount) : 0,
+          cardViewCount: Math.max(
+            fromDetail ? snap.viewCount : mergeDisplayedCount(getSeedViewCount(n), apiView),
+            localViewFloor,
+          ),
+          cardLikeCount: fromDetail
+            ? snap.likeCount
+            : mergeDisplayedCount(getSeedLikeCount(n), apiLike),
+          cardFavoriteCount: fromDetail
+            ? snap.favoriteCount
+            : mergeDisplayedCount(getSeedFavoriteCount(n), apiFav),
           cardRatingPoints: Number(s?.ratingPoints) >= 0 ? Number(s.ratingPoints) : 0,
           cardUpdatedAtMs: Number(s?.lastUpdateAtMs) > 0 ? Number(s.lastUpdateAtMs) : 0,
         }
@@ -154,7 +290,19 @@ export default function HomePage() {
     const pool = authorShelfFilter ? novels.filter((n) => n.author === authorShelfFilter) : novels
     const filtered = filterNovelsByHomeCriteria(pool, appliedCriteria)
     return buildHomeOrderedNovels(withStats(filtered), sortKey, sortDesc)
-  }, [appliedCriteria, authorShelfFilter, homeStats, isSearchMode, reviewRatingTick, searchKeywordHits, sortDesc, sortKey])
+  }, [
+    appliedCriteria,
+    authorShelfFilter,
+    detailStatsSnap,
+    homeFavoriteCounts,
+    homeLikeCounts,
+    homeStats,
+    isSearchMode,
+    reviewRatingTick,
+    searchKeywordHits,
+    sortDesc,
+    sortKey,
+  ])
 
   const filterHadNoResults = useMemo(() => {
     if (!appliedCriteria || isDefaultHomeFilterCriteria(appliedCriteria)) return false
@@ -182,8 +330,8 @@ export default function HomePage() {
   )
 
   const appliedFilterChips = useMemo(
-    () => getAppliedFilterChips(appliedCriteria),
-    [appliedCriteria],
+    () => getAppliedFilterChips(appliedCriteria, filterPanelConfig),
+    [appliedCriteria, filterPanelConfig],
   )
 
   const onRemoveAppliedChip = useCallback((removeKey) => {
@@ -195,12 +343,14 @@ export default function HomePage() {
   }, [])
 
   const onPickThemeFromCard = useCallback((label) => {
-    setAppliedCriteria((prev) => criteriaToAppliedState(applyThemeLabelToCriteria(label, prev)))
-  }, [])
+    setAppliedCriteria((prev) =>
+      criteriaToAppliedState(applyThemeLabelToCriteria(label, prev, effectiveMaxTags)),
+    )
+  }, [effectiveMaxTags])
 
   const onPickTagFromCard = useCallback((tag) => {
-    setAppliedCriteria((prev) => criteriaToAppliedState(mergeAppendTag(prev, tag)))
-  }, [])
+    setAppliedCriteria((prev) => criteriaToAppliedState(mergeAppendTag(prev, tag, effectiveMaxTags)))
+  }, [effectiveMaxTags])
 
   const onPickAuthorFromCard = useCallback((name) => {
     setAuthorShelfFilter(name)
@@ -211,13 +361,16 @@ export default function HomePage() {
 
   const panelCriteria = appliedCriteria ?? EMPTY_HOME_FILTER_CRITERIA
 
-  const onFilterCriteriaChange = useCallback((next) => {
-    let n = next
-    if (n?.tags?.length > MAX_SELECTED_FILTER_TAGS) {
-      n = { ...n, tags: n.tags.slice(-MAX_SELECTED_FILTER_TAGS) }
-    }
-    setAppliedCriteria(isDefaultHomeFilterCriteria(n) ? null : n)
-  }, [])
+  const onFilterCriteriaChange = useCallback(
+    (next) => {
+      let n = next
+      if (n?.tags?.length > effectiveMaxTags) {
+        n = { ...n, tags: n.tags.slice(-effectiveMaxTags) }
+      }
+      setAppliedCriteria(isDefaultHomeFilterCriteria(n) ? null : n)
+    },
+    [effectiveMaxTags],
+  )
 
   const onSortClick = (id) => {
     if (sortKey != null && id === sortKey) {
@@ -292,13 +445,13 @@ export default function HomePage() {
                 setCommittedQuery(searchDraft.trim())
                 searchInputRef.current?.blur()
               }}
-              aria-label="搜索小说、作者或ស្លាក；回车查看结果并收起键盘"
+              aria-label="ស្វែងរកសៀវភៅ អ្នកនិពន្ធ ឬស្លាក; ចុច Enter ដើម្បីមើលលទ្ធផល និងបិទក្ដារចុច"
             />
             {searchDraft.length > 0 ? (
               <button
                 type="button"
                 className="tg-search-field__clear"
-                aria-label="清空搜索"
+                aria-label="សម្អាតការស្វែងរក"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   setAuthorShelfFilter(null)
@@ -319,6 +472,11 @@ export default function HomePage() {
           aria-label="通知"
         >
           <Bell size={20} strokeWidth={2} aria-hidden />
+          {unreadNotificationCount > 0 ? (
+            <span className="tg-toolbar-notify__badge" aria-label={`未读通知 ${unreadNotificationCount}`}>
+              {unreadNotificationCount > 99 ? '99+' : String(unreadNotificationCount)}
+            </span>
+          ) : null}
         </NavLink>
       </header>
 
@@ -347,16 +505,16 @@ export default function HomePage() {
             </div>
           </div>
           {authorShelfFilter ? (
-            <div className="tg-home-filter-bar__author-scope" lang="zh-Hans">
+            <div className="tg-home-filter-bar__author-scope" lang="km">
               <span className="tg-home-filter-bar__author-scope-text">
-                正在浏览「{authorShelfFilter}」的作品
+                កំពុងមើលស្នាដៃនិពន្ធរបស់ 「{authorShelfFilter}」
               </span>
               <button
                 type="button"
                 className="tg-home-filter-bar__author-scope-clear"
                 onClick={() => setAuthorShelfFilter(null)}
               >
-                清除
+                លុប
               </button>
             </div>
           ) : null}
@@ -414,10 +572,10 @@ export default function HomePage() {
 
         {isSearchMode ? (
           displayedNovels.length === 0 ? (
-            <p className="tg-home-novel-list__empty" lang="zh-Hans">
+            <p className="tg-home-novel-list__empty" lang="km">
               {(searchKeywordHits?.length ?? 0) === 0
-                ? `未找到与「${searchTrim}」相关的小说（标题、作者或ស្លាក）。`
-                : `在「${searchTrim}」的搜索结果中，没有符合当前筛选条件的小说，请放宽或移除「បានជ្រើសរើស」条件后再试。`}
+                ? `រកមិនឃើញរឿងដែលពាក់ព័ន្ធនឹង 「${searchTrim}」 ទេ (ចំណងជើង អ្នកនិពន្ធ ឬស្លាក)`
+                : formatHomeSearchFilterEmptyKm(searchTrim)}
             </p>
           ) : (
             <ul className="tg-list tg-home-novel-list">
@@ -436,7 +594,7 @@ export default function HomePage() {
             </ul>
           )
         ) : filterHadNoResults ? (
-          <p className="tg-home-novel-list__empty">没有符合当前筛选条件的小说，请放宽条件后再试。</p>
+          <p className="tg-home-novel-list__empty">មិនមានរឿងដែលត្រូវនឹងលក្ខខណ្ឌចម្រាញ់របស់អ្នកទេ សូមព្យាយាមបន្ធូរបន្ថយលក្ខខណ្ឌម្តងទៀត។</p>
         ) : (
           <ul className="tg-list tg-home-novel-list">
             {pagedNovels.map((n) => (
@@ -502,6 +660,7 @@ export default function HomePage() {
       {filterOpen ? (
         <HomeFilterPanelOverlay
           criteria={panelCriteria}
+          panelConfig={filterPanelConfig}
           onCriteriaChange={onFilterCriteriaChange}
           onClose={() => setFilterOpen(false)}
         />

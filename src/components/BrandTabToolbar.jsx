@@ -1,8 +1,19 @@
-import { Link } from 'react-router-dom'
+import { Bell } from 'lucide-react'
+import { Link, NavLink } from 'react-router-dom'
 import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
+import { useTelegramUser } from '../hooks/useTelegramUser.js'
+import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount.js'
 
 /** 任务 / VIP / 账户：左 LOGO（回首页）或返回「&lt;」、中间标题 */
-export default function BrandTabToolbar({ title, titleLang = 'km', backTo }) {
+export default function BrandTabToolbar({
+  title,
+  titleLang = 'km',
+  backTo,
+  titleClassName = '',
+  showDivider = false,
+}) {
+  const tgUser = useTelegramUser()
+  const unreadNotificationCount = useUnreadNotificationCount(tgUser)
   const left = backTo ? (
     <Link
       to={backTo}
@@ -35,14 +46,38 @@ export default function BrandTabToolbar({ title, titleLang = 'km', backTo }) {
   )
 
   return (
-    <header className="tg-toolbar tg-toolbar--large tg-toolbar--no-divider tg-toolbar--brand-tab">
+    <header
+      className={[
+        'tg-toolbar',
+        'tg-toolbar--large',
+        'tg-toolbar--brand-tab',
+        showDivider ? '' : 'tg-toolbar--no-divider',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       {left}
       <div className="tg-toolbar__tab-center">
-        <h1 className="tg-toolbar__title tg-toolbar__title--tab m-0" lang={titleLang}>
+        <h1 className={`tg-toolbar__title tg-toolbar__title--tab m-0 ${titleClassName}`.trim()} lang={titleLang}>
           {title}
         </h1>
       </div>
-      <div className="tg-toolbar__tab-end" aria-hidden="true" />
+      <div className="tg-toolbar__tab-end">
+        <NavLink
+          to="/notifications"
+          className={({ isActive }) =>
+            ['tg-toolbar-notify', isActive ? 'tg-toolbar-notify--active' : ''].filter(Boolean).join(' ')
+          }
+          aria-label="通知"
+        >
+          <Bell size={20} strokeWidth={2} aria-hidden />
+          {unreadNotificationCount > 0 ? (
+            <span className="tg-toolbar-notify__badge" aria-label={`未读通知 ${unreadNotificationCount}`}>
+              {unreadNotificationCount > 99 ? '99+' : String(unreadNotificationCount)}
+            </span>
+          ) : null}
+        </NavLink>
+      </div>
     </header>
   )
 }

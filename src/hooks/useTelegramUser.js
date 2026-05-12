@@ -18,7 +18,20 @@ function readUnsafeUser() {
   return u
 }
 
-/** 从 Telegram 内嵌环境读取当前用户；浏览器直接打开时为 `null`（会话内一般不变，无需 state） */
+export function getTelegramInitDataRaw() {
+  if (typeof window === 'undefined') return ''
+  return String(window.Telegram?.WebApp?.initData || '').trim()
+}
+
+export function getTelegramAuthPayload() {
+  const user = readUnsafeUser()
+  return {
+    telegramUser: user,
+    initDataRaw: getTelegramInitDataRaw(),
+  }
+}
+
+/** 从 Telegram 内嵌环境读取当前用户；浏览器直接打开（无 Telegram 壳）时为 `null`，与真机 Mini App 规则一致 */
 export function useTelegramUser() {
   return readUnsafeUser()
 }

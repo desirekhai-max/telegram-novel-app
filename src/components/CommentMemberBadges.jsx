@@ -1,38 +1,45 @@
 /**
- * 与账号页名字后会员标一致（评论/回复行内紧凑展示）。
- * @param {{ tier: 'normal' | 'gold' | 'vip' | 'vip_gold' }} props
+ * 评论/账户旁会员身份徽标：作者（握笔）、VIP（统一圆环「VIP」）；未登录无徽标。
  */
-export function CommentMemberBadges({ tier }) {
-  if (tier === 'vip_gold') {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-0.5 align-[2px]" aria-hidden>
-        <span className="motion-safe:animate-coin-icon-float relative inline-flex h-[15px] w-[15px] items-center justify-center rounded-full border-[1.5px] border-[#2f56ff]/85 bg-transparent text-[6px] font-semibold leading-none text-[#2f56ff]">
-          VIP
+export function CommentMemberBadges({ tier, role = '', vipActive = false }) {
+  const legacyTier = String(tier ?? '').toLowerCase().trim()
+  const normalizedRole = String(role ?? '').toLowerCase().trim()
+  const showAuthor = normalizedRole === 'author' || legacyTier === 'author'
+  const showVip = Boolean(vipActive) || legacyTier === 'vip' || legacyTier === 'paid_vip'
+  if (!showAuthor && !showVip) return null
+  const base = String(import.meta.env.BASE_URL || '/')
+  const authorIconSrc = `${base.replace(/\/?$/, '/')}author-hand-pen.png`
+  const authorPenBadge = (
+    <span
+      className="tg-member-badge tg-member-badge--author tg-member-badge--author-round"
+      role="img"
+      aria-label="អ្នកនិពន្ធ"
+    >
+      <img
+        className="tg-member-badge__author-img"
+        src={authorIconSrc}
+        alt=""
+        width={12}
+        height={12}
+        decoding="async"
+        draggable={false}
+      />
+    </span>
+  )
+  return (
+    <span className="tg-member-badges inline-flex flex-shrink-0 flex-wrap items-center gap-1 align-middle">
+      {showAuthor ? authorPenBadge : null}
+      {showVip ? (
+        <span
+          className="tg-member-badge tg-member-badge--author tg-member-badge--author-round tg-member-badge--paid-vip-ring"
+          role="img"
+          aria-label="សមាជិក VIP"
+        >
+          <span className="tg-member-badge__paid-vip-label" lang="en" aria-hidden>
+            VIP
+          </span>
         </span>
-        <span className="motion-safe:animate-coin-icon-float inline-flex h-[15px] w-[15px] items-center justify-center rounded-full border border-amber-300/90 bg-transparent text-[6px] font-semibold leading-none text-amber-200">
-          កាក់
-        </span>
-      </span>
-    )
-  }
-  if (tier === 'vip') {
-    return (
-      <span className="inline-flex shrink-0 items-center align-[2px]" aria-hidden>
-        <span className="motion-safe:animate-coin-icon-float relative inline-flex h-[15px] w-[15px] items-center justify-center rounded-full border-[1.5px] border-[#2f56ff]/85 bg-transparent text-[6px] font-semibold leading-none text-[#2f56ff]">
-          VIP
-        </span>
-      </span>
-    )
-  }
-  if (tier === 'gold') {
-    return (
-      <span className="inline-flex shrink-0 items-center align-[2px]" aria-hidden>
-        <span className="motion-safe:animate-coin-icon-float inline-flex h-[15px] w-[15px] items-center justify-center rounded-full border border-amber-300/90 bg-transparent text-[6px] font-semibold leading-none text-amber-200">
-          កាក់
-        </span>
-      </span>
-    )
-  }
-  return null
+      ) : null}
+    </span>
+  )
 }
-

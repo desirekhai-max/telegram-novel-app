@@ -25,7 +25,7 @@ function saveAll(data) {
 /**
  * 为旧评论补齐缺失的 memberTier（一次性快照化），避免后续随账号身份变化。
  * @param {string|number} novelId
- * @param {(item: any) => ''|'normal'|'gold'|'vip'|'vip_gold'} resolveTier
+ * @param {(item: any) => ''|'normal'|'vip'|'author'} resolveTier
  * @returns {boolean} 是否发生写入
  */
 export function snapshotMissingReviewMemberTiers(novelId, resolveTier) {

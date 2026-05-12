@@ -5,15 +5,39 @@ import {
   STATUS_OPTIONS,
 } from '../data/homeFilters.js'
 import { isDefaultHomeFilterCriteria } from './filterNovels.js'
+import { resolveHomeFilterOptionLabel } from './homeFilterPanelConfig.js'
 
 function labelById(options, id) {
   return options.find((o) => o.id === id)?.label ?? id
 }
 
-/** 用于首页「已选」旁可移除标签（顺序与筛选面板一致：篇幅在标签之后） */
-export function getAppliedFilterChips(criteria) {
+/** 用于首页「已选」旁可移除标签（顺序与后台下发的筛选分组顺序一致） */
+export function getAppliedFilterChips(criteria, panelConfig) {
   if (!criteria || isDefaultHomeFilterCriteria(criteria)) return []
   const chips = []
+  const groups = panelConfig?.groups
+  if (groups && groups.length > 0) {
+    for (const g of groups) {
+      if (g.type === 'single') {
+        const key = g.key
+        const val = criteria[key]
+        if (val !== undefined && val !== 'all') {
+          chips.push({
+            removeKey: key,
+            label: resolveHomeFilterOptionLabel(panelConfig, key, String(val)),
+          })
+        }
+      } else if (g.type === 'tags') {
+        for (const t of criteria.tags ?? []) {
+          chips.push({
+            removeKey: `tag:${encodeURIComponent(t)}`,
+            label: resolveHomeFilterOptionLabel(panelConfig, 'tags', String(t)),
+          })
+        }
+      }
+    }
+    return chips
+  }
   if (criteria.genre !== 'all') {
     chips.push({
       removeKey: 'genre',

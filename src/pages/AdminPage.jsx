@@ -6,8 +6,10 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ClipboardList,
+  Crown,
   Funnel,
   Gauge,
+  Library,
   Settings,
   User,
   Users,
@@ -16,6 +18,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useNavigate } from 'react-router-dom'
 import AdminDashboardConsole from '../components/AdminDashboardConsole.jsx'
 import AdminOrdersFilterPanel from '../components/AdminOrdersFilterPanel.jsx'
+import AdminVipPlansPanel from '../components/AdminVipPlansPanel.jsx'
 import { AdminRecordsDateTimeMenu } from '../components/AdminDateTimePickerMenu.jsx'
 import {
   getPhnomPenhTodayStartText,
@@ -28,11 +31,19 @@ import { formatTelegramDisplayName, useTelegramUser } from '../hooks/useTelegram
 import { getAdminAuthHeaders, getAdminUsername, logoutAdmin } from '../lib/adminAuth.js'
 import { readActiveMembers5m } from '../lib/miniAppPresence.js'
 import { apiUrl } from '../lib/apiBase.js'
+import {
+  ADMIN_EXPORT_EMPTY_KM,
+  ADMIN_IP_EMPTY_KM,
+  ADMIN_REPORTS_EMPTY_KM,
+  ADMIN_TABLE_EMPTY_KM,
+  ADMIN_TABLE_FILTER_EMPTY_KM,
+} from '../lib/errorMessagesKm.js'
 
 const NAV = [
   { id: 'dashboard', label: '控制台', icon: Gauge },
   { id: 'lists', label: '阅读记录管理', icon: BookOpen },
   { id: 'orders', label: '订单管理', icon: ClipboardList },
+  { id: 'vipPlans', label: 'VIP套餐', icon: Crown },
   { id: 'users', label: '用户管理', icon: Users },
   { id: 'finance', label: '财务结算', icon: Banknote },
   { id: 'profile', label: '账户资料', icon: User },
@@ -46,11 +57,11 @@ const ADMIN_ACTIVE_TAB_KEY = 'tg-admin-active-tab'
 const PLACEHOLDER = {
   lists: '',
   orders: '',
+  vipPlans: '',
   users: '用户与角色权限管理，支持搜索与批量操作。',
   finance: '账单、对账与提现记录；当前为占位界面。',
   profile: '管理员个人信息与安全设置。',
   analytics: '阅读、转化与留存等图表分析。',
-  reports: '按条件筛选导出报表与漏斗分析。',
   settings: '站点参数、通知与第三方集成配置。',
 }
 
@@ -251,6 +262,8 @@ export default function AdminPage() {
   const [autoRefreshMenuOpen, setAutoRefreshMenuOpen] = useState(false)
   /** 接口返回的全量阅读记录 */
   const [readRecordsSource, setReadRecordsSource] = useState([])
+  const [reportRows, setReportRows] = useState([])
+  const [memberIpRows, setMemberIpRows] = useState([])
   /**
    * null：尚未点击过「搜索」，表格展示全量；
    * 对象：上次搜索时的筛选快照（字段可为空字符串，按字段逐一匹配）
@@ -272,7 +285,7 @@ export default function AdminPage() {
 
   const fetchReadingRecords = useCallback(async () => {
     try {
-      const res = await fetch(apiUrl('/api/reading-records'), {
+      const res = await fetch(apiUrl('/api/admin-legacy/reading-records'), {
         cache: 'no-store',
         headers: { ...getAdminAuthHeaders() },
       })
@@ -281,6 +294,34 @@ export default function AdminPage() {
       setReadRecordsSource(Array.isArray(data?.items) ? data.items : [])
     } catch {
       setReadRecordsSource([])
+    }
+  }, [])
+
+  const fetchReports = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl('/api/admin/reports'), {
+        cache: 'no-store',
+        headers: { ...getAdminAuthHeaders() },
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setReportRows(Array.isArray(data?.items) ? data.items : [])
+    } catch {
+      setReportRows([])
+    }
+  }, [])
+
+  const fetchMemberIps = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl('/api/admin-legacy/member-ips'), {
+        cache: 'no-store',
+        headers: { ...getAdminAuthHeaders() },
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setMemberIpRows(Array.isArray(data?.items) ? data.items : [])
+    } catch {
+      setMemberIpRows([])
     }
   }, [])
 
@@ -297,6 +338,18 @@ export default function AdminPage() {
     void fetchReadingRecords()
     return undefined
   }, [activeId, fetchReadingRecords])
+
+  useEffect(() => {
+    if (activeId !== 'reports') return undefined
+    void fetchReports()
+    return undefined
+  }, [activeId, fetchReports])
+
+  useEffect(() => {
+    if (activeId !== 'users') return undefined
+    void fetchMemberIps()
+    return undefined
+  }, [activeId, fetchMemberIps])
 
   useEffect(() => {
     const onRefresh = () => void fetchReadingRecords()
@@ -484,7 +537,7 @@ export default function AdminPage() {
         : filterReadingRecords(src, appliedReadRecordsFilter)
 
     if (rows.length === 0) {
-      window.alert('当前没有可导出的记录')
+      window.alert(ADMIN_EXPORT_EMPTY_KM)
       return
     }
     downloadReadingRecordsCsv(readingRecordsToCsv(rows))
@@ -956,12 +1009,12 @@ export default function AdminPage() {
                   <tbody>
                     {readingRecordsRows.length === 0 ? (
                       <tr>
-                        <td className="tg-admin-records-filter__table-empty" colSpan={8}>
+                        <td className="tg-admin-records-filter__table-empty" colSpan={8} lang="km">
                           {readRecordsSource.length === 0
-                            ? '暂无数据'
+                            ? ADMIN_TABLE_EMPTY_KM
                             : appliedReadRecordsFilter != null
-                              ? '没有符合当前筛选条件的记录'
-                              : '暂无数据'}
+                              ? ADMIN_TABLE_FILTER_EMPTY_KM
+                              : ADMIN_TABLE_EMPTY_KM}
                         </td>
                       </tr>
                     ) : (
@@ -984,6 +1037,90 @@ export default function AdminPage() {
             </div>
           ) : activeId === 'orders' ? (
             <AdminOrdersFilterPanel />
+          ) : activeId === 'vipPlans' ? (
+            <AdminVipPlansPanel />
+          ) : activeId === 'users' ? (
+            <div className="tg-admin-records-filter">
+              <div className="tg-admin-records-filter__table-wrap">
+                <table className="tg-admin-records-filter__table" aria-label="用户注册与登录IP">
+                  <thead>
+                    <tr>
+                      <th scope="col">会员ID</th>
+                      <th scope="col">注册IP</th>
+                      <th scope="col">注册地区</th>
+                      <th scope="col">登录IP</th>
+                      <th scope="col">登录地区</th>
+                      <th scope="col">最近登录时间</th>
+                      <th scope="col">在线状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {memberIpRows.length === 0 ? (
+                      <tr>
+                        <td className="tg-admin-records-filter__table-empty" colSpan={7} lang="km">
+                          {ADMIN_IP_EMPTY_KM}
+                        </td>
+                      </tr>
+                    ) : (
+                      memberIpRows.map((it, idx) => (
+                        <tr key={`${it.memberId || 'member'}-${idx}`}>
+                          <td>{String(it?.memberId || '—')}</td>
+                          <td>{String(it?.registerIp || '—')}</td>
+                          <td>{String(it?.registerLocation || '—')}</td>
+                          <td>{String(it?.loginIp || '—')}</td>
+                          <td>{String(it?.loginLocation || '—')}</td>
+                          <td>
+                            {Number(it?.loginAt) > 0
+                              ? new Date(Number(it.loginAt)).toLocaleString('zh-CN', { hour12: false })
+                              : '—'}
+                          </td>
+                          <td>{it?.online ? '在线' : '离线'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : activeId === 'reports' ? (
+            <div className="tg-admin-records-filter">
+              <div className="tg-admin-records-filter__table-wrap">
+                <table className="tg-admin-records-filter__table" aria-label="举报记录列表">
+                  <thead>
+                    <tr>
+                      <th scope="col">时间</th>
+                      <th scope="col">小说ID</th>
+                      <th scope="col">小说标题</th>
+                      <th scope="col">举报人</th>
+                      <th scope="col">举报内容</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportRows.length === 0 ? (
+                      <tr>
+                        <td className="tg-admin-records-filter__table-empty" colSpan={5} lang="km">
+                          {ADMIN_REPORTS_EMPTY_KM}
+                        </td>
+                      </tr>
+                    ) : (
+                      reportRows.map((it, idx) => (
+                        <tr key={`${it.id || 'report'}-${idx}`}>
+                          <td>
+                            {Number(it?.at) > 0
+                              ? new Date(Number(it.at)).toLocaleString('zh-CN', { hour12: false })
+                              : '—'}
+                          </td>
+                          <td>{String(it?.novelId || '—')}</td>
+                          <td>{String(it?.novelTitle || '—')}</td>
+                          <td>{String(it?.userName || '匿名')}</td>
+                          <td>{String(it?.text || '') || '—'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           ) : (
             <p className="tg-admin-shell__panel-text">{PLACEHOLDER[activeId]}</p>
           )}

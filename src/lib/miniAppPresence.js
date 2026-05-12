@@ -1,4 +1,6 @@
 import { apiUrl } from './apiBase.js'
+import { apiVerboseErrorKm } from './errorMessagesKm.js'
+import { bumpLocalViewMax, getLocalViewMax } from './novelViewCountLocal.js'
 
 function isTelegramMiniApp() {
   try {
@@ -134,11 +136,31 @@ export async function appendReadingRecord(record) {
   }
 }
 
+export async function fetchReadingRecordsByMemberId(memberId = '') {
+  const mid = String(memberId || '').trim()
+  if (!mid) return []
+  try {
+    const res = await fetch(
+      apiUrl(`/api/reading-records/by-member?memberId=${encodeURIComponent(mid)}&t=${Date.now()}`),
+      { cache: 'no-store' },
+    )
+    if (!res.ok) throw new Error('fetch reading records by member failed')
+    const data = await res.json()
+    return Array.isArray(data?.items) ? data.items : []
+  } catch {
+    return []
+  }
+}
+
 export async function fetchNovelViewCount(novelId, baseCount = 0) {
+  const base = Number(baseCount)
+  const safeBase = Number.isFinite(base) && base >= 0 ? Math.floor(base) : 0
+  const localMax = getLocalViewMax(novelId)
+  let serverCount = null
   try {
     const res = await fetch(
       apiUrl(
-        `/api/novel-views?novelId=${encodeURIComponent(String(novelId || ''))}&base=${encodeURIComponent(String(baseCount || 0))}`,
+        `/api/novel-views?novelId=${encodeURIComponent(String(novelId || ''))}&base=${encodeURIComponent(String(safeBase))}`,
       ),
       {
       cache: 'no-store',
@@ -147,12 +169,13 @@ export async function fetchNovelViewCount(novelId, baseCount = 0) {
     if (!res.ok) throw new Error('fetch novel views failed')
     const data = await res.json()
     const count = Number(data?.count)
-    if (Number.isFinite(count) && count >= 0) return Math.floor(count)
+    if (Number.isFinite(count) && count >= 0) serverCount = Math.floor(count)
   } catch {
     /* ignore network failure */
   }
-  const base = Number(baseCount)
-  return Number.isFinite(base) && base >= 0 ? Math.floor(base) : 0
+  const merged = Math.max(safeBase, serverCount ?? 0, localMax)
+  bumpLocalViewMax(novelId, merged)
+  return merged
 }
 
 export async function incrementNovelViewCount(novelId, delta = 1, baseCount = 0) {
@@ -169,7 +192,11 @@ export async function incrementNovelViewCount(novelId, delta = 1, baseCount = 0)
     if (!res.ok) throw new Error('increment novel views failed')
     const data = await res.json()
     const count = Number(data?.count)
-    if (Number.isFinite(count) && count >= 0) return Math.floor(count)
+    if (Number.isFinite(count) && count >= 0) {
+      const c = Math.floor(count)
+      bumpLocalViewMax(novelId, c)
+      return c
+    }
   } catch {
     /* ignore network failure */
   }
@@ -228,7 +255,7 @@ export async function appendNovelReviewVerbose(novelId, entry) {
       const bodyText = await res.text().catch(() => '')
       return {
         item: null,
-        error: `HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`,
+        error: apiVerboseErrorKm(`HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`),
         endpoint,
       }
     }
@@ -237,7 +264,7 @@ export async function appendNovelReviewVerbose(novelId, entry) {
   } catch (err) {
     return {
       item: null,
-      error: err instanceof Error ? err.message : 'network error',
+      error: apiVerboseErrorKm(err instanceof Error ? err.message : 'network error'),
       endpoint: apiUrl('/api/reviews/append'),
     }
   }
@@ -276,7 +303,7 @@ export async function appendNovelReplyVerbose(novelId, parentCommentId, entry) {
       const bodyText = await res.text().catch(() => '')
       return {
         item: null,
-        error: `HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`,
+        error: apiVerboseErrorKm(`HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`),
         endpoint,
       }
     }
@@ -285,13 +312,43 @@ export async function appendNovelReplyVerbose(novelId, parentCommentId, entry) {
   } catch (err) {
     return {
       item: null,
-      error: err instanceof Error ? err.message : 'network error',
+      error: apiVerboseErrorKm(err instanceof Error ? err.message : 'network error'),
       endpoint: apiUrl('/api/replies/append'),
     }
   }
 }
 
-export async function voteNovelReviewVerbose(novelId, commentId, voterId, action) {
+export async function appendNovelReportVerbose(novelId, entry) {
+  try {
+    const endpoint = apiUrl('/api/reports/append')
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        novelId: String(novelId || ''),
+        entry,
+      }),
+    })
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '')
+      return {
+        item: null,
+        error: apiVerboseErrorKm(`HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`),
+        endpoint,
+      }
+    }
+    const data = await res.json().catch(() => ({}))
+    return { item: data?.item ?? null, error: '', endpoint }
+  } catch (err) {
+    return {
+      item: null,
+      error: apiVerboseErrorKm(err instanceof Error ? err.message : 'network error'),
+      endpoint: apiUrl('/api/reports/append'),
+    }
+  }
+}
+
+export async function voteNovelReviewVerbose(novelId, commentId, voterId, action, voterProfile = null) {
   try {
     const endpoint = apiUrl('/api/reviews/vote')
     const res = await fetch(endpoint, {
@@ -302,6 +359,8 @@ export async function voteNovelReviewVerbose(novelId, commentId, voterId, action
         commentId: String(commentId || ''),
         voterId: String(voterId || ''),
         action: String(action || ''),
+        voterName: String(voterProfile?.name || ''),
+        voterAvatar: String(voterProfile?.avatar || ''),
       }),
     })
     if (!res.ok) {
@@ -310,7 +369,7 @@ export async function voteNovelReviewVerbose(novelId, commentId, voterId, action
         ok: false,
         likes: null,
         dislikes: null,
-        error: `HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`,
+        error: apiVerboseErrorKm(`HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`),
         endpoint,
       }
     }
@@ -327,7 +386,7 @@ export async function voteNovelReviewVerbose(novelId, commentId, voterId, action
       ok: false,
       likes: null,
       dislikes: null,
-      error: err instanceof Error ? err.message : 'network error',
+      error: apiVerboseErrorKm(err instanceof Error ? err.message : 'network error'),
       endpoint: apiUrl('/api/reviews/vote'),
     }
   }
@@ -374,7 +433,7 @@ export async function toggleNovelLikeVerbose(novelId, userId, like) {
         ok: false,
         count: null,
         liked: null,
-        error: `HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`,
+        error: apiVerboseErrorKm(`HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`),
         endpoint,
       }
     }
@@ -391,8 +450,88 @@ export async function toggleNovelLikeVerbose(novelId, userId, like) {
       ok: false,
       count: null,
       liked: null,
-      error: err instanceof Error ? err.message : 'network error',
+      error: apiVerboseErrorKm(err instanceof Error ? err.message : 'network error'),
       endpoint: apiUrl('/api/novel-likes/toggle'),
+    }
+  }
+}
+
+export async function fetchNovelFavoriteState(novelId, userId = '', baseCount = 0) {
+  try {
+    const res = await fetch(
+      apiUrl(
+        `/api/novel-favorites?novelId=${encodeURIComponent(String(novelId || ''))}&userId=${encodeURIComponent(String(userId || ''))}`,
+      ),
+      { cache: 'no-store' },
+    )
+    if (!res.ok) throw new Error('fetch novel favorites failed')
+    const data = await res.json()
+    const count = Number(data?.count)
+    return {
+      count: Number.isFinite(count) && count >= 0 ? Math.floor(count) : Math.max(0, Number(baseCount) || 0),
+      favorited: Boolean(data?.favorited),
+    }
+  } catch {
+    return {
+      count: Math.max(0, Number(baseCount) || 0),
+      favorited: false,
+    }
+  }
+}
+
+export async function fetchFavoritedNovelIdsByUser(userId = '') {
+  const uid = String(userId || '').trim()
+  if (!uid) return []
+  try {
+    const res = await fetch(
+      apiUrl(`/api/novel-favorites/by-user?userId=${encodeURIComponent(uid)}&t=${Date.now()}`),
+      { cache: 'no-store' },
+    )
+    if (!res.ok) throw new Error('fetch user favorites failed')
+    const data = await res.json()
+    return Array.isArray(data?.novelIds) ? data.novelIds.map((v) => String(v)) : []
+  } catch {
+    return []
+  }
+}
+
+export async function toggleNovelFavoriteVerbose(novelId, userId, favorite) {
+  try {
+    const endpoint = apiUrl('/api/novel-favorites/toggle')
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        novelId: String(novelId || ''),
+        userId: String(userId || ''),
+        favorite: Boolean(favorite),
+      }),
+    })
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '')
+      return {
+        ok: false,
+        count: null,
+        favorited: null,
+        error: apiVerboseErrorKm(`HTTP ${res.status}${bodyText ? `: ${bodyText.slice(0, 180)}` : ''}`),
+        endpoint,
+      }
+    }
+    const data = await res.json().catch(() => ({}))
+    return {
+      ok: Boolean(data?.ok),
+      count: Number(data?.count),
+      favorited: Boolean(data?.favorited),
+      error: '',
+      endpoint,
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      count: null,
+      favorited: null,
+      error: apiVerboseErrorKm(err instanceof Error ? err.message : 'network error'),
+      endpoint: apiUrl('/api/novel-favorites/toggle'),
     }
   }
 }

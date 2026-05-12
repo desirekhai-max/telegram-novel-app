@@ -6,7 +6,7 @@ function normalizeTag(t) {
 }
 
 /** 将卡片上点选的「题材」文案落到 genre 或 tags（与筛选面板语义一致） */
-export function applyThemeLabelToCriteria(themeLabel, criteria) {
+export function applyThemeLabelToCriteria(themeLabel, criteria, maxTags = MAX_SELECTED_FILTER_TAGS) {
   const label = normalizeTag(themeLabel)
   if (!label) return criteria ?? EMPTY_HOME_FILTER_CRITERIA
   const c = { ...(criteria ?? EMPTY_HOME_FILTER_CRITERIA) }
@@ -17,8 +17,8 @@ export function applyThemeLabelToCriteria(themeLabel, criteria) {
   }
   const tags = [...(c.tags ?? [])]
   if (!tags.includes(label)) tags.push(label)
-  c.tags =
-    tags.length > MAX_SELECTED_FILTER_TAGS ? tags.slice(-MAX_SELECTED_FILTER_TAGS) : tags
+  const cap = Math.max(1, Math.min(20, Math.floor(Number(maxTags)) || MAX_SELECTED_FILTER_TAGS))
+  c.tags = tags.length > cap ? tags.slice(-cap) : tags
   return c
 }
 
@@ -27,14 +27,14 @@ export function mergeSourceOriginal(criteria) {
   return c
 }
 
-export function mergeAppendTag(criteria, tag) {
+export function mergeAppendTag(criteria, tag, maxTags = MAX_SELECTED_FILTER_TAGS) {
   const t = normalizeTag(tag)
   if (!t) return criteria ?? EMPTY_HOME_FILTER_CRITERIA
   const c = { ...(criteria ?? EMPTY_HOME_FILTER_CRITERIA) }
   const tags = [...(c.tags ?? [])]
   if (!tags.includes(t)) tags.push(t)
-  c.tags =
-    tags.length > MAX_SELECTED_FILTER_TAGS ? tags.slice(-MAX_SELECTED_FILTER_TAGS) : tags
+  const cap = Math.max(1, Math.min(20, Math.floor(Number(maxTags)) || MAX_SELECTED_FILTER_TAGS))
+  c.tags = tags.length > cap ? tags.slice(-cap) : tags
   return c
 }
 

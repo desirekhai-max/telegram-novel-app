@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import AmbientBackdrop from './components/AmbientBackdrop.jsx'
 import BottomNav from './components/BottomNav.jsx'
 import { AppChromeProvider } from './contexts/AppChromeProvider.jsx'
+import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.jsx'
 import { useAppChrome } from './contexts/useAppChrome.js'
 import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
 import { registerPresencePing } from './lib/miniAppPresence.js'
@@ -11,10 +12,15 @@ import AboutPage from './pages/AboutPage.jsx'
 import AccountPage from './pages/AccountPage.jsx'
 import AdminPage from './pages/AdminPage.jsx'
 import AdminLoginPage from './pages/AdminLoginPage.jsx'
+import ContactUsPage from './pages/ContactUsPage.jsx'
 import HomePage from './pages/HomePage.jsx'
 import NotificationsPage from './pages/NotificationsPage.jsx'
+import OrderHistoryPage from './pages/OrderHistoryPage.jsx'
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage.jsx'
+import ReadingHistoryPage from './pages/ReadingHistoryPage.jsx'
 import ReaderPage from './pages/ReaderPage.jsx'
-import TasksPage from './pages/TasksPage.jsx'
+import SavedPage from './pages/SavedPage.jsx'
+import TermsOfServicePage from './pages/TermsOfServicePage.jsx'
 import VipPage from './pages/VipPage.jsx'
 
 function AdminGuard() {
@@ -37,18 +43,57 @@ function AdminGuard() {
   return status === 'allowed' ? <AdminPage /> : <Navigate to="/admin-login?redirect=/admin" replace />
 }
 
+function AppRoutes({ routeLocation }) {
+  return (
+    <Routes location={routeLocation}>
+      <Route element={<PageTransitionLayout />}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/account" element={<AccountPage />} />
+        <Route path="/account/orders" element={<OrderHistoryPage />} />
+        <Route path="/account/reading-history" element={<ReadingHistoryPage />} />
+        <Route path="/account/saved" element={<SavedPage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/contact-us" element={<ContactUsPage />} />
+        <Route path="/vip" element={<VipPage />} />
+        <Route path="/admin" element={<AdminGuard />} />
+        <Route path="/admin-login" element={<AdminLoginPage />} />
+        <Route path="/read/:id" element={<ReaderPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
+}
+
+function isBottomNavHiddenByPath(pathname) {
+  const isReader = pathname.startsWith('/read/')
+  const isAdminLogin = pathname === '/admin-login'
+  const isAdminRoute = pathname === '/admin' || isAdminLogin
+  return isReader || isAdminRoute
+}
+
 function AppShell() {
   const location = useLocation()
+  const { swipe } = useSwipeBack()
   const { searchExploreOpen, filterPanelOpen, homeSearchInputFocused } = useAppChrome()
 
   const isReader = location.pathname.startsWith('/read/')
-  const isAbout = location.pathname === '/about'
   const isAdminLogin = location.pathname === '/admin-login'
   const isAdminRoute = location.pathname === '/admin' || isAdminLogin
+  const previousLocationRef = useRef(null)
+  const currentLocationRef = useRef(location)
+
   useLayoutEffect(() => {
     document.body.classList.toggle('tg-desktop-admin', isAdminRoute)
     return () => document.body.classList.remove('tg-desktop-admin')
   }, [isAdminRoute])
+
+  useEffect(() => {
+    previousLocationRef.current = currentLocationRef.current
+    currentLocationRef.current = location
+  }, [location])
 
   useEffect(() => {
     const adminOnline = location.pathname === '/admin' && isAdminAuthed()
@@ -73,35 +118,48 @@ function AppShell() {
   }, [location.pathname])
 
   const bottomNavHidden =
-    isReader || searchExploreOpen || filterPanelOpen || isAbout || isAdminRoute || homeSearchInputFocused
+    isReader || searchExploreOpen || filterPanelOpen || isAdminRoute || homeSearchInputFocused
+  const showSwipeUnderlay = swipe.active && previousLocationRef.current
+  const prevBottomNavHidden = previousLocationRef.current
+    ? isBottomNavHiddenByPath(previousLocationRef.current.pathname)
+    : true
 
   return (
     <>
       <AmbientBackdrop />
       <div className="tg-app-root">
-        <Routes>
-          <Route element={<PageTransitionLayout />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/tasks" element={<TasksPage />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
-            <Route path="/vip" element={<VipPage />} />
-            <Route path="/account" element={<AccountPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/admin" element={<AdminGuard />} />
-            <Route path="/admin-login" element={<AdminLoginPage />} />
-            <Route path="/read/:id" element={<ReaderPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        {showSwipeUnderlay ? (
+          <div className="tg-swipe-underlay" aria-hidden>
+            <AppRoutes routeLocation={previousLocationRef.current} />
+            <div
+              className={
+                prevBottomNavHidden
+                  ? 'tg-bottom-nav-dock tg-bottom-nav-dock--hidden'
+                  : 'tg-bottom-nav-dock'
+              }
+            >
+              <BottomNav />
+            </div>
+          </div>
+        ) : null}
         <div
-          className={
-            bottomNavHidden
-              ? 'tg-bottom-nav-dock tg-bottom-nav-dock--hidden'
-              : 'tg-bottom-nav-dock'
-          }
-          inert={bottomNavHidden}
+          className="tg-swipe-foreground"
+          style={{
+            transform: swipe.active && swipe.dx > 0 ? `translateX(${swipe.dx}px)` : undefined,
+            transition: swipe.animating ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+          }}
         >
-          <BottomNav />
+          <AppRoutes routeLocation={location} />
+          <div
+            className={
+              bottomNavHidden
+                ? 'tg-bottom-nav-dock tg-bottom-nav-dock--hidden'
+                : 'tg-bottom-nav-dock'
+            }
+            inert={bottomNavHidden}
+          >
+            <BottomNav />
+          </div>
         </div>
       </div>
     </>
@@ -112,7 +170,9 @@ export default function App() {
   return (
     <BrowserRouter unstable_useTransitions={false}>
       <AppChromeProvider>
-        <AppShell />
+        <SwipeBackProvider>
+          <AppShell />
+        </SwipeBackProvider>
       </AppChromeProvider>
     </BrowserRouter>
   )

@@ -27,22 +27,48 @@ export function formatChapterRelativeTime(minutesAgo) {
 
 /**
  * 卡片「最新：…（…）」内括号：秒前 → 分钟前 → 小时前 → 天前 → 个月前 → 年前。
- * 优先 `lastChapterMinutesAgo`（支持小数，如 0.5 表示约 30 秒前）；无则用 `updatedAtMs` 与当前时间差。
+ * 优先 `updatedAtMs` 做实时相对时间；仅在缺失时间戳时退回 `lastChapterMinutesAgo`。
  */
 export function formatLatestChapterRelativeLabel(novel, nowMs = Date.now()) {
+  const u = Number(novel?.updatedAtMs)
+  if (Number.isFinite(u) && u > 0) {
+    return formatSecondsAgo(Math.floor((nowMs - u) / 1000))
+  }
   const mins = Number(novel?.lastChapterMinutesAgo)
   if (Number.isFinite(mins) && mins >= 0) {
     return formatSecondsAgo(Math.round(mins * 60))
   }
-  const u = Number(novel?.updatedAtMs)
-  if (!Number.isFinite(u) || u <= 0) return ''
-  return formatSecondsAgo(Math.floor((nowMs - u) / 1000))
+  return ''
 }
 
 export function formatViewCount(n) {
   const v = Math.floor(Number(n))
   if (!Number.isFinite(v) || v < 0) return '0'
   return v.toLocaleString('en-US')
+}
+
+/**
+ * 大数字缩写（1000 → 1K）：用于首页卡片浏览 / 点赞 / 收藏，节省横向宽度。
+ * 不足 1000 原样；≥1000 用 K（必要时一位小数）；≥100 万用 M。
+ */
+export function formatCompactCount(n) {
+  const v = Math.floor(Number(n))
+  if (!Number.isFinite(v) || v < 0) return '0'
+  if (v < 1000) return String(v)
+  if (v < 1_000_000) {
+    const k = v / 1000
+    const rounded = k >= 100 ? Math.round(k) : Math.round(k * 10) / 10
+    const s = Number.isInteger(rounded)
+      ? String(rounded)
+      : rounded.toFixed(1).replace(/\.0$/, '')
+    return `${s}K`
+  }
+  const m = v / 1_000_000
+  const rounded = m >= 100 ? Math.round(m) : Math.round(m * 10) / 10
+  const s = Number.isInteger(rounded)
+    ? String(rounded)
+    : rounded.toFixed(1).replace(/\.0$/, '')
+  return `${s}M`
 }
 
 /** 统计已发布章节正文字符数（每章标题 + 各段 body）；作者增删章节后卡片字数会随之变化 */
@@ -124,13 +150,13 @@ export function getAutoMeatPercent(novel, cohort) {
   return Math.min(100, Math.round((mine / maxC) * 10000) / 100)
 }
 
-/** wordCountWan：≥1 时为「万字」规模；小于 1 时按总字数显示 K 字 */
+/** wordCountWan：≥1 时为「ម៉ឺនអក្សរ」规模；小于 1 时按总字数显示 K */
 export function formatWordCountFooter(wan) {
   const w = Number(wan)
   if (!Number.isFinite(w) || w <= 0) return '0អក្សរ'
   if (w >= 1) {
     const t = w % 1 === 0 ? String(w) : w.toFixed(1).replace(/\.0$/, '')
-    return `${t}万អក្សរ`
+    return `${t}ម៉ឺនអក្សរ`
   }
   const chars = Math.round(w * 10000)
   if (chars >= 1000) return `${(chars / 1000).toFixed(1).replace(/\.0$/, '')}Kអក្សរ`

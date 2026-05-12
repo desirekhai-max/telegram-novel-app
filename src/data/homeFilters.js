@@ -1,4 +1,7 @@
-/** 首页筛选面板选项（演示数据，可替换为 API） */
+/**
+ * 首页筛选默认词条（小说 genreId/status/source/tags 等仍须与本文件 id 对齐）。
+ * 面板标题、分组顺序与展示文案可由后台 JSON 覆盖，见 `fetchHomeFilterPanelConfig`、`normalizeHomeFilterPanelConfig`。
+ */
 
 export const GENRE_OPTIONS = [
   { id: 'all', label: 'គ្រប់ប្រភេទ' },
@@ -26,9 +29,9 @@ export const STATUS_OPTIONS = [
 
 export const LENGTH_OPTIONS = [
   { id: 'all', label: 'ទំហំទាំងអស់' },
-  { id: 'short', label: 'រឿងខ្លី ក្រោម10ម៉ឺនពាក្យ ' },
-  { id: 'medium', label: 'រឿងមធ្យម 10ម៉ឺន-1លានពាក្យ ' },
-  { id: 'long', label: 'រឿងវែង លើសពី១លានពាក្យ ' },
+  { id: 'short', label: 'រឿងខ្លី ក្រោម2ម៉ឺនពាក្យ' },
+  { id: 'medium', label: 'រឿងមធ្យម 2ម៉ឺន-10ម៉ឺនពាក្យ' },
+  { id: 'long', label: 'រឿងវែង លើស10ម៉ឺនពាក្យ' },
 ]
 
 export const SOURCE_OPTIONS = [

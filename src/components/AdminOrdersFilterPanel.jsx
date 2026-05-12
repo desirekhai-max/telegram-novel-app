@@ -9,6 +9,16 @@ import {
   toDateOnly,
 } from '../lib/adminDateTimePickerUtils.js'
 import { formatTelegramDisplayName, useTelegramUser } from '../hooks/useTelegramUser.js'
+import {
+  ADMIN_DIALOG_CANCEL_KM,
+  ADMIN_DIALOG_CONFIRM_KM,
+  ADMIN_ORDER_LOCK_BODY_KM,
+  ADMIN_ORDER_LOCK_TITLE_KM,
+  ADMIN_ORDER_PAY_CONFIRM_BODY_KM,
+  ADMIN_ORDER_PAY_CONFIRM_TITLE_KM,
+  ADMIN_ORDER_PAY_FAIL_BTN_KM,
+  ADMIN_ORDER_PAY_SUCCESS_BTN_KM,
+} from '../lib/errorMessagesKm.js'
 import { buildOrderNo } from '../lib/orderNo.js'
 
 const ORDER_STATUS_OPTIONS = ['全部状态', '待支付', '待确认', '支付成功', '支付失败']
@@ -702,18 +712,18 @@ export default function AdminOrdersFilterPanel() {
             aria-label="关闭"
           />
           <div className="tg-admin-order-lock-dialog__panel">
-            <h2 id="tg-admin-order-lock-dialog-title" className="tg-admin-order-lock-dialog__title">
-              系统提示
+            <h2 id="tg-admin-order-lock-dialog-title" className="tg-admin-order-lock-dialog__title" lang="km">
+              {ADMIN_ORDER_LOCK_TITLE_KM}
             </h2>
-            <p className="tg-admin-order-lock-dialog__subtitle">
-              您确定要锁定此订单的操作吗？锁定后其他人将无法操作！
+            <p className="tg-admin-order-lock-dialog__subtitle" lang="km">
+              {ADMIN_ORDER_LOCK_BODY_KM}
             </p>
             <div className="tg-admin-order-lock-dialog__actions">
-              <button type="button" className="tg-admin-order-lock-dialog__btn tg-admin-order-lock-dialog__btn--ghost" onClick={closeOrderLockDialog}>
-                取消
+              <button type="button" className="tg-admin-order-lock-dialog__btn tg-admin-order-lock-dialog__btn--ghost" onClick={closeOrderLockDialog} lang="km">
+                {ADMIN_DIALOG_CANCEL_KM}
               </button>
-              <button type="button" className="tg-admin-order-lock-dialog__btn tg-admin-order-lock-dialog__btn--primary" onClick={confirmOrderLock}>
-                确定
+              <button type="button" className="tg-admin-order-lock-dialog__btn tg-admin-order-lock-dialog__btn--primary" onClick={confirmOrderLock} lang="km">
+                {ADMIN_DIALOG_CONFIRM_KM}
               </button>
             </div>
           </div>
@@ -734,22 +744,23 @@ export default function AdminOrdersFilterPanel() {
             aria-label="关闭"
           />
           <div className="tg-admin-order-lock-dialog__panel">
-            <h2 id="tg-admin-order-await-paid-dialog-title" className="tg-admin-order-lock-dialog__title">
-              系统提示
+            <h2 id="tg-admin-order-await-paid-dialog-title" className="tg-admin-order-lock-dialog__title" lang="km">
+              {ADMIN_ORDER_PAY_CONFIRM_TITLE_KM}
             </h2>
-            <p className="tg-admin-order-lock-dialog__subtitle">
-              您确认已收到该订单款项吗？确认后订单状态将变为「支付成功」。
+            <p className="tg-admin-order-lock-dialog__subtitle" lang="km">
+              {ADMIN_ORDER_PAY_CONFIRM_BODY_KM}
             </p>
             <div className="tg-admin-order-lock-dialog__actions">
               <button
                 type="button"
                 className="tg-admin-order-lock-dialog__btn tg-admin-order-lock-dialog__btn--ghost"
                 onClick={rejectAwaitPaid}
+                lang="km"
               >
-                支付失败
+                {ADMIN_ORDER_PAY_FAIL_BTN_KM}
               </button>
-              <button type="button" className="tg-admin-order-lock-dialog__btn tg-admin-order-lock-dialog__btn--primary" onClick={confirmAwaitPaid}>
-                支付成功
+              <button type="button" className="tg-admin-order-lock-dialog__btn tg-admin-order-lock-dialog__btn--primary" onClick={confirmAwaitPaid} lang="km">
+                {ADMIN_ORDER_PAY_SUCCESS_BTN_KM}
               </button>
             </div>
           </div>

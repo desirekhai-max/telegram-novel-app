@@ -35,10 +35,11 @@
    */
   --tg-bottom-nav-gap: calc(4rem + env(safe-area-inset-bottom, 0px));
 
-  --tg-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-  --tg-reading: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', SimSun,
-    'Times New Roman', serif;
+  /* Noto Sans/Serif Khmer：Android 上高棉文回退字体观感弱，显式优先使用 */
+  --tg-font: 'Noto Sans Khmer', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --tg-reading: 'Noto Serif Khmer', 'Source Han Serif SC', 'Noto Serif SC',
+    'Songti SC', SimSun, 'Times New Roman', serif;
 }
 
 *,
@@ -94,6 +95,27 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   overflow-x: hidden;
+}
+
+/* 手势返回分层：下层为真实上一页快照，上层跟手滑动 */
+.tg-swipe-underlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--tg-app-surface);
+}
+
+.tg-swipe-underlay > * {
+  pointer-events: none;
+}
+
+.tg-swipe-foreground {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
+  background: var(--tg-app-surface);
+  will-change: transform;
 }
 
 /* 路由过渡层：避免位移动画出现横向滚动条 */
@@ -226,6 +248,11 @@ a {
   touch-action: pan-y;
 }
 
+/* 正文全屏时关掉 will-change，避免子树内 position:fixed 相对本层错位、顶沿露缝/露字（Telegram WebView 常见） */
+.tg-reader-swipe-sheet--article-open {
+  will-change: auto;
+}
+
 .tg-toolbar--reader-home-fixed {
   flex-shrink: 0;
   position: sticky;
@@ -236,6 +263,519 @@ a {
 /* អំពីយើងខ្ញុំ /about：底栏隐藏时不再预留底栏高度 */
 .tg-app--about {
   padding-bottom: 0;
+  height: 100vh;
+  max-height: 100vh;
+  min-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+/* 账户页：与首页一致锁定视口高度，把滚动交给内部 main（桌面鼠标滚轮也可用） */
+.tg-app--account {
+  height: 100vh;
+  max-height: 100vh;
+  min-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+/* 个人中心头像卡 · 内壳（蓝/紫/粉/青高光 + 深色底） */
+.tg-account-profile-card__shell {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-color: var(--tg-app-surface);
+  background-image:
+    linear-gradient(152deg, rgba(51, 144, 236, 0.14) 0%, transparent 46%),
+    linear-gradient(218deg, rgba(168, 85, 247, 0.11) 0%, transparent 48%),
+    linear-gradient(328deg, rgba(244, 114, 182, 0.09) 0%, transparent 46%),
+    linear-gradient(32deg, rgba(34, 211, 238, 0.11) 0%, transparent 42%),
+    linear-gradient(185deg, rgba(22, 28, 52, 0.88) 0%, rgba(10, 12, 26, 0.97) 72%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.38),
+    inset 0 0 72px rgba(51, 144, 236, 0.07),
+    inset 0 -48px 80px rgba(168, 85, 247, 0.06),
+    0 0 0 1px rgba(34, 211, 238, 0.07);
+}
+
+.tg-account-profile-card__ambient {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 96% 76% at 10% 5%, rgba(51, 144, 236, 0.48), transparent 58%),
+    radial-gradient(ellipse 92% 74% at 96% 16%, rgba(168, 85, 247, 0.42), transparent 56%),
+    radial-gradient(ellipse 88% 68% at 5% 93%, rgba(244, 114, 182, 0.34), transparent 54%),
+    radial-gradient(ellipse 84% 64% at 93% 89%, rgba(34, 211, 238, 0.4), transparent 52%);
+  animation: tg-account-profile-card-ambient 14s ease-in-out infinite alternate;
+}
+
+@keyframes tg-account-profile-card-ambient {
+  0% {
+    opacity: 0.68;
+    filter: saturate(96%);
+  }
+
+  50% {
+    opacity: 0.96;
+    filter: saturate(122%);
+  }
+
+  100% {
+    opacity: 0.74;
+    filter: saturate(102%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-account-profile-card__ambient {
+    animation: none;
+    opacity: 0.86;
+    filter: saturate(108%);
+  }
+}
+
+.tg-account-profile-card__title {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 0 28px rgba(51, 144, 236, 0.22),
+    0 0 40px rgba(168, 85, 247, 0.12);
+}
+
+.tg-account-profile-card__handle {
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+/* 个人中心 · 方案胶囊：默认青蓝；`--vip-member` 琥珀 VIP；`--author-plan` 作者金 */
+.tg-account-plan-badge {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(125, 211, 252, 0.38);
+  background:
+    linear-gradient(
+      155deg,
+      rgba(56, 189, 248, 0.28) 0%,
+      rgba(99, 102, 241, 0.18) 42%,
+      rgba(30, 41, 59, 0.72) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.35),
+    0 0 0 1px rgba(56, 189, 248, 0.1),
+    0 4px 16px rgba(56, 189, 248, 0.13),
+    0 2px 8px rgba(0, 0, 0, 0.34);
+}
+
+.tg-account-plan-badge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.55;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, transparent 46%);
+}
+
+.tg-account-plan-badge__label {
+  position: relative;
+  z-index: 1;
+}
+
+.tg-account-plan-badge--vip-member {
+  border-color: rgba(251, 191, 36, 0.52);
+  color: rgba(254, 252, 232, 0.98);
+  background:
+    linear-gradient(
+      155deg,
+      rgba(245, 158, 11, 0.38) 0%,
+      rgba(217, 119, 6, 0.24) 44%,
+      rgba(30, 41, 59, 0.78) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.42),
+    0 0 0 1px rgba(251, 191, 36, 0.2),
+    0 4px 18px rgba(245, 158, 11, 0.22),
+    0 2px 8px rgba(0, 0, 0, 0.36);
+}
+
+.tg-account-plan-badge--author-plan {
+  border-color: rgba(234, 179, 8, 0.45);
+  color: rgba(254, 249, 195, 0.96);
+  background:
+    linear-gradient(
+      155deg,
+      rgba(250, 204, 21, 0.22) 0%,
+      rgba(202, 138, 4, 0.16) 48%,
+      rgba(30, 41, 59, 0.82) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.4),
+    0 0 0 1px rgba(234, 179, 8, 0.14),
+    0 4px 16px rgba(250, 204, 21, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.34);
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .tg-account-plan-badge {
+    -webkit-backdrop-filter: blur(10px) saturate(150%);
+    backdrop-filter: blur(10px) saturate(150%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-account-plan-badge {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -1px 0 rgba(15, 23, 42, 0.35),
+      0 0 0 1px rgba(56, 189, 248, 0.08),
+      0 2px 12px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* 账户 · 订单记录卡片（OrderHistoryPage） */
+.tg-order-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  padding: 11px 16px;
+  border: 1px solid rgba(129, 161, 255, 0.18);
+  background:
+    linear-gradient(152deg, rgba(51, 144, 236, 0.09) 0%, transparent 46%),
+    linear-gradient(218deg, rgba(168, 85, 247, 0.07) 0%, transparent 52%),
+    linear-gradient(185deg, rgba(255, 255, 255, 0.06) 0%, rgba(10, 14, 34, 0.88) 68%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    0 10px 32px rgba(0, 0, 0, 0.26);
+}
+
+.tg-order-card::before {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.5;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, transparent 40%);
+}
+
+.tg-order-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.tg-order-card__product {
+  margin: 0;
+  min-width: 0;
+  flex: 1;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.32;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.tg-order-card__status {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.22;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.tg-order-card__status--success {
+  color: rgba(209, 250, 229, 0.96);
+  border-color: rgba(52, 211, 153, 0.38);
+  background: linear-gradient(
+    158deg,
+    rgba(16, 185, 129, 0.32) 0%,
+    rgba(6, 95, 70, 0.28) 48%,
+    rgba(6, 78, 59, 0.35) 100%
+  );
+}
+
+.tg-order-card__status--failed {
+  color: rgba(255, 228, 230, 0.96);
+  border-color: rgba(251, 113, 133, 0.42);
+  background: linear-gradient(
+    158deg,
+    rgba(244, 63, 94, 0.3) 0%,
+    rgba(136, 19, 55, 0.28) 52%,
+    rgba(76, 29, 29, 0.38) 100%
+  );
+}
+
+.tg-order-card__id {
+  margin: 7px 0 0;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  line-height: 1.4;
+  color: rgba(186, 195, 212, 0.74);
+  word-break: break-all;
+}
+
+.tg-order-card__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tg-order-card__amount {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
+}
+
+.tg-order-card__time {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: rgba(165, 180, 212, 0.76);
+}
+
+/* 个人中心 · 功能磁贴（ទិញVIP / ប្រវត្តិ…） */
+.tg-account-tile {
+  position: relative;
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  padding: 11px 13px;
+  border-radius: 16px;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid rgba(129, 161, 255, 0.16);
+  background:
+    linear-gradient(152deg, rgba(51, 144, 236, 0.075) 0%, transparent 52%),
+    linear-gradient(218deg, rgba(168, 85, 247, 0.055) 0%, transparent 58%),
+    linear-gradient(185deg, rgba(255, 255, 255, 0.05) 0%, rgba(10, 14, 34, 0.72) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 6px 22px rgba(0, 0, 0, 0.22);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.22s ease,
+    transform 0.14s ease,
+    background 0.22s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tg-account-tile::before {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.5;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.075) 0%, transparent 42%);
+}
+
+.tg-account-tile > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a.tg-account-tile:hover {
+    border-color: rgba(125, 211, 252, 0.28);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      0 10px 28px rgba(0, 0, 0, 0.26),
+      0 0 0 1px rgba(56, 189, 248, 0.09);
+  }
+}
+
+.tg-account-tile:active:not(.tg-account-tile--disabled) {
+  transform: scale(0.985);
+}
+
+.tg-account-tile--disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
+}
+
+.tg-account-tile__icon-wrap {
+  flex-shrink: 0;
+  display: flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(6, 10, 26, 0.58);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    0 3px 12px rgba(0, 0, 0, 0.22);
+}
+
+.tg-account-tile__label {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.94);
+}
+
+/* 收藏页 · 书单卡片（SavedPage） */
+.tg-saved-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  overflow: hidden;
+  padding: 11px 14px;
+  border-radius: 16px;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid rgba(129, 161, 255, 0.16);
+  background:
+    linear-gradient(152deg, rgba(51, 144, 236, 0.07) 0%, transparent 48%),
+    linear-gradient(218deg, rgba(168, 85, 247, 0.05) 0%, transparent 54%),
+    linear-gradient(185deg, rgba(255, 255, 255, 0.045) 0%, rgba(10, 14, 34, 0.78) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.095),
+    0 8px 24px rgba(0, 0, 0, 0.22);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.22s ease,
+    transform 0.14s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tg-saved-card::before {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.48;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.065) 0%, transparent 44%);
+}
+
+.tg-saved-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-saved-card:hover {
+    border-color: rgba(125, 211, 252, 0.26);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.11),
+      0 12px 30px rgba(0, 0, 0, 0.26),
+      0 0 0 1px rgba(56, 189, 248, 0.07);
+  }
+}
+
+.tg-saved-card:active {
+  transform: scale(0.988);
+}
+
+.tg-saved-card__cover-wrap {
+  flex-shrink: 0;
+  width: 52px;
+  height: 74px;
+  overflow: hidden;
+  border-radius: 11px;
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+.tg-saved-card__cover-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tg-saved-card__cover-ph {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tg-saved-card__cover-ph-text {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.tg-saved-card__cover-wrap--violet .tg-saved-card__cover-ph {
+  background: linear-gradient(145deg, #b48cf2, #6b7fd7);
+}
+
+.tg-saved-card__cover-wrap--teal .tg-saved-card__cover-ph {
+  background: linear-gradient(145deg, #5cc9c8, #3a9d9a);
+}
+
+.tg-saved-card__cover-wrap--rose .tg-saved-card__cover-ph {
+  background: linear-gradient(145deg, #f28da8, #d9577c);
+}
+
+.tg-saved-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+}
+
+.tg-saved-card__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+
+.tg-saved-card__meta {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: rgba(186, 195, 212, 0.82);
 }
 
 /* 顶栏 */
@@ -285,6 +825,9 @@ a {
 
 .tg-toolbar__tab-end {
   min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
 }
 
 .tg-toolbar--brand-tab .tg-toolbar__title--tab {
@@ -332,12 +875,16 @@ a {
 
 /* 首页顶栏：左 LOGO | 中间搜索拉满 | 右通知（继承 .tg-toolbar flex；保留底部分隔线） */
 .tg-toolbar--home {
+  position: relative;
+  z-index: 22;
   gap: 10px;
   padding-left: 10px;
   padding-right: 10px;
 }
 
 .tg-toolbar--home .tg-toolbar__search-slot {
+  position: relative;
+  z-index: 23;
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -355,6 +902,7 @@ a {
 .tg-toolbar-notify {
   flex: 0 0 auto;
   display: flex;
+  position: relative;
   align-items: center;
   justify-content: center;
   width: 38px;
@@ -381,32 +929,71 @@ a {
   background: var(--tg-row-active);
 }
 
+.tg-toolbar-notify__badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 1px rgba(10, 16, 38, 0.9);
+  pointer-events: none;
+}
+
 /* 首页搜索：胶囊 + flex 对齐，避免图标与文字叠压 */
 .tg-search-field {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 36px;
+  min-height: 38px;
   padding: 0 14px 0 12px;
   gap: 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.17);
+  background: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.065) 42%,
+    rgba(15, 23, 42, 0.42) 100%
+  );
+  border: 1px solid rgba(148, 163, 184, 0.26);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 1px 2px rgba(0, 0, 0, 0.22);
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 2px 10px rgba(0, 0, 0, 0.26),
+    0 0 0 1px rgba(56, 189, 248, 0.07);
   transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    box-shadow 0.2s ease;
+    border-color 0.22s ease,
+    background 0.22s ease,
+    box-shadow 0.22s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-search-field:hover:not(:focus-within) {
+    border-color: rgba(125, 211, 252, 0.32);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.17),
+      0 4px 16px rgba(0, 0, 0, 0.2),
+      0 0 14px rgba(56, 189, 248, 0.1);
+  }
 }
 
 .tg-search-field:focus-within {
-  background: rgba(0, 0, 0, 0.32);
-  border-color: rgba(51, 144, 236, 0.52);
+  background: linear-gradient(
+    168deg,
+    rgba(15, 23, 42, 0.55) 0%,
+    rgba(15, 23, 42, 0.92) 100%
+  );
+  border-color: rgba(56, 189, 248, 0.52);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 3px rgba(51, 144, 236, 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    0 0 0 3px rgba(56, 189, 248, 0.22),
+    0 6px 22px rgba(37, 99, 235, 0.2);
 }
 
 .tg-search-field__icon {
@@ -414,25 +1001,29 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.5);
-  transition: color 0.2s ease;
+  color: rgba(203, 213, 225, 0.75);
+  transition: color 0.22s ease;
+}
+
+.tg-search-field__icon svg {
+  display: block;
 }
 
 .tg-search-field:focus-within .tg-search-field__icon {
-  color: var(--tg-blue);
+  color: #7dd3fc;
 }
 
 .tg-search-field__input {
   flex: 1;
   min-width: 0;
   margin: 0;
-  padding: 10px 0 6px;
+  padding: 5px 0 8px;
   border: none;
   outline: none;
   background: transparent;
   font: inherit;
   font-size: 14px;
-  line-height: 1.25;
+  line-height: 1.35;
   letter-spacing: 0.01em;
   color: var(--tg-text);
   text-align: start;
@@ -441,7 +1032,7 @@ a {
 }
 
 .tg-search-field__input::placeholder {
-  color: rgba(146, 153, 160, 0.64);
+  color: rgba(186, 195, 212, 0.74);
   font-weight: 400;
 }
 
@@ -460,15 +1051,26 @@ a {
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: 0;
+  border-radius: 50%;
   background: transparent;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.48);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-search-field__clear:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: rgba(255, 255, 255, 0.82);
+  }
 }
 
 .tg-search-field__clear:active {
   color: var(--tg-text-body);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .tg-toolbar__title {
@@ -553,6 +1155,232 @@ a {
   flex: 1;
   min-height: 0;
   background-color: var(--tg-app-surface);
+}
+
+/* 账户页：内容变长时在主区内部滚动，避免 Telegram WebView 中整页被锁死无法上下滑 */
+.tg-account-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
+/* Notifications: toolbar divider + empty/loading polish; no outer cards */
+.tg-notifications__toolbar.tg-toolbar {
+  box-shadow: none;
+  border-bottom: 1px solid rgba(129, 161, 255, 0.13);
+}
+
+.tg-notifications__toolbar .tg-toolbar__title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #eef2ff;
+}
+
+.tg-notifications__mark-all {
+  flex-shrink: 0;
+  margin: 0;
+  margin-left: auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(186, 211, 255, 0.9);
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tg-notifications__mark-all:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.45);
+  outline-offset: 2px;
+}
+
+.tg-notifications__mark-all:active {
+  background: rgba(125, 211, 252, 0.07);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-notifications__mark-all:hover {
+    background: rgba(125, 211, 252, 0.11);
+    color: #f8faff;
+  }
+}
+
+.tg-notifications__main--center {
+  justify-content: center;
+}
+
+.tg-notifications__status {
+  margin: 0 auto;
+  max-width: 22rem;
+  padding: 12px 18px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.65;
+  letter-spacing: 0.02em;
+}
+
+.tg-notifications__status--loading {
+  color: rgba(186, 196, 220, 0.78);
+}
+
+.tg-notifications__status--empty {
+  color: rgba(196, 206, 232, 0.82);
+}
+
+/* VIP plans — animated gradients + subtle shimmer (respects reduced motion) */
+@keyframes tg-vip-plan-bg-flow {
+  0%,
+  100% {
+    background-position: 10% 42%;
+  }
+  50% {
+    background-position: 90% 58%;
+  }
+}
+
+@keyframes tg-vip-plan-bg-flow-featured {
+  0%,
+  100% {
+    background-position: 14% 36%;
+  }
+  50% {
+    background-position: 86% 64%;
+  }
+}
+
+@keyframes tg-vip-plan-shimmer {
+  0% {
+    transform: translate3d(-28%, 0, 0) rotate(11deg);
+    opacity: 0.28;
+  }
+  48% {
+    opacity: 0.52;
+  }
+  100% {
+    transform: translate3d(28%, 0, 0) rotate(11deg);
+    opacity: 0.28;
+  }
+}
+
+.tg-vip-plan-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(147, 197, 253, 0.42);
+  background: linear-gradient(
+    128deg,
+    rgba(99, 102, 241, 0.38) 0%,
+    rgba(59, 130, 246, 0.22) 28%,
+    rgba(37, 99, 235, 0.18) 52%,
+    rgba(14, 165, 233, 0.26) 76%,
+    rgba(34, 211, 238, 0.18) 100%
+  );
+  background-size: 260% 260%;
+  animation: tg-vip-plan-bg-flow 11s ease-in-out infinite;
+  box-shadow:
+    0 8px 26px rgba(56, 189, 248, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.tg-vip-plan-card::before {
+  content: '';
+  position: absolute;
+  inset: -55% -40%;
+  z-index: 0;
+  background: linear-gradient(
+    118deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.07) 49%,
+    rgba(255, 255, 255, 0.14) 50.5%,
+    rgba(255, 255, 255, 0.07) 52%,
+    transparent 62%
+  );
+  animation: tg-vip-plan-shimmer 7s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.tg-vip-plan-card::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  z-index: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.tg-vip-plan-card--featured {
+  border-color: rgba(253, 224, 71, 0.52);
+  background: linear-gradient(
+    132deg,
+    rgba(250, 204, 21, 0.32) 0%,
+    rgba(245, 158, 11, 0.14) 22%,
+    rgba(99, 102, 241, 0.34) 48%,
+    rgba(59, 130, 246, 0.26) 72%,
+    rgba(14, 165, 233, 0.28) 100%
+  );
+  background-size: 260% 260%;
+  animation: tg-vip-plan-bg-flow-featured 8.5s ease-in-out infinite;
+  box-shadow:
+    0 12px 34px rgba(250, 204, 21, 0.22),
+    0 8px 22px rgba(59, 130, 246, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.tg-vip-plan-card--featured::before {
+  background: linear-gradient(
+    118deg,
+    transparent 36%,
+    rgba(255, 253, 231, 0.12) 48.5%,
+    rgba(254, 249, 195, 0.22) 50%,
+    rgba(255, 253, 231, 0.12) 51.5%,
+    transparent 64%
+  );
+  animation-duration: 5.8s;
+}
+
+.tg-vip-plan-card__body {
+  position: relative;
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-vip-plan-card,
+  .tg-vip-plan-card--featured {
+    animation: none;
+    background-size: 100% 100%;
+  }
+
+  .tg-vip-plan-card::before {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* 关于我们：内容区独立滚动，顶部栏固定不随内容滑动 */
+.tg-about-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
 }
 
 .tg-search-empty {
@@ -724,17 +1552,78 @@ a {
 .tg-reader-detail__rating em { margin-left: 6px; color: var(--tg-hint); font-style: normal; font-size: 12px; }
 .tg-reader-detail__stars { color: var(--tg-blue); margin-left: 10px; letter-spacing: 1px; font-size: 12px; }
 
+@keyframes tg-read-btn-gradient-flow {
+  0%,
+  100% {
+    background-position: 6% 44%;
+  }
+  50% {
+    background-position: 94% 56%;
+  }
+}
+
 .tg-reader-detail__read-btn {
   display: block;
   width: 100%;
-  margin: 14px auto 10px;
-  height: 36px;
-  border: 0;
-  border-radius: 7px;
-  color: #fff;
+  margin: 14px auto 12px;
+  padding: 8px 16px;
+  min-height: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(186, 230, 253, 0.38);
+  border-radius: 10px;
+  color: #f8faff;
   font-size: 14px;
-  font-weight: 500;
-  background: linear-gradient(90deg, #7e2fff, #1792ff);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  background: linear-gradient(
+    118deg,
+    #5b21b6 0%,
+    #6366f1 18%,
+    #4338ca 32%,
+    #2563eb 48%,
+    #0891b2 66%,
+    #0ea5e9 82%,
+    #38bdf8 100%
+  );
+  background-size: 240% 240%;
+  animation: tg-read-btn-gradient-flow 8s ease-in-out infinite;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 4px 18px rgba(37, 99, 235, 0.38),
+    0 2px 6px rgba(15, 23, 42, 0.35);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.tg-reader-detail__read-btn:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.65);
+  outline-offset: 3px;
+}
+
+.tg-reader-detail__read-btn:active {
+  transform: scale(0.985);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-reader-detail__read-btn:hover {
+    border-color: rgba(207, 250, 254, 0.55);
+    filter: brightness(1.07);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.24),
+      0 8px 28px rgba(56, 189, 248, 0.32),
+      0 2px 8px rgba(15, 23, 42, 0.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-reader-detail__read-btn {
+    animation: none;
+    background-size: 100% 100%;
+  }
 }
 
 .tg-reader-start-page {
@@ -872,7 +1761,7 @@ a {
 
 .tg-reader-detail__stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   color: var(--tg-hint);
   font-size: 12px;
@@ -909,51 +1798,202 @@ a {
 .tg-reader-detail__actions {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--tg-separator);
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px 8px 7px;
+  border-radius: 12px;
+  border: 1px solid rgba(129, 161, 255, 0.18);
+  background: linear-gradient(
+    165deg,
+    rgba(56, 189, 248, 0.07) 0%,
+    rgba(30, 41, 82, 0.38) 45%,
+    rgba(10, 16, 38, 0.55) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 6px 16px rgba(0, 0, 0, 0.16);
+  border-bottom: none;
 }
+
 .tg-reader-detail__actions > button {
-  border: 0;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 5px 4px 5px;
+  border: 1px solid transparent;
+  border-radius: 10px;
   background: transparent;
-  color: #c8cde0;
+  color: #b8c0db;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
   gap: 4px;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.12s ease,
+    box-shadow 0.18s ease;
 }
 
-.tg-reader-detail__actions > button.is-active {
-  color: #ff4d67;
+.tg-reader-detail__actions > button svg {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  stroke-width: 2.05;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
+  transition:
+    transform 0.18s ease,
+    filter 0.18s ease;
 }
 
-.tg-reader-detail__catalog { padding-top: 10px; }
+.tg-reader-detail__actions > button:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.5);
+  outline-offset: 2px;
+}
+
+.tg-reader-detail__actions > button:active {
+  transform: scale(0.96);
+}
+
+.tg-reader-detail__actions > button:active svg {
+  transform: scale(0.94);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-reader-detail__actions > button:hover {
+    background: rgba(125, 211, 252, 0.09);
+    border-color: rgba(165, 180, 252, 0.22);
+    color: #e8ecff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .tg-reader-detail__actions > button:hover svg {
+    filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.35));
+  }
+
+  .tg-reader-detail__actions > button:nth-child(1).is-active:hover {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: #fda4af;
+  }
+
+  .tg-reader-detail__actions > button:nth-child(1).is-active:hover svg {
+    filter: drop-shadow(0 0 10px rgba(251, 113, 133, 0.45));
+  }
+
+  .tg-reader-detail__actions > button:nth-child(4).is-active:hover {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: #fcd34d;
+  }
+
+  .tg-reader-detail__actions > button:nth-child(4).is-active:hover svg {
+    filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.4));
+  }
+}
+
+.tg-reader-detail__actions > button:nth-child(1).is-active {
+  color: #f43f5e;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.tg-reader-detail__actions > button:nth-child(1).is-active svg {
+  stroke: currentColor;
+  filter: drop-shadow(0 0 10px rgba(251, 113, 133, 0.46));
+}
+
+.tg-reader-detail__actions > button:nth-child(4).is-active {
+  color: #fcd34d;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.tg-reader-detail__actions > button:nth-child(4).is-active svg {
+  stroke: #fde68a;
+  filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.4));
+}
+
+.tg-reader-detail__catalog {
+  padding-top: 14px;
+}
+
 .tg-reader-detail__catalog-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(129, 161, 255, 0.12);
   color: var(--tg-hint);
 }
+
 .tg-reader-detail__catalog-head h2 {
   margin: 0;
   font-size: 17px;
-  color: var(--tg-text);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  color: #eef2ff;
 }
+
 .tg-reader-detail__order-label {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  margin: 0;
   border: 0;
+  border-radius: 999px;
   background: transparent;
-  padding: 0;
+  padding: 6px 10px;
   cursor: pointer;
   font: inherit;
-  font-size: 17px;
-  color: #d4daec;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #b8c9f0;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
 }
+
 .tg-reader-detail__order-label svg {
-  color: var(--tg-blue);
+  flex-shrink: 0;
+  color: #7dd3fc;
+  opacity: 0.95;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-reader-detail__order-label:hover {
+    background: rgba(125, 211, 252, 0.09);
+    color: #e8f0ff;
+  }
+
+  .tg-reader-detail__order-label:hover svg {
+    color: #bae6fd;
+  }
+}
+
+.tg-reader-detail__order-label:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.45);
+  outline-offset: 2px;
+}
+
+.tg-reader-detail__order-label:active {
+  background: rgba(125, 211, 252, 0.06);
 }
 
 .tg-reader-detail__volume {
@@ -972,30 +2012,75 @@ a {
 .tg-reader-detail__chapter-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 4px 0 0;
 }
+
 .tg-reader-detail__chapter-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 2px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  font-size: 12px;
-  color: #d4d9eb;
-  transition: transform 180ms ease, background-color 180ms ease;
+  gap: 12px;
+  padding: 13px 4px;
+  border: 0;
+  border-bottom: 1px solid rgba(129, 161, 255, 0.09);
+  font-size: 13px;
+  color: #dce2f4;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
 }
+
+.tg-reader-detail__chapter-item:last-child {
+  border-bottom: none;
+}
+
+.tg-reader-detail__chapter-item > span {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #e8ecf8;
+  line-height: 1.35;
+}
+
 .tg-reader-detail__chapter-item em {
+  flex-shrink: 0;
   font-style: normal;
-  color: #9da4bb;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: rgba(165, 180, 203, 0.92);
+  text-align: right;
+  max-width: 52%;
+  line-height: 1.35;
 }
 
 .tg-reader-detail__chapter-item--clickable {
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.tg-reader-detail__chapter-item--clickable:hover {
-  background: transparent;
+@media (hover: hover) and (pointer: fine) {
+  .tg-reader-detail__chapter-item--clickable:hover {
+    background: rgba(125, 211, 252, 0.055);
+  }
+
+  .tg-reader-detail__chapter-item--clickable:hover > span {
+    color: #f8faff;
+  }
+
+  .tg-reader-detail__chapter-item--clickable:hover em {
+    color: rgba(186, 230, 253, 0.85);
+  }
+}
+
+.tg-reader-detail__chapter-item--clickable:active {
+  background: rgba(125, 211, 252, 0.08);
+}
+
+.tg-reader-detail__chapter-item--clickable:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.45);
+  outline-offset: 2px;
 }
 
 .tg-reader-detail__chapter-item--vip-jump {
@@ -1028,12 +2113,61 @@ a {
   position: fixed;
   inset: 0;
   z-index: 15;
-  overflow-y: auto;
-  overflow-x: hidden;
-  touch-action: pan-y;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   overscroll-behavior: none;
   background: #0a1026;
+  /* 刘海 / 状态栏下留白，避免正文随回弹顶到物理屏最上沿露出字 */
+  padding-top: env(safe-area-inset-top, 0px);
+  box-sizing: border-box;
+}
+
+.tg-reader-watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.tg-reader-watermark__grid {
+  position: absolute;
+  inset: -22% -34%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(170px, 1fr));
+  gap: 68px 42px;
+  transform: rotate(-24deg);
+  transform-origin: center;
+}
+
+.tg-reader-watermark__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: rgba(230, 236, 255, 0.13);
+  font-size: clamp(11px, 2.7vw, 13px);
+  font-weight: 600;
+  line-height: 1.38;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.tg-reader-watermark__line {
+  margin: 0;
+  text-shadow: 0 1px 10px rgba(3, 7, 18, 0.15);
+}
+
+@media (max-width: 520px) {
+  .tg-reader-watermark__grid {
+    inset: -28% -42%;
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+    gap: 78px 32px;
+  }
 }
 
 .tg-reader-article-swipe-underlay {
@@ -1075,52 +2209,169 @@ a {
 .tg-reader-article {
   width: min(820px, 100%);
   margin: 0 auto;
-  padding: 18px 16px 28px;
+  padding: 0;
   position: relative;
   z-index: 1;
   background: #0a1026;
-  min-height: 100vh;
-  will-change: transform;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.tg-reader-article__back {
-  border: 0;
-  background: #0a1026;
-  color: #a9b8ff;
-  font-size: 13px;
-  padding: 6px 0 8px;
-  margin-bottom: 14px;
-  position: sticky;
-  top: 0;
-  left: 0;
-  z-index: 3;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  column-gap: 10px;
+/* 仅正文阅读态防复制：不影响全站，仅作用于阅读文章层。 */
+.tg-reader-article--protected,
+.tg-reader-article--protected * {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 顶栏在滚动区外：与底部 tg-bottom-nav 同款圆角磨砂条 + 胶囊格 */
+.tg-reader-article__header {
+  position: relative;
+  flex-shrink: 0;
   width: 100%;
-  max-width: 100%;
-  border-bottom: 1px solid rgba(169, 184, 255, 0.2);
+  padding: 2px 0 0;
+  box-sizing: border-box;
+  background: transparent;
+  border-bottom: none;
+  z-index: 6;
 }
 
-.tg-reader-article__back-center {
-  min-width: 0;
-  color: #dce5ff;
-  font-size: 14px;
-  line-height: 1.35;
+/* 盖住顶栏上沿亚像素缝（部分 WebView 抗锯齿把白字露到栏外） */
+.tg-reader-article__header::before {
+  content: none;
+}
+
+.tg-reader-article__header-inner {
+  width: 100%;
+  max-width: min(820px, 100%);
+  margin: 0 auto;
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+
+/* 对齐 BottomNav .tg-bottom-nav__bar 的视觉语言 */
+.tg-reader-article__header-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 6px 8px 8px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: linear-gradient(
+    165deg,
+    rgba(56, 189, 248, 0.07) 0%,
+    rgba(30, 41, 82, 0.55) 42%,
+    rgba(10, 16, 38, 0.65) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    0 0 0 1px rgba(56, 189, 248, 0.06),
+    0 8px 28px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.tg-reader-article__header-back {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.42);
+  border-radius: 999px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.15;
+  color: rgba(214, 219, 236, 0.55);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-reader-article__header-back:hover {
+    color: rgba(240, 244, 255, 0.82);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(186, 230, 253, 0.35);
+  }
+}
+
+.tg-reader-article__header-back:active {
+  transform: scale(0.98);
+}
+
+.tg-reader-article__header-back:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.45);
+  outline-offset: 2px;
+}
+
+/* 中部章节名 / 右侧ភាគ — 纯文字，无外框（仅外层磨砂条 + 左侧返回带框） */
+.tg-reader-article__header-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 2px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  color: rgba(248, 250, 255, 0.94);
   white-space: nowrap;
+}
+
+.tg-reader-article__header-chip--title {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: center;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: center;
+  white-space: nowrap;
 }
 
-.tg-reader-article__back-right {
-  color: #c9d5ff;
-  font-size: 12px;
-  line-height: 1.35;
-  white-space: nowrap;
-  justify-self: end;
-  text-align: right;
+.tg-reader-article__header-chip--part {
+  flex-shrink: 0;
+  color: rgba(226, 232, 255, 0.88);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-reader-article__header-back {
+    transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  }
+
+  .tg-reader-article__header-back:active {
+    transform: none;
+  }
+}
+
+/** 正文单独滚动，章节导航栏固定在视口底部（不随长文上移） */
+.tg-reader-article__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: none;
+  /* 与 overlay 顶 safe-area 分工：此处实底盖住回弹区，避免标题色「漏」到顶栏外 */
+  background: #0a1026;
+  padding: 8px 16px 20px;
 }
 
 .tg-reader-article__title {
@@ -1149,16 +2400,28 @@ a {
 .tg-reader-article__body {
   display: grid;
   gap: 12px;
+  flex: 0 1 auto;
 }
 
 .tg-reader-article__chapter-nav {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 8px;
-  margin-top: 28px;
-  padding: 14px 0 8px;
-  border-top: 1px solid rgba(169, 184, 255, 0.18);
+  gap: 10px;
+  flex-shrink: 0;
+  margin: 0 16px max(8px, env(safe-area-inset-bottom, 0px));
+  padding: 10px 8px 8px;
+  border-radius: 16px;
+  border: 1px solid rgba(129, 161, 255, 0.2);
+  background: linear-gradient(
+    165deg,
+    rgba(56, 189, 248, 0.07) 0%,
+    rgba(30, 41, 82, 0.55) 42%,
+    rgba(10, 16, 38, 0.65) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 6px 18px rgba(0, 0, 0, 0.2);
 }
 
 .tg-reader-article__chapter-nav-cell {
@@ -1183,27 +2446,104 @@ a {
 }
 
 .tg-reader-article__chapter-nav-muted {
-  color: rgba(169, 184, 255, 0.55);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: 1px dashed rgba(165, 180, 252, 0.28);
+  background: rgba(8, 12, 28, 0.55);
+  color: rgba(186, 196, 235, 0.48);
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 .tg-reader-article__chapter-nav-btn {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: #a9b8ff;
+  margin: 0;
+  border: 1px solid rgba(165, 180, 252, 0.32);
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: linear-gradient(
+    165deg,
+    rgba(56, 189, 248, 0.14) 0%,
+    rgba(99, 102, 241, 0.08) 52%,
+    rgba(139, 92, 246, 0.06) 100%
+  );
+  color: #e8ecff;
   font-size: inherit;
   line-height: inherit;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   cursor: pointer;
   text-decoration: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 2px 10px rgba(15, 23, 42, 0.35);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.12s ease;
+}
+
+.tg-reader-article__chapter-nav-btn:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.45);
+  outline-offset: 2px;
 }
 
 .tg-reader-article__chapter-nav-btn:active {
-  opacity: 0.75;
+  transform: scale(0.98);
+  opacity: 1;
 }
 
 .tg-reader-article__chapter-nav-btn--emph {
-  color: #dce5ff;
-  font-weight: 600;
+  padding-inline: 16px;
+  border-color: rgba(186, 230, 253, 0.42);
+  background: linear-gradient(
+    165deg,
+    rgba(56, 189, 248, 0.24) 0%,
+    rgba(99, 102, 241, 0.15) 48%,
+    rgba(167, 139, 250, 0.12) 100%
+  );
+  color: #f8faff;
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 4px 18px rgba(56, 189, 248, 0.16);
+}
+
+.tg-reader-article__chapter-nav-btn--compact {
+  padding: 6px 10px;
+  font-size: 14px;
+  line-height: 1.1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-reader-article__chapter-nav-btn:hover {
+    border-color: rgba(186, 230, 253, 0.42);
+    background: linear-gradient(
+      165deg,
+      rgba(56, 189, 248, 0.22) 0%,
+      rgba(99, 102, 241, 0.13) 52%,
+      rgba(139, 92, 246, 0.1) 100%
+    );
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      0 4px 14px rgba(56, 189, 248, 0.14);
+  }
+
+  .tg-reader-article__chapter-nav-btn--emph:hover {
+    border-color: rgba(207, 250, 254, 0.55);
+    background: linear-gradient(
+      165deg,
+      rgba(56, 189, 248, 0.3) 0%,
+      rgba(99, 102, 241, 0.18) 48%,
+      rgba(167, 139, 250, 0.14) 100%
+    );
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      0 6px 22px rgba(56, 189, 248, 0.2);
+  }
 }
 
 .tg-reader-article__p {
@@ -1291,15 +2631,20 @@ a {
 .tg-reader-detail__comment-feed {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 14px;
+  gap: 14px;
+  margin-top: 16px;
 }
 
 .tg-reader-detail__comment-empty {
-  margin: 8px 0 4px;
-  color: rgba(255, 255, 255, 0.55);
+  margin: 6px auto 8px;
+  padding: 20px 12px 22px;
+  max-width: 22rem;
+  color: rgba(186, 196, 220, 0.82);
   font-size: 14px;
-  line-height: 1.45;
+  font-weight: 500;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  text-align: center;
 }
 
 .tg-admin {
@@ -1900,6 +3245,28 @@ body.tg-desktop-admin-lock .tg-admin-shell__main {
   font-size: 15px;
   line-height: 1.65;
   color: #4a5568;
+}
+
+.tg-admin-vip-plans__subhead {
+  margin: 20px 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.tg-admin-vip-plans__json {
+  margin: 0;
+  padding: 14px 16px;
+  max-height: min(420px, 50vh);
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #e2e8f0;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  white-space: pre;
+  word-break: break-word;
 }
 
 .tg-admin-shell__panel--console {
@@ -2674,9 +4041,10 @@ body.tg-desktop-admin-lock .tg-admin-shell__main {
   gap: 22px;
 }
 
+/* 与窄屏一致：不在宽屏下换列数，避免手机/电脑后台布局两套 */
 .tg-admin-console__stats {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -2783,7 +4151,7 @@ body.tg-desktop-admin-lock .tg-admin-shell__main {
 
 .tg-admin-console__split {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 18px;
   align-items: start;
 }
@@ -2945,7 +4313,8 @@ body.tg-desktop-admin-lock .tg-admin-shell__main {
 .tg-admin-console__filters {
   margin-top: -6px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -3078,31 +4447,6 @@ body.tg-desktop-admin-lock .tg-admin-shell__main {
   }
   100% {
     filter: brightness(1);
-  }
-}
-
-@media (max-width: 1100px) {
-  .tg-admin-console__stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .tg-admin-console__split {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 640px) {
-  .tg-admin-console__stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .tg-admin-console__filters {
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .tg-admin-console__filters.tg-admin-console__filters--datetime-inline {
-    justify-content: flex-end;
   }
 }
 
@@ -3352,36 +4696,68 @@ body.tg-desktop-admin #root {
 }
 
 .tg-reader-detail__comment-feed-head {
-  margin-top: 14px;
-  margin-bottom: 12px;
+  margin-top: 16px;
+  margin-bottom: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(129, 161, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
 .tg-reader-detail__comment-feed-title {
-  color: #d8def2;
-  font-size: 14px;
-  font-weight: 600;
+  margin: 0;
+  color: #eef2ff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
 }
 
 .tg-reader-detail__comment-feed-sort {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  flex-shrink: 0;
+  gap: 4px;
 }
 
 .tg-reader-detail__comment-sort-btn {
+  margin: 0;
   border: 0;
+  border-radius: 999px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(176, 188, 218, 0.72);
   font-size: 13px;
-  padding: 0;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-reader-detail__comment-sort-btn:hover {
+    background: rgba(125, 211, 252, 0.08);
+    color: rgba(232, 240, 255, 0.92);
+  }
+}
+
+.tg-reader-detail__comment-sort-btn:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.45);
+  outline-offset: 2px;
+}
+
+.tg-reader-detail__comment-sort-btn:active {
+  background: rgba(125, 211, 252, 0.06);
 }
 
 .tg-reader-detail__comment-sort-btn.is-active {
-  color: #ffffff;
+  color: #f8faff;
+  background: rgba(125, 211, 252, 0.14);
 }
 
 .tg-reader-detail__comment-item {
@@ -3413,28 +4789,114 @@ body.tg-desktop-admin #root {
   min-width: 0;
 }
 
+.tg-reader-detail__comment-bubble {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 8px 12px 9px;
+}
+
+.tg-reader-detail__comment-bubble--reply {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+}
+
 .tg-reader-detail__comment-item-name {
   margin: 0;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 14px;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.2;
 }
 
+.tg-member-badges {
+  vertical-align: middle;
+}
+
+.tg-member-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px 2px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  border: 1px solid transparent;
+}
+
+.tg-member-badge--author {
+  color: #0f172a;
+  background: #ffffff;
+  border-color: #ca8a04;
+  border-width: 1.5px;
+  border-style: solid;
+  box-shadow:
+    0 0 0 0.5px rgba(234, 179, 8, 0.35),
+    0 1px 3px rgba(0, 0, 0, 0.28),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+}
+
+.tg-member-badge--author-round {
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  justify-content: center;
+  border-radius: 999px;
+  box-sizing: border-box;
+}
+
+.tg-member-badge__author-img {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  object-fit: contain;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 购买型 VIP：与作者同款圆尺寸，圆内「VIP」琥珀字；边框偏琥珀以与作者金边区分 */
+.tg-member-badge--paid-vip-ring {
+  border-color: #f59e0b;
+  box-shadow:
+    0 0 0 0.5px rgba(245, 158, 11, 0.35),
+    0 1px 3px rgba(0, 0, 0, 0.28),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+}
+
+.tg-member-badge__paid-vip-label {
+  display: block;
+  font-size: 5px;
+  font-weight: 800;
+  letter-spacing: -0.09em;
+  line-height: 1;
+  color: #b45309;
+  transform: scale(0.94);
+  transform-origin: center;
+  pointer-events: none;
+  user-select: none;
+}
+
+
 .tg-reader-detail__comment-item-text {
   margin: 4px 0 0;
-  color: #eef2ff;
-  font-size: 16px;
+  color: #f3f6ff;
+  font-size: 15px;
   line-height: 1.4;
   word-break: break-word;
 }
 
 .tg-reader-detail__comment-item-meta {
-  margin: 8px 0 0;
+  margin: 4px 0 0;
   display: flex;
   align-items: center;
-  gap: 14px;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 13px;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 12px;
+  padding: 0 10px;
 }
 
 .tg-reader-detail__comment-reply-link {
@@ -3442,10 +4904,15 @@ body.tg-desktop-admin #root {
   border: 0;
   background: transparent;
   color: rgba(255, 255, 255, 0.62);
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 600;
   padding: 0;
   cursor: pointer;
   line-height: 1.1;
+}
+
+.tg-reader-detail__comment-reply-link.is-active {
+  color: #4f8dff;
 }
 
 .tg-reader-detail__comment-item-meta > button {
@@ -3457,20 +4924,146 @@ body.tg-desktop-admin #root {
   cursor: pointer;
 }
 
+.tg-reader-detail__replies-toggle {
+  margin-top: 6px;
+  margin-left: 10px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+
 .tg-reader-detail__comment-reply {
-  margin-top: 8px;
-  margin-left: 0;
-  padding: 6px 0 0 12px;
-  border-left: 2px solid rgba(255, 255, 255, 0.12);
-  display: flex;
+  margin-top: 10px;
+  margin-left: -8px;
+  padding: 0 0 0 12px;
+  border-left: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  column-gap: 8px;
   align-items: flex-start;
+}
+
+.tg-reader-detail__comment-reply--to-reply {
+  margin-left: 0;
+  border-left-color: rgba(126, 165, 255, 0.32);
+}
+
+.tg-reader-detail__comment-reply--nested {
+  margin-top: 2px;
+  margin-left: -8px !important;
+  border-left: 0;
+}
+
+.tg-reader-detail__replying-line {
+  margin: 0 0 4px 2px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.tg-reader-detail__replying-line > span {
+  color: #67a5ff;
+  font-weight: 600;
+}
+
+.tg-reader-detail__reply-to-name {
+  color: #67a5ff;
+  font-weight: 600;
+}
+
+.tg-reader-inline-reply {
+  margin-top: 8px;
+  margin-left: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 8px;
+}
+
+.tg-reader-inline-reply__textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(17, 26, 54, 0.72);
+  color: #eef2ff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 8px 10px;
+}
+
+.tg-reader-inline-reply__actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
   gap: 8px;
 }
 
+.tg-reader-inline-reply__actions > button {
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #eaf0ff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.tg-reader-inline-reply__actions > button:disabled {
+  opacity: 0.45;
+}
+
+.tg-reader-inline-reply__error {
+  margin: 6px 2px 0;
+  font-size: 12px;
+  color: #ff9da9;
+}
+
+.tg-reader-focus-target--reply {
+  color: #f4c542;
+  text-shadow: none;
+}
+
+.tg-reader-focus-target--actions {
+  border-radius: 999px;
+  padding: 4px 6px;
+  box-shadow: 0 0 0 1px rgba(255, 219, 115, 0.65);
+  animation: tg-focus-pulse 1s ease-out 1;
+}
+
+@keyframes tg-focus-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 214, 102, 0.72);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgba(255, 214, 102, 0);
+  }
+}
+
+@keyframes tg-focus-text-glow {
+  0% {
+    color: #f3f5ff;
+    text-shadow: 0 0 0 rgba(255, 230, 153, 0);
+  }
+  30% {
+    color: #fff9e6;
+    text-shadow: 0 0 4px rgba(255, 227, 133, 0.95);
+  }
+  100% {
+    color: #eef2ff;
+    text-shadow: 0 0 0 rgba(255, 230, 153, 0);
+  }
+}
+
 .tg-reader-detail__comment-item-avatar--reply {
-  width: 30px;
-  height: 30px;
-  font-size: 13px;
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+  margin-right: 0;
 }
 
 .tg-reader-detail__comment-reply-main {
@@ -3478,35 +5071,6 @@ body.tg-desktop-admin #root {
   flex: 1;
 }
 
-.tg-reader-detail__comment-item-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  padding-top: 2px;
-}
-
-.tg-reader-detail__comment-item-actions > button {
-  border: 0;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.56);
-  min-width: 26px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  justify-content: center;
-  padding: 0;
-  position: relative;
-}
-
-.tg-reader-detail__comment-item-actions > button.is-active {
-  color: #ff4d67;
-}
-
-.tg-reader-detail__comment-item-actions > button > span {
-  position: static;
-  font-size: 12px;
-}
 
 .tg-reply-modal {
   position: fixed;
@@ -3882,6 +5446,124 @@ body.tg-desktop-admin #root {
   }
 }
 
+/* Bottom tab bar — compact vertical rhythm, frosted pill, active glow */
+.tg-bottom-nav {
+  pointer-events: none;
+  position: relative;
+  z-index: 0;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  padding-top: 2px;
+}
+
+.tg-bottom-nav__inner {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 520px;
+  padding: 0 8px;
+}
+
+.tg-bottom-nav__bar {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  gap: 2px;
+  min-height: 54px;
+  padding: 5px 6px 7px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: linear-gradient(
+    178deg,
+    rgba(22, 28, 52, 0.82) 0%,
+    rgba(10, 12, 26, 0.9) 55%,
+    rgba(6, 8, 18, 0.92) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    0 0 0 1px rgba(56, 189, 248, 0.06),
+    0 -10px 36px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.tg-bottom-nav__link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 0;
+  padding: 5px 4px 6px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.15;
+  color: rgba(214, 219, 236, 0.52);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease,
+    background 0.2s ease;
+}
+
+.tg-bottom-nav__icon {
+  flex-shrink: 0;
+  width: 23px;
+  height: 23px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-bottom-nav__link:not(.tg-bottom-nav__link--active):hover {
+    color: rgba(240, 244, 255, 0.78);
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
+.tg-bottom-nav__link--active {
+  color: var(--tg-blue);
+  transform: scale(1.05);
+}
+
+.tg-bottom-nav__link--active .tg-bottom-nav__icon {
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.42));
+}
+
+.tg-bottom-nav__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 3px;
+}
+
+.tg-bottom-nav__link:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.45);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-bottom-nav__link,
+  .tg-bottom-nav__link--active {
+    transition: color 0.2s ease, background 0.2s ease;
+  }
+
+  .tg-bottom-nav__link--active {
+    transform: none;
+  }
+
+  .tg-bottom-nav__link--active .tg-bottom-nav__icon {
+    filter: none;
+  }
+}
+
 /* 首页主区顶部分隔线（顶栏阴影之下再一条细线，区分工具条与下方可滚动区） */
 .tg-home-main-rule {
   flex-shrink: 0;
@@ -3896,6 +5578,8 @@ body.tg-desktop-admin #root {
 
 /* 首页：已选 / 筛选 / 排序 + 小说列表共用一个纵向滚动区（顶栏与主分隔线固定） */
 .tg-home-body-scroll {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-height: 0;
   overflow-x: hidden;
@@ -4181,17 +5865,25 @@ body.tg-desktop-admin #root {
 
 .tg-list__item--novel-card {
   border-bottom: 0;
-  padding-top: 6px;
+  padding-top: 5px;
 }
 
 .tg-novel-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  border-radius: 12px;
+  border-radius: 14px;
   color: inherit;
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: 0 0 0 1px var(--tg-separator);
+  overflow: hidden;
+  border: 1px solid rgba(129, 161, 255, 0.14);
+  background:
+    linear-gradient(152deg, rgba(51, 144, 236, 0.065) 0%, transparent 44%),
+    linear-gradient(218deg, rgba(168, 85, 247, 0.045) 0%, transparent 50%),
+    linear-gradient(185deg, rgba(255, 255, 255, 0.045) 0%, rgba(12, 16, 36, 0.58) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 26px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(8, 12, 28, 0.55);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -4199,15 +5891,15 @@ body.tg-desktop-admin #root {
   position: absolute;
   inset: 0;
   z-index: 0;
-  border-radius: 12px;
+  border-radius: 14px;
   text-decoration: none;
   color: transparent;
   font-size: 0;
 }
 
 .tg-novel-card__backdrop:active + .tg-novel-card__content {
-  background: var(--tg-row-active);
-  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border-radius: 14px;
 }
 
 .tg-novel-card__content {
@@ -4216,19 +5908,22 @@ body.tg-desktop-admin #root {
   display: flex;
   gap: 10px;
   align-items: stretch;
-  padding: 10px 10px 8px;
+  padding: 9px 12px 7px;
   pointer-events: none;
 }
 
 .tg-novel-card__cover-wrap {
   position: relative;
   flex-shrink: 0;
-  width: 92px;
-  border-radius: 8px;
+  width: 88px;
+  border-radius: 10px;
   overflow: hidden;
   align-self: stretch;
   min-height: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .tg-novel-card__cover-img {
@@ -4267,17 +5962,85 @@ body.tg-desktop-admin #root {
   background: linear-gradient(145deg, #f28da8, #d9577c);
 }
 
+@keyframes tg-novel-status-ongoing-flow {
+  0%,
+  100% {
+    background-position: 14% 42%;
+  }
+  50% {
+    background-position: 86% 58%;
+  }
+}
+
+@keyframes tg-novel-status-completed-flow {
+  0%,
+  100% {
+    background-position: 20% 38%;
+  }
+  50% {
+    background-position: 80% 62%;
+  }
+}
+
 .tg-novel-card__status-badge {
   position: absolute;
   top: 6px;
   left: 6px;
-  padding: 2px 6px;
-  border-radius: 4px;
+  z-index: 1;
+  padding: 5px 10px;
+  border-radius: 9px;
   font-size: 11px;
-  font-weight: 500;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.48);
-  backdrop-filter: blur(4px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+/* serializing — cyan/teal ribbon */
+.tg-novel-card__status-badge--ongoing {
+  color: #ecfeff;
+  border: 1px solid rgba(103, 232, 249, 0.72);
+  background: linear-gradient(
+    132deg,
+    rgba(34, 211, 238, 0.94) 0%,
+    rgba(6, 182, 212, 0.9) 22%,
+    rgba(14, 165, 233, 0.82) 48%,
+    rgba(8, 145, 178, 0.9) 72%,
+    rgba(21, 94, 117, 0.93) 100%
+  );
+  background-size: 240% 240%;
+  animation: tg-novel-status-ongoing-flow 10s ease-in-out infinite;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+
+/* completed — violet ribbon */
+.tg-novel-card__status-badge--completed {
+  color: #faf5ff;
+  border: 1px solid rgba(216, 180, 254, 0.62);
+  background: linear-gradient(
+    128deg,
+    rgba(192, 132, 252, 0.92) 0%,
+    rgba(124, 58, 237, 0.9) 28%,
+    rgba(109, 40, 217, 0.86) 52%,
+    rgba(91, 33, 182, 0.9) 76%,
+    rgba(76, 29, 149, 0.93) 100%
+  );
+  background-size: 240% 240%;
+  animation: tg-novel-status-completed-flow 11s ease-in-out infinite;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-novel-card__status-badge--ongoing,
+  .tg-novel-card__status-badge--completed {
+    animation: none;
+    background-size: 100% 100%;
+  }
 }
 
 .tg-novel-card__main {
@@ -4288,7 +6051,7 @@ body.tg-desktop-admin #root {
   flex-direction: column;
   gap: 3px;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.36;
   color: var(--tg-hint);
 }
 
@@ -4297,7 +6060,7 @@ body.tg-desktop-admin #root {
   flex-wrap: nowrap;
   align-items: center;
   gap: 6px 8px;
-  margin-bottom: 2px;
+  margin-bottom: 0;
   min-width: 0;
 }
 
@@ -4308,7 +6071,11 @@ body.tg-desktop-admin #root {
   font-size: 11px;
   font-weight: 600;
   color: #fff;
-  background: var(--tg-blue);
+  background: linear-gradient(155deg, #4c9ee8 0%, var(--tg-blue) 48%, #2878d9 100%);
+  border: 1px solid rgba(186, 230, 253, 0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 2px 10px rgba(51, 144, 236, 0.28);
 }
 
 .tg-novel-card__pill.tg-novel-card__hit {
@@ -4351,7 +6118,7 @@ body.tg-desktop-admin #root {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
   flex: 1;
   overflow-x: auto;
@@ -4378,7 +6145,12 @@ body.tg-desktop-admin #root {
 }
 
 .tg-novel-card__chip--theme {
-  color: rgba(255, 255, 255, 0.82);
+  padding: 1px 7px;
+  border-radius: 8px;
+  color: rgba(245, 248, 255, 0.88);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .tg-novel-card__chip--theme.tg-novel-card__hit:active {
@@ -4386,8 +6158,15 @@ body.tg-desktop-admin #root {
 }
 
 .tg-novel-card__chip--tag {
+  padding: 2px 8px;
+  border-radius: 999px;
   color: var(--tg-blue);
   font-weight: 500;
+  background: rgba(51, 144, 236, 0.11);
+  border: 1px solid rgba(51, 144, 236, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 2px 8px rgba(51, 144, 236, 0.12);
 }
 
 .tg-novel-card__chip--tag.tg-novel-card__hit:active {
@@ -4399,7 +6178,9 @@ body.tg-desktop-admin #root {
   font-size: 16px;
   font-weight: 700;
   color: var(--tg-text);
-  line-height: 1.35;
+  line-height: 1.3;
+  letter-spacing: 0.015em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .tg-novel-card__ellipsis {
@@ -4459,7 +6240,7 @@ body.tg-desktop-admin #root {
 }
 
 .tg-novel-card__star {
-  font-size: 14px;
+  font-size: 13px;
   color: transparent;
   -webkit-text-stroke: 1px rgba(255, 255, 255, 0.75);
   text-shadow: none;
@@ -4495,11 +6276,12 @@ body.tg-desktop-admin #root {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
-  margin-top: 2px;
-  padding-top: 4px;
-  border-top: 1px solid var(--tg-separator);
-  font-size: 12px;
+  gap: 5px;
+  margin-top: 3px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(129, 161, 255, 0.14);
+  font-size: 11px;
+  line-height: 1.25;
   color: var(--tg-hint);
   flex-shrink: 0;
   min-width: 0;
@@ -4517,7 +6299,7 @@ body.tg-desktop-admin #root {
 .tg-novel-card__stats > span {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   flex-shrink: 0;
   white-space: nowrap;
 }

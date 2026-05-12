@@ -1,8 +1,9 @@
-import { Eye } from 'lucide-react'
+import { Eye, Heart } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { READER_NO_CHAPTER_YET_KM } from '../lib/errorMessagesKm.js'
 import {
   formatLatestChapterRelativeLabel,
-  formatViewCount,
+  formatCompactCount,
   formatWordCountFooter,
   getDisplayWordCountWan,
   getMeatCategoryByWordCount,
@@ -60,13 +61,12 @@ export default function HomeNovelCard({
   const statusLabel = n.status === 'completed' ? 'ចប់ហើយ' : 'កំពុងចេញ'
   const showOriginal = n.source === 'original'
   const chapters = n.chapters ?? []
-  const latestTitle = chapters.length ? `ភាគទី${chapters.length}` : '暂无章节'
-  const latestRel = Number(n.cardUpdatedAtMs) > 0
-    ? formatLatestChapterRelativeLabel({ updatedAtMs: Number(n.cardUpdatedAtMs) })
-    : formatLatestChapterRelativeLabel(n)
+  const latestTitle = chapters.length ? `ភាគទី${chapters.length}` : READER_NO_CHAPTER_YET_KM
+  const latestRel = formatLatestChapterRelativeLabel(n)
   const themes = Array.isArray(n.listThemes) ? n.listThemes : []
   const tags = n.tags ?? []
   const views = Number.isFinite(Number(n.cardViewCount)) ? Math.max(0, Number(n.cardViewCount)) : 0
+  const likes = Number.isFinite(Number(n.cardLikeCount)) ? Math.max(0, Number(n.cardLikeCount)) : 0
   const favs = Number.isFinite(Number(n.cardFavoriteCount)) ? Math.max(0, Number(n.cardFavoriteCount)) : 0
   const meatCat = getMeatCategoryByWordCount(n)
   const commentPoints = Number.isFinite(Number(n.cardRatingPoints)) ? Math.max(0, Number(n.cardRatingPoints)) : 0
@@ -92,7 +92,17 @@ export default function HomeNovelCard({
               <span className="tg-novel-card__cover-ph-text">{n.title.slice(0, 1)}</span>
             </div>
           )}
-          <span className="tg-novel-card__status-badge">{statusLabel}</span>
+          <span
+            className={[
+              'tg-novel-card__status-badge',
+              n.status === 'completed'
+                ? 'tg-novel-card__status-badge--completed'
+                : 'tg-novel-card__status-badge--ongoing',
+            ].join(' ')}
+            lang="km"
+          >
+            {statusLabel}
+          </span>
         </div>
         <div className="tg-novel-card__main">
           <div className="tg-novel-card__title-line">
@@ -199,8 +209,9 @@ export default function HomeNovelCard({
             </span>
           </p>
           <div className="tg-novel-card__stats">
-            <span><Eye size={12} strokeWidth={1.9} className="tg-novel-card__stats-icon" />{formatViewCount(views)}</span>
-            <span>☆ {favs}</span>
+            <span><Eye size={11} strokeWidth={1.85} className="tg-novel-card__stats-icon" />{formatCompactCount(views)}</span>
+            <span><Heart size={11} strokeWidth={1.85} className="tg-novel-card__stats-icon" />{formatCompactCount(likes)}</span>
+            <span>☆ {formatCompactCount(favs)}</span>
             <span>{formatWordCountFooter(getDisplayWordCountWan(n))}</span>
             <span>（{meatCat}）</span>
           </div>

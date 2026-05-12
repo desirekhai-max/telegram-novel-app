@@ -2,6 +2,7 @@ import { ArrowLeft, Flame, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { novels } from '../data/novels'
+import { SEARCH_NO_RESULTS_KM } from '../lib/errorMessagesKm.js'
 
 /** 演示用热度排序（后续可接 API） */
 const byHeat = [...novels].map((n, i) => ({
@@ -116,8 +117,8 @@ export default function SearchExploreOverlay({ onClose, query, setQuery }) {
               ref={inputRef}
               type="search"
               className="tg-search-field__input"
-              placeholder="搜索小说、作者…"
-              aria-label="搜索小说或作者"
+              placeholder="ស្វែងរកសៀវភៅ ឬអ្នកនិពន្ធ..."
+              aria-label="ស្វែងរកសៀវភៅ ឬអ្នកនិពន្ធ"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               enterKeyHint="search"
@@ -131,7 +132,7 @@ export default function SearchExploreOverlay({ onClose, query, setQuery }) {
         </div>
 
         {filtered.length === 0 ? (
-          <p className="tg-search-explore__empty">没有匹配的结果</p>
+          <p className="tg-search-explore__empty" lang="km">{SEARCH_NO_RESULTS_KM}</p>
         ) : (
           <ol className="tg-trend-list">
             {filtered.map((n, idx) => (

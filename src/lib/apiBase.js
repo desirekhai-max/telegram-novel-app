@@ -3,6 +3,9 @@ const ENV_API_BASE = RAW_API_BASE.replace(/\/+$/, '')
 const PROD_API_FALLBACK = 'https://telegram-novel-app-production-7f1e.up.railway.app'
 
 function resolveApiBase() {
+  // In Vite dev, always use relative /api so requests go through dev proxy,
+  // regardless of whether the page is opened via localhost or LAN IP.
+  if (import.meta.env.DEV) return ''
   if (ENV_API_BASE) return ENV_API_BASE
   try {
     const host = String(window.location.hostname || '').toLowerCase()

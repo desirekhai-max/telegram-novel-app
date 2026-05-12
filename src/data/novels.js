@@ -1,5 +1,5 @@
 /**
- * 示例小说数据（可替换为 API）
+ * 示例小说数据（可替换为 API；列表/卡片摘要载荷见 `buildNovelsCatalogPayload`、`GET /api/novels-catalog`）
  * genreId / status / wordCountWan（**不必由作者手填**；有 chapters 正文时卡片字数由程序自动汇总，此字段仅兜底与篇幅筛选）/ source / tags
  * lastChapterMinutesAgo：距最新章节的分钟数（可为小数，便于演示「秒前」）；首页「更新」排序与卡片「最新」旁相对时间优先用此字段
  * updatedAtMs：最后更新时间戳；无 lastChapterMinutesAgo 时「更新」排序才用（**不是**上架日）
@@ -9,12 +9,14 @@
  * listThemes：列表「题材」展示
  * meatPercent / meatCategory：仅作无列表上下文时的兜底；首页卡片在传入 meatCohort 时由程序按全列表字数自动算比例与短/中/长篇
  * viewCount / favoriteCount 可省略，由 viewsWan / favoritesK 推算
+ * authorTelegramIds：该平台书籍作者的 Telegram 数字 user id 列表；命中后在评论与个人中心显示「អ្នកនិពន្ធ」。亦可设 env `VITE_EXTRA_AUTHOR_TELEGRAM_IDS`。
  */
 export const novels = [
   {
     id: '1',
     title: 'ប្រធានបទ',
     author: 'Test',
+    authorTelegramIds: [],
     synopsis:
       'នៅក្រោមពន្លឺភ្លើងដ៏ស្រអាប់នៃទីក្រុងដ៏មមាញឹក សេចក្តីប្រាថ្នាដែលលាក់កំបាំងបានចាប់ផ្តើមឆាបឆេះ។ នេះមិនមែនគ្រាន់តែជារឿងរ៉ាវស្នេហាធម្មតានោះទេ ប៉ុន្តែវាគឺជាការធ្វើដំណើរចូលទៅក្នុងពិភពដែលពោរពេញដោយការល្បួង និងសភាវគតិពិត。\n\nរាល់ទំព័រនៃសាច់រឿងនេះ នឹងនាំលោកអ្នកឱ្យរំភើបញាប់ញ័រជាមួយឈុតឆាកដ៏ក្តៅគគុក និងការរៀបរាប់ដ៏រស់រវើកបំផុត។ តើអ្នកត្រៀមខ្លួនរួចរាល់ហើយឬនៅ ដើម្បីដោះលែងខ្លួនអ្នកឱ្យធ្លាក់ចូលក្នុងអន្លង់ស្នេហ៍ដ៏ជ្រាលជ្រៅមួយនេះ?',
     accent: 'violet',
@@ -23,6 +25,7 @@ export const novels = [
     wordCountWan: 28,
     source: 'original',
     tags: ['科幻', '奇幻', '现代言情'],
+    coverUrl: 'https://picsum.photos/id/1040/600/840',
     updatedAtMs: 1_704_000_000_000,
     viewsWan: 15.2,
     favoritesK: 9.1,
@@ -113,6 +116,7 @@ export const novels = [
     wordCountWan: 8,
     source: 'original',
     tags: ['都市', '励志', '商战'],
+    coverUrl: 'https://picsum.photos/id/1011/600/840',
     updatedAtMs: 1_703_800_000_000,
     viewsWan: 6.4,
     favoritesK: 4.2,
@@ -144,6 +148,7 @@ export const novels = [
     wordCountWan: 42,
     source: 'upload',
     tags: ['民间故事', '经典名著', '奇幻'],
+    coverUrl: 'https://picsum.photos/id/1039/600/840',
     updatedAtMs: 1_704_200_000_000,
     viewsWan: 11.0,
     favoritesK: 7.5,
@@ -176,6 +181,7 @@ export const novels = [
     wordCountWan: 10,
     source: 'upload',
     tags: ['现代言情', '都市'],
+    coverUrl: 'https://picsum.photos/id/1027/600/840',
     updatedAtMs: 1_703_500_000_000,
     viewsWan: 3.8,
     favoritesK: 2.6,

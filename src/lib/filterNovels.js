@@ -26,9 +26,9 @@ function matchesLength(wordCountWan, lengthId) {
   if (lengthId === 'all') return true
   const w = Number(wordCountWan)
   if (!Number.isFinite(w) || w < 0) return false
-  if (lengthId === 'short') return w < 10
-  if (lengthId === 'medium') return w >= 10 && w < 100
-  if (lengthId === 'long') return w >= 100
+  if (lengthId === 'short') return w < 2
+  if (lengthId === 'medium') return w >= 2 && w <= 10
+  if (lengthId === 'long') return w > 10
   return true
 }
 

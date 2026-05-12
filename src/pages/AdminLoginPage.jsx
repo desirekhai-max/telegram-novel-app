@@ -2,6 +2,13 @@ import { LogIn } from 'lucide-react'
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { loginAdmin } from '../lib/adminAuth.js'
+import {
+  ADMIN_LOGIN_ERR_CAPTCHA_KM,
+  ADMIN_LOGIN_ERR_NEED_FIELDS_KM,
+  ADMIN_OTP_ERR_DIGITS_KM,
+  ADMIN_OTP_ERR_LOGIN_KM,
+  ADMIN_OTP_ERR_TIMEOUT_KM,
+} from '../lib/errorMessagesKm.js'
 
 const LOGIN_PAGE_TIMEOUT_MS = 5 * 60 * 1000
 
@@ -41,11 +48,11 @@ export default function AdminLoginPage() {
   const onSubmit = (e) => {
     e.preventDefault()
     if (!username.trim() || !password.trim() || !captcha.trim()) {
-      setError('请输入账号、密码和验证码')
+      setError(ADMIN_LOGIN_ERR_NEED_FIELDS_KM)
       return
     }
     if (captcha.trim().toUpperCase() !== captchaCode) {
-      setError('验证码不正确')
+      setError(ADMIN_LOGIN_ERR_CAPTCHA_KM)
       setCaptcha('')
       setCaptchaCode(makeCaptcha())
       return
@@ -58,18 +65,18 @@ export default function AdminLoginPage() {
 
   const onSubmitOtp = async () => {
     if (Date.now() - pageIssuedAt > LOGIN_PAGE_TIMEOUT_MS) {
-      setOtpError('请求校验失败，请刷新页面重试')
+      setOtpError(ADMIN_OTP_ERR_TIMEOUT_KM)
       return
     }
     if (!/^\d{6}$/.test(otpCode.trim())) {
-      setOtpError('请输入 6 位数字验证码')
+      setOtpError(ADMIN_OTP_ERR_DIGITS_KM)
       return
     }
     setSubmitting(true)
     const result = await loginAdmin(username, password, otpCode)
     setSubmitting(false)
     if (!result.ok) {
-      setOtpError(result.error || '账号、密码或动态码错误')
+      setOtpError(result.error || ADMIN_OTP_ERR_LOGIN_KM)
       return
     }
     setOtpOpen(false)
@@ -77,7 +84,7 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <main className="tg-admin-login" lang="zh-Hans">
+    <main className="tg-admin-login" lang="km">
       <header className="tg-admin-login__hero">
         <p className="tg-admin-login__hero-code">
           <span className="tg-admin-login__hero-code-main">𝟔𝟗𝐊𝐊𝐇</span>
@@ -131,7 +138,7 @@ export default function AdminLoginPage() {
             {captchaCode}
           </button>
         </div>
-        {error ? <p className="tg-admin-login__error">{error}</p> : null}
+        {error ? <p className="tg-admin-login__error" lang="km">{error}</p> : null}
         <button type="submit" className="tg-admin-login__submit">
           <LogIn size={16} />
           提交登录
@@ -164,7 +171,7 @@ export default function AdminLoginPage() {
               autoFocus
               placeholder="请输入 6 位数字"
             />
-            {otpError ? <p className="tg-admin-otp__error">{otpError}</p> : null}
+            {otpError ? <p className="tg-admin-otp__error" lang="km">{otpError}</p> : null}
             <div className="tg-admin-otp__actions">
               <button
                 type="button"
