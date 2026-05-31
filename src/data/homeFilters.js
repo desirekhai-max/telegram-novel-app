@@ -34,6 +34,13 @@ export const LENGTH_OPTIONS = [
   { id: 'long', label: 'រឿងវែង លើស10ម៉ឺនពាក្យ' },
 ]
 
+/** 读者向：`male` / `female` 与 `novel.audience` 对齐 */
+export const AUDIENCE_OPTIONS = [
+  { id: 'all', label: 'គ្រប់ភេទ' },
+  { id: 'male', label: 'សម្រាប់បុរស' },
+  { id: 'female', label: 'សម្រាប់ស្ត្រី' },
+]
+
 export const SOURCE_OPTIONS = [
   { id: 'all', label: 'គ្រប់ប្រភព' },
   { id: 'original', label: 'ស្នាដៃដើម' },

@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { formatVipExpireDateTimeKm } from '../lib/formatVipExpireKm.js'
+import { useVipExpireCountdown } from '../hooks/useVipExpireCountdown.js'
 import { Link } from 'react-router-dom'
 import {
   Bookmark,
@@ -137,13 +139,13 @@ function AccountActionTile({
   )
 }
 
-/** 临时开关：个人中心隐藏「进入群聊」入口，后续需要展示时改回 false。 */
-const HIDE_ACCOUNT_COMMUNITY_TILE = true
+/** 个人中心「进入群聊」入口 */
+const HIDE_ACCOUNT_COMMUNITY_TILE = false
 
 export default function AccountPage() {
   const MINI_APP_LOGIN_URL = 'https://t.me/nithian_kh_bot/app'
   const rawUser = useTelegramUser()
-  const { viewerProfile } = useViewerProfile(rawUser)
+  const { viewerProfile, viewerProfileLoading } = useViewerProfile()
 
   const profileUser = useMemo(() => {
     if (rawUser) return rawUser
@@ -153,6 +155,12 @@ export default function AccountPage() {
   const displayName = profileUser ? formatTelegramDisplayName(profileUser) : null
   const accountRole = viewerProfile.role
   const accountVipActive = Boolean(viewerProfile.vipActive)
+  const accountVipExpireAtMs = Number(viewerProfile.vipExpireAtMs) || 0
+  const accountVipCountdown = useVipExpireCountdown(accountVipActive ? accountVipExpireAtMs : 0)
+  const accountVipExpireDateLabel = useMemo(
+    () => (accountVipExpireAtMs > 0 ? formatVipExpireDateTimeKm(accountVipExpireAtMs) : ''),
+    [accountVipExpireAtMs],
+  )
   /** 用户名下方方案胶囊：Premium / 作者 / 普通（与徽标同源） */
   const accountPlanPill = useMemo(() => {
     if (accountVipActive) {
@@ -194,10 +202,10 @@ export default function AccountPage() {
                   {profileUser ? (
                     <h2
                       id="account-profile-title"
-                      className="tg-account-profile-card__title min-w-0 text-[1.35rem] font-semibold leading-snug tracking-tight text-white"
+                      className="tg-account-profile-card__title min-w-0 max-w-full text-[1.35rem] font-semibold leading-snug tracking-tight text-white"
                     >
-                      <span className="inline-flex max-w-full flex-wrap items-center gap-x-1.5 gap-y-1">
-                        <span className="min-w-0 truncate">{displayName}</span>
+                      <span className="tg-account-profile-card__name-row">
+                        <span className="tg-account-profile-card__name">{displayName}</span>
                         <CommentMemberBadges role={accountRole} vipActive={accountVipActive} />
                       </span>
                     </h2>
@@ -225,14 +233,45 @@ export default function AccountPage() {
                     <>
                       <p className="tg-account-profile-card__handle mt-1 truncate text-sm">@{profileUser.username}</p>
                       <div className="mt-1.5 min-w-0">
-                        <span
-                          lang="km"
-                          className={['tg-account-plan-badge truncate', accountPlanPill.pillClass]
-                            .filter(Boolean)
-                            .join(' ')}
-                        >
-                          <span className="tg-account-plan-badge__label">{accountPlanPill.labelKm}</span>
-                        </span>
+                        {viewerProfileLoading ? (
+                          <span
+                            lang="km"
+                            className="tg-account-plan-badge tg-account-plan-badge--pending truncate"
+                            aria-busy="true"
+                            aria-label="កំពុងផ្ទុកគម្រោង"
+                          >
+                            <span className="tg-account-plan-badge__label">&nbsp;</span>
+                          </span>
+                        ) : (
+                          <span
+                            lang="km"
+                            className={['tg-account-plan-badge truncate', accountPlanPill.pillClass]
+                              .filter(Boolean)
+                              .join(' ')}
+                          >
+                            <span className="tg-account-plan-badge__label">{accountPlanPill.labelKm}</span>
+                          </span>
+                        )}
+                        {accountVipActive && accountVipExpireAtMs > 0 && !viewerProfileLoading ? (
+                          <div className="tg-account-vip-expire mt-2 min-w-0" lang="km">
+                            {accountVipCountdown ? (
+                              <p className="tg-account-vip-expire__countdown">
+                                <span className="tg-account-vip-expire__prefix">នៅសល់ ·</span>
+                                <span className="tg-account-vip-expire__value tg-account-vip-expire__value--remaining tabular-nums">
+                                  {accountVipCountdown}
+                                </span>
+                              </p>
+                            ) : null}
+                            {accountVipExpireDateLabel ? (
+                              <p className="tg-account-vip-expire__date">
+                                <span className="tg-account-vip-expire__prefix">ផុតកំណត់ ·</span>
+                                <span className="tg-account-vip-expire__value tg-account-vip-expire__value--expire tabular-nums">
+                                  {accountVipExpireDateLabel}
+                                </span>
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     </>
                   ) : profileUser?.language_code ? (
@@ -291,7 +330,7 @@ export default function AccountPage() {
               disabled={!rawUser}
             />
           </div>
-          {/* ជួរ ៣ */}
+          {/* ជួរ ៣ — ទាក់ទង / ផ្លូវការ */}
           <div className="mt-3 grid grid-cols-1 gap-3">
             <AccountActionTile
               href="https://t.me/VIP_69kkh"
@@ -301,9 +340,20 @@ export default function AccountPage() {
               label="ទាក់ទងផ្នែកបម្រើអតិថិជន"
             />
           </div>
+          {/* ជួរ ៤ */}
+          <div className="mt-3 grid grid-cols-1 gap-3">
+            <AccountActionTile
+              to="/contact-us"
+              icon={Mail}
+              iconClassName="text-amber-300/95"
+              iconWrapClassName="border-amber-400/22 bg-amber-950/38"
+              label="Contact Us · ទាក់ទងមកយើង"
+              labelClassName="text-[13px]"
+            />
+          </div>
           {!HIDE_ACCOUNT_COMMUNITY_TILE ? (
             <>
-              {/* ជួរ ៤ */}
+              {/* ជួរ ៥ */}
               <div className="mt-3 grid grid-cols-1 gap-3">
                 <AccountActionTile
                   href="https://t.me/Team_69KKH"
@@ -315,49 +365,35 @@ export default function AccountPage() {
               </div>
             </>
           ) : null}
-          {/* ជួរ ៥ */}
+          {/* ជួរ ៦ */}
           <div className="mt-3 grid grid-cols-1 gap-3">
             <AccountActionTile
               to="/about"
               icon={Info}
               iconClassName="text-white/88"
               iconWrapClassName="border-white/14 bg-white/[0.07]"
-              label="អំពីយើងខ្ញុំ"
+              label="About Us · អំពីពួកយើង"
             />
           </div>
-          {/* ជួរ ៦ */}
+          {/* ជួរ ៧ */}
           <div className="mt-3 grid grid-cols-1 gap-3">
             <AccountActionTile
               to="/terms-of-service"
               icon={FileText}
               iconClassName="text-cyan-300/95"
               iconWrapClassName="border-cyan-400/22 bg-cyan-950/38"
-              label="Terms of Service"
-              labelLang="en"
-              labelClassName="text-[13px]"
-            />
-          </div>
-          {/* ជួរ ៧ */}
-          <div className="mt-3 grid grid-cols-1 gap-3">
-            <AccountActionTile
-              to="/privacy-policy"
-              icon={Shield}
-              iconClassName="text-emerald-300/95"
-              iconWrapClassName="border-emerald-400/22 bg-emerald-950/38"
-              label="Privacy Policy"
-              labelLang="en"
+              label="Terms of Service · លក្ខខណ្ឌប្រើប្រាស់"
               labelClassName="text-[13px]"
             />
           </div>
           {/* ជួរ ៨ */}
           <div className="mt-3 grid grid-cols-1 gap-3">
             <AccountActionTile
-              to="/contact-us"
-              icon={Mail}
-              iconClassName="text-amber-300/95"
-              iconWrapClassName="border-amber-400/22 bg-amber-950/38"
-              label="Contact Us"
-              labelLang="en"
+              to="/privacy-policy"
+              icon={Shield}
+              iconClassName="text-emerald-300/95"
+              iconWrapClassName="border-emerald-400/22 bg-emerald-950/38"
+              label="Privacy Policy · គោលការណ៍ឯកជនភាព"
               labelClassName="text-[13px]"
             />
           </div>

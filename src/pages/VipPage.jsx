@@ -1,86 +1,208 @@
 import { useCallback, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
+import VipPurchaseConsent from '../components/VipPurchaseConsent.jsx'
 import { getVipPlansCatalogForRole, VIP_MEMBER_FOOTER_KM } from '../data/vipPlansCatalog.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
-import { purchaseViewerVipPlan } from '../lib/viewerProfileApi.js'
+import {
+  savePayWayCheckoutSession,
+  submitPayWayCheckoutForm,
+} from '../lib/paywayCheckout.js'
+import { purchaseViewerVipPlan, startViewerVipPayWayCheckout } from '../lib/viewerProfileApi.js'
 
 export default function VipPage() {
+  const navigate = useNavigate()
   const tgUser = useTelegramUser()
-  const { viewerProfile, refreshViewerProfile } = useViewerProfile(tgUser)
+  const { viewerProfile, refreshViewerProfile } = useViewerProfile()
   const [purchasePendingPlanId, setPurchasePendingPlanId] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [purchaseNotice, setPurchaseNotice] = useState('')
+  const [purchaseError, setPurchaseError] = useState('')
   const plans = useMemo(
     () => [...getVipPlansCatalogForRole(viewerProfile.role)].sort((a, b) => a.sortOrder - b.sortOrder),
     [viewerProfile.role],
   )
 
-  const onDemoPurchase = useCallback(
+  const canPurchase = Boolean(tgUser?.id) && termsAccepted && !purchasePendingPlanId
+
+  const onPurchase = useCallback(
     async (planId) => {
-      if (!tgUser?.id || !planId || purchasePendingPlanId) return
+      if (!termsAccepted) {
+        setPurchaseError('សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ')
+        return
+      }
+      if (!tgUser?.id) {
+        setPurchaseError('សូមបើកក្នុង Telegram Mini App')
+        return
+      }
+      if (!planId || purchasePendingPlanId) return
+
+      setPurchaseError('')
+      setPurchaseNotice('')
       setPurchasePendingPlanId(String(planId))
-      const result = await purchaseViewerVipPlan(planId)
-      if (result?.ok) await refreshViewerProfile()
-      setPurchasePendingPlanId('')
+
+      try {
+        const checkout = await startViewerVipPayWayCheckout(planId)
+
+        if (checkout?.ok && checkout.checkout?.checkoutUrl && checkout.checkout?.formFields) {
+          const direct = submitPayWayCheckoutForm(
+            checkout.checkout.checkoutUrl,
+            checkout.checkout.formFields,
+          )
+          if (direct.ok) return
+
+          const saved = savePayWayCheckoutSession({
+            checkoutUrl: checkout.checkout.checkoutUrl,
+            formFields: checkout.checkout.formFields,
+          })
+          if (saved) {
+            navigate('/vip/checkout-redirect')
+            return
+          }
+        }
+
+        const demo = await purchaseViewerVipPlan(planId)
+        if (demo?.ok) {
+          await refreshViewerProfile()
+          setPurchaseNotice('VIP បានបើករួចហើយ')
+          return
+        }
+
+        setPurchaseError(
+          checkout?.error
+            ? `មិនអាចបើកទំព័រទូទាត់: ${checkout.error}`
+            : 'មិនអាចទិញបាន សូមព្យាយាមម្តងទៀត',
+        )
+      } catch (err) {
+        setPurchaseError(err instanceof Error ? err.message : 'មិនអាចទិញបាន')
+      } finally {
+        setPurchasePendingPlanId('')
+      }
     },
-    [tgUser?.id, purchasePendingPlanId, refreshViewerProfile],
+    [tgUser?.id, purchasePendingPlanId, termsAccepted, refreshViewerProfile, navigate],
   )
 
   return (
     <div className="tg-app tg-app--account">
       <BrandTabToolbar title="សមាជិកVIP" titleLang="km" titleClassName="text-[16px]" />
-      <main className="tg-list-wrap tg-account-scroll flex flex-1 px-3 py-5">
-        <section className="mx-auto flex w-full max-w-[420px] flex-col gap-3">
-          {plans.map((plan) => (
-            <article
-              key={plan.planId}
-              className={[
-                'tg-vip-plan-card',
-                plan.featured ? 'tg-vip-plan-card--featured' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-            >
-              <div className="tg-vip-plan-card__body">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0" lang="km">
-                    <p className="truncate text-[14px] font-extrabold tracking-[0.01em] text-white/95">
-                      {plan.titleKm}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-white/65">{plan.flagKm}</p>
+      <main className="tg-list-wrap tg-account-scroll flex flex-1 flex-col px-3 py-5">
+        <section className="mx-auto flex w-full max-w-[420px] shrink-0 flex-col gap-3">
+          <VipPurchaseConsent
+            accepted={termsAccepted}
+            onAcceptedChange={(next) => {
+              setTermsAccepted(next)
+              if (next) setPurchaseError('')
+            }}
+            disabled={false}
+          />
+
+          {purchaseNotice ? (
+            <p className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-center text-[11px] text-emerald-100/95" lang="km">
+              {purchaseNotice}
+            </p>
+          ) : null}
+          {purchaseError ? (
+            <p className="rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-center text-[11px] text-red-100/95" lang="km">
+              {purchaseError}
+            </p>
+          ) : null}
+
+          {plans.map((plan) => {
+            const isPending = purchasePendingPlanId === plan.planId
+            const buyDisabled = !canPurchase || isPending
+            return (
+              <article
+                key={plan.planId}
+                className={[
+                  'tg-vip-plan-card shrink-0',
+                  plan.featured ? 'tg-vip-plan-card--featured' : '',
+                  !termsAccepted ? 'tg-vip-plan-card--locked' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                <div className="tg-vip-plan-card__body">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0" lang="km">
+                      <p className="truncate text-[14px] font-extrabold tracking-[0.01em] text-white/95">
+                        {plan.titleKm}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-white/65">{plan.flagKm}</p>
+                    </div>
+                    <button
+                      type="button"
+                      lang="km"
+                      disabled={buyDisabled}
+                      aria-disabled={buyDisabled}
+                      title={
+                        !termsAccepted
+                          ? 'សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ'
+                          : !tgUser?.id
+                            ? 'សូមចូលគណនី Telegram'
+                            : ''
+                      }
+                      onClick={() => {
+                        void onPurchase(plan.planId)
+                      }}
+                      className={[
+                        'inline-flex items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold backdrop-blur-sm transition',
+                        buyDisabled
+                          ? 'cursor-not-allowed border-white/12 bg-white/10 text-white/35 shadow-none'
+                          : 'active:scale-95',
+                        !buyDisabled && plan.featured
+                          ? 'border-amber-100 bg-amber-300 text-slate-900 shadow-[0_4px_14px_rgba(250,204,21,0.45)]'
+                          : '',
+                        !buyDisabled && !plan.featured
+                          ? 'border-white/40 bg-white/20 text-white shadow-[0_4px_12px_rgba(0,0,0,0.25)]'
+                          : '',
+                      ].join(' ')}
+                    >
+                      {isPending ? 'កំពុងដំណើរការ...' : plan.buyButtonKm}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    lang="km"
-                    disabled={!tgUser?.id || Boolean(purchasePendingPlanId)}
-                    onClick={() => onDemoPurchase(plan.planId)}
-                    className={[
-                      'inline-flex items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold backdrop-blur-sm transition active:scale-95',
-                      !tgUser?.id || purchasePendingPlanId ? 'cursor-not-allowed opacity-45' : '',
-                      plan.featured
-                        ? 'border-amber-100 bg-amber-300 text-slate-900 shadow-[0_4px_14px_rgba(250,204,21,0.45)]'
-                        : 'border-white/40 bg-white/20 text-white shadow-[0_4px_12px_rgba(0,0,0,0.25)]',
-                    ].join(' ')}
-                  >
-                    {purchasePendingPlanId === plan.planId ? 'កំពុងដំណើរការ...' : plan.buyButtonKm}
-                  </button>
-                </div>
-                <div className="mt-3 flex items-end gap-2">
-                  <p className="text-[24px] font-black leading-none tracking-tight text-amber-200">
-                    {plan.priceUsdLabel}
+                  <div className="mt-3 flex items-end gap-2">
+                    <p className="text-[24px] font-black leading-none tracking-tight text-amber-200">
+                      {plan.priceUsdLabel}
+                    </p>
+                    <p className="shrink-0 whitespace-nowrap pb-1 text-xs text-white/60" lang="km">
+                      {plan.priceHintKm}
+                    </p>
+                  </div>
+                  <p className="mt-2 text-[16px] font-semibold text-white/95" lang="km">
+                    {plan.durationKm}
                   </p>
-                  <p className="pb-1 text-xs text-white/60" lang="km">
-                    {plan.priceHintKm}
+                  <p className="mt-1 text-xs text-white/70" lang="km">
+                    {VIP_MEMBER_FOOTER_KM}
                   </p>
                 </div>
-                <p className="mt-2 text-[16px] font-semibold text-white/95" lang="km">
-                  {plan.durationKm}
-                </p>
-                <p className="mt-1 text-xs text-white/70" lang="km">
-                  {VIP_MEMBER_FOOTER_KM}
-                </p>
-              </div>
-            </article>
-          ))}
+              </article>
+            )
+          })}
+
+          {!termsAccepted ? (
+            <p className="px-1 text-center text-[10px] leading-snug text-white/45" lang="km">
+              សូមអានលក្ខខណ្ឌ និងធីកយល់ព្រម មុនពេលទិញសមាជិក VIP
+            </p>
+          ) : null}
+          {termsAccepted && !tgUser?.id ? (
+            <p className="px-1 text-center text-[10px] leading-snug text-amber-200/80" lang="km">
+              សូមបើកក្នុង Telegram Mini App ដើម្បីទិញ VIP
+            </p>
+          ) : null}
+
+          <footer className="mt-1 px-1 pb-2 text-center">
+            <Link
+              to="/refund-policy"
+              className="inline-flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 text-[11px] font-medium leading-snug text-white/65 underline-offset-2 transition active:scale-[0.98] hover:border-white/22 hover:bg-white/[0.09] hover:text-white/85"
+            >
+              <span lang="km">គោលការណ៍សងប្រាក់វិញ</span>
+              <span className="text-white/35" aria-hidden>
+                ·
+              </span>
+              <span lang="en">Refund Policy</span>
+            </Link>
+          </footer>
         </section>
       </main>
     </div>

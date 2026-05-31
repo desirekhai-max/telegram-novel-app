@@ -1,4 +1,5 @@
 import {
+  AUDIENCE_OPTIONS,
   GENRE_OPTIONS,
   LENGTH_OPTIONS,
   SOURCE_OPTIONS,
@@ -68,6 +69,12 @@ export function getAppliedFilterChips(criteria, panelConfig) {
       label: labelById(LENGTH_OPTIONS, criteria.lengthId),
     })
   }
+  if (criteria.audience !== 'all') {
+    chips.push({
+      removeKey: 'audience',
+      label: labelById(AUDIENCE_OPTIONS, criteria.audience),
+    })
+  }
   return chips
 }
 
@@ -78,12 +85,14 @@ export function removeCriterionFromCriteria(criteria, removeKey) {
     status: criteria.status,
     lengthId: criteria.lengthId,
     source: criteria.source,
+    audience: criteria.audience ?? 'all',
     tags: [...(criteria.tags ?? [])],
   }
   if (removeKey === 'genre') next.genre = 'all'
   else if (removeKey === 'status') next.status = 'all'
   else if (removeKey === 'lengthId') next.lengthId = 'all'
   else if (removeKey === 'source') next.source = 'all'
+  else if (removeKey === 'audience') next.audience = 'all'
   else if (removeKey.startsWith('tag:')) {
     const raw = decodeURIComponent(removeKey.slice(4))
     next.tags = next.tags.filter((x) => x !== raw)

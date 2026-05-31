@@ -73,6 +73,118 @@ export async function resolveViewerProfile(options = {}) {
   }
 }
 
+export async function startViewerVipPayWayCheckout(planId) {
+  const { telegramUser, initDataRaw } = getTelegramAuthPayload()
+  if (!telegramUser?.id) {
+    return {
+      ok: false,
+      paywayConfigured: false,
+      checkout: null,
+      error: 'telegram_user_required',
+      profile: getDefaultViewerProfile(null),
+    }
+  }
+  try {
+    const res = await fetch(apiUrl('/api/vip-orders/checkout'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegramUser,
+        initDataRaw,
+        planId: String(planId || ''),
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (res.status === 503 && data?.error === 'payway_not_configured') {
+      return {
+        ok: false,
+        paywayConfigured: false,
+        checkout: null,
+        error: '',
+        profile: normalizeViewerProfile(data?.profile, telegramUser),
+      }
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        paywayConfigured: false,
+        checkout: null,
+        error: String(data?.error || `checkout failed: ${res.status}`),
+        profile: normalizeViewerProfile(data?.profile, telegramUser),
+      }
+    }
+    const formFields = data?.formFields && typeof data.formFields === 'object' ? data.formFields : null
+    const checkoutUrl = String(data?.checkoutUrl || '')
+    const hasCheckout = Boolean(data?.ok && checkoutUrl && formFields && Object.keys(formFields).length > 0)
+    return {
+      ok: hasCheckout,
+      paywayConfigured: Boolean(data?.paywayConfigured !== false),
+      checkout: hasCheckout
+        ? {
+            tranId: String(data?.tranId || ''),
+            checkoutUrl,
+            formFields,
+          }
+        : null,
+      error: hasCheckout ? '' : 'checkout_payload_invalid',
+      profile: normalizeViewerProfile(data?.profile, telegramUser),
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      paywayConfigured: false,
+      checkout: null,
+      error: err instanceof Error ? err.message : 'checkout_network_error',
+      profile: getDefaultViewerProfile(telegramUser),
+    }
+  }
+}
+
+export async function confirmViewerVipPayment({ tranId, planId, skipVerify = false } = {}) {
+  const { telegramUser, initDataRaw } = getTelegramAuthPayload()
+  if (!telegramUser?.id) {
+    return { ok: false, profile: getDefaultViewerProfile(null), order: null, alreadyFulfilled: false }
+  }
+  try {
+    const res = await fetch(apiUrl('/api/vip-orders/confirm-payment'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegramUser,
+        initDataRaw,
+        tranId: String(tranId || ''),
+        planId: String(planId || ''),
+        skipVerify: Boolean(skipVerify),
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return {
+        ok: false,
+        profile: normalizeViewerProfile(data?.profile, telegramUser),
+        order: null,
+        alreadyFulfilled: false,
+        error: String(data?.error || `confirm failed: ${res.status}`),
+      }
+    }
+    return {
+      ok: Boolean(data?.ok),
+      profile: normalizeViewerProfile(data?.profile, telegramUser),
+      order: data?.order ? normalizeOrder(data.order) : null,
+      alreadyFulfilled: Boolean(data?.alreadyFulfilled),
+      error: '',
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      profile: getDefaultViewerProfile(telegramUser),
+      order: null,
+      alreadyFulfilled: false,
+      error: err instanceof Error ? err.message : 'network error',
+    }
+  }
+}
+
 export async function purchaseViewerVipPlan(planId) {
   const { telegramUser, initDataRaw } = getTelegramAuthPayload()
   if (!telegramUser?.id) {

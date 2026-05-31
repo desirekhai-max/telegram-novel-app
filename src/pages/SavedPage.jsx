@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import { novels } from '../data/novels.js'
+import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
-import { fetchFavoritedNovelIdsByUser, getPresenceMemberId } from '../lib/miniAppPresence.js'
+import { fetchFavoritedNovelsByUser, getPresenceMemberId } from '../lib/miniAppPresence.js'
 
 const DETAIL_INTERACTIONS_STORAGE_KEY = 'tg_novel_detail_interactions_v1'
 const serverFavoritesMemoryCache = new Map()
@@ -26,12 +27,19 @@ function readSavedNovelRows() {
   }
 }
 
+function mergeFavoritedAtMs(serverMs, localMs) {
+  const s = Number(serverMs) || 0
+  const l = Number(localMs) || 0
+  if (s > 0 && l > 0) return Math.max(s, l)
+  return s || l || 0
+}
+
 export default function SavedPage() {
   const swipeHandlers = useEdgeSwipeBack()
   const tgUser = useTelegramUser()
   const [savedRows, setSavedRows] = useState(() => readSavedNovelRows())
   const effectiveUserId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
-  const [serverNovelIds, setServerNovelIds] = useState(
+  const [serverRows, setServerRows] = useState(
     () => serverFavoritesMemoryCache.get(effectiveUserId) ?? [],
   )
 
@@ -43,12 +51,12 @@ export default function SavedPage() {
   }, [])
 
   useEffect(() => {
-    setServerNovelIds(serverFavoritesMemoryCache.get(effectiveUserId) ?? [])
+    setServerRows(serverFavoritesMemoryCache.get(effectiveUserId) ?? [])
     let active = true
-    void fetchFavoritedNovelIdsByUser(effectiveUserId).then((ids) => {
+    void fetchFavoritedNovelsByUser(effectiveUserId).then((rows) => {
       if (!active) return
-      serverFavoritesMemoryCache.set(effectiveUserId, ids)
-      setServerNovelIds(ids)
+      serverFavoritesMemoryCache.set(effectiveUserId, rows)
+      setServerRows(rows)
     })
     return () => {
       active = false
@@ -57,20 +65,25 @@ export default function SavedPage() {
 
   const savedNovels = useMemo(() => {
     const byId = new Map(novels.map((n) => [String(n.id), n]))
-    // 以服务端为主（同账号跨设备一致），本地记录仅作网络失败/未同步时兜底补充。
-    const serverSet = new Set(serverNovelIds.map((id) => String(id)))
-    const mergedRows = [
-      ...serverNovelIds.map((id) => ({ novelId: String(id), favoritedAtMs: 0 })),
-      ...savedRows.filter((row) => !serverSet.has(String(row.novelId))),
-    ]
-    return mergedRows
-      .map((row) => {
-        const novel = byId.get(String(row.novelId))
+    const localById = new Map(savedRows.map((row) => [String(row.novelId), row]))
+    const serverById = new Map(serverRows.map((row) => [String(row.novelId), row]))
+    const mergedIds = new Set([
+      ...serverRows.map((row) => String(row.novelId)),
+      ...savedRows.map((row) => String(row.novelId)),
+    ])
+    return [...mergedIds]
+      .map((novelId) => {
+        const novel = byId.get(novelId)
         if (!novel) return null
-        return { ...row, novel }
+        const favoritedAtMs = mergeFavoritedAtMs(
+          serverById.get(novelId)?.favoritedAtMs,
+          localById.get(novelId)?.favoritedAtMs,
+        )
+        return { novel, favoritedAtMs }
       })
       .filter(Boolean)
-  }, [savedRows, serverNovelIds])
+      .sort((a, b) => b.favoritedAtMs - a.favoritedAtMs)
+  }, [savedRows, serverRows])
 
   return (
     <div className="tg-app tg-app--account">
@@ -87,31 +100,38 @@ export default function SavedPage() {
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-md flex-col gap-3">
-            {savedNovels.map(({ novel }) => {
+            {savedNovels.map(({ novel, favoritedAtMs }) => {
               const accent = novel.accent === 'teal' || novel.accent === 'rose' ? novel.accent : 'violet'
+              const favoritedAtLabel =
+                favoritedAtMs > 0 ? formatReadingRecordInstant(favoritedAtMs) : ''
               return (
-              <Link
-                key={novel.id}
-                to={`/read/${novel.id}`}
-                state={{ from: 'saved' }}
-                className="tg-saved-card"
-              >
-                <div className={`tg-saved-card__cover-wrap tg-saved-card__cover-wrap--${accent}`}>
-                  {novel.coverUrl ? (
-                    <img src={novel.coverUrl} alt="" className="tg-saved-card__cover-img" loading="lazy" />
-                  ) : (
-                    <div className="tg-saved-card__cover-ph" aria-hidden>
-                      <span className="tg-saved-card__cover-ph-text">{novel.title.slice(0, 1)}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="tg-saved-card__body">
-                  <p className="tg-saved-card__title truncate">{novel.title}</p>
-                  <p className="tg-saved-card__meta truncate">
-                    អ្នកនិពន្ធ៖ {novel.author}
-                  </p>
-                </div>
-              </Link>
+                <Link
+                  key={novel.id}
+                  to={`/read/${novel.id}`}
+                  state={{ from: 'saved' }}
+                  className="tg-saved-card"
+                >
+                  <div className={`tg-saved-card__cover-wrap tg-saved-card__cover-wrap--${accent}`}>
+                    {novel.coverUrl ? (
+                      <img src={novel.coverUrl} alt="" className="tg-saved-card__cover-img" loading="lazy" />
+                    ) : (
+                      <div className="tg-saved-card__cover-ph" aria-hidden>
+                        <span className="tg-saved-card__cover-ph-text">{novel.title.slice(0, 1)}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="tg-saved-card__body">
+                    <p className="tg-saved-card__title truncate">{novel.title}</p>
+                    <p className="tg-saved-card__meta truncate">
+                      អ្នកនិពន្ធ៖ {novel.author}
+                    </p>
+                    {favoritedAtLabel ? (
+                      <p className="tg-saved-card__time truncate tabular-nums" lang="km">
+                        {favoritedAtLabel}
+                      </p>
+                    ) : null}
+                  </div>
+                </Link>
               )
             })}
           </div>

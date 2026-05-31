@@ -1,6 +1,6 @@
 /**
  * 示例小说数据（可替换为 API；列表/卡片摘要载荷见 `buildNovelsCatalogPayload`、`GET /api/novels-catalog`）
- * genreId / status / wordCountWan（**不必由作者手填**；有 chapters 正文时卡片字数由程序自动汇总，此字段仅兜底与篇幅筛选）/ source / tags
+ * genreId / status / wordCountWan（**不必由作者手填**；有 chapters 正文时卡片字数由程序自动汇总，此字段仅兜底与篇幅筛选）/ source / tags / audience（`male`|`female`，首页筛选「សម្រាប់បុរស/ស្ត្រី」）
  * lastChapterMinutesAgo：距最新章节的分钟数（可为小数，便于演示「秒前」）；首页「更新」排序与卡片「最新」旁相对时间优先用此字段
  * updatedAtMs：最后更新时间戳；无 lastChapterMinutesAgo 时「更新」排序才用（**不是**上架日）
  * viewsWan / favoritesK 用于顶栏排序；rating 为书库参考分（展示用）；首页「评分」与排序以**评论条数积分**为准：每条评论 1 分，每 20 分亮 1 星、最多 5 星（见 novelReviewRatings）
@@ -24,6 +24,7 @@ export const novels = [
     status: 'ongoing',
     wordCountWan: 28,
     source: 'original',
+    audience: 'male',
     tags: ['科幻', '奇幻', '现代言情'],
     coverUrl: 'https://picsum.photos/id/1040/600/840',
     updatedAtMs: 1_704_000_000_000,
@@ -115,6 +116,7 @@ export const novels = [
     status: 'ongoing',
     wordCountWan: 8,
     source: 'original',
+    audience: 'male',
     tags: ['都市', '励志', '商战'],
     coverUrl: 'https://picsum.photos/id/1011/600/840',
     updatedAtMs: 1_703_800_000_000,
@@ -147,6 +149,7 @@ export const novels = [
     status: 'completed',
     wordCountWan: 42,
     source: 'upload',
+    audience: 'male',
     tags: ['民间故事', '经典名著', '奇幻'],
     coverUrl: 'https://picsum.photos/id/1039/600/840',
     updatedAtMs: 1_704_200_000_000,
@@ -180,6 +183,7 @@ export const novels = [
     status: 'completed',
     wordCountWan: 10,
     source: 'upload',
+    audience: 'female',
     tags: ['现代言情', '都市'],
     coverUrl: 'https://picsum.photos/id/1027/600/840',
     updatedAtMs: 1_703_500_000_000,

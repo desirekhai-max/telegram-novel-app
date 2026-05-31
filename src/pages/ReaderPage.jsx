@@ -78,7 +78,6 @@ function chapterAccessLabel(idx, isVipReader) {
   return 'សមាជិកVIP'
 }
 
-const CATALOG_MIN_COUNT = 15
 const COMMENT_VOTES_STORAGE_KEY = 'tg_novel_comment_votes_v1'
 const COMMENT_SUBMIT_RETRY_MS = 450
 const DETAIL_INTERACTIONS_STORAGE_KEY = 'tg_novel_detail_interactions_v1'
@@ -170,6 +169,7 @@ function reportReadOnChapterOpen(novel, chapterIndex, tgUser, isVipReader) {
     readChapter,
     readAt,
     ts,
+    chapterIndex,
   })
 }
 
@@ -272,7 +272,7 @@ export default function ReaderPage() {
     followGesture: !cameFromSaved,
   })
   const tgUser = useTelegramUser()
-  const { viewerProfile } = useViewerProfile(tgUser)
+  const { viewerProfile } = useViewerProfile()
   const unreadNotificationCount = useUnreadNotificationCount(tgUser)
   const novel = getNovelById(id)
   const [introExpanded, setIntroExpanded] = useState(false)
@@ -663,7 +663,7 @@ export default function ReaderPage() {
   const chapterRows = useMemo(() => {
     if (!novel) return []
     const source = novel.chapters ?? []
-    const total = Math.max(source.length, CATALOG_MIN_COUNT)
+    const total = source.length
     return Array.from({ length: total }, (_, idx) => {
       const ch = source[idx]
       return {
@@ -948,6 +948,19 @@ export default function ReaderPage() {
       if (Number.isFinite(resp.count)) {
         setFavoriteCount(mergeDisplayedCount(getSeedFavoriteCount(novel), resp.count))
       }
+      const serverAt = Number(resp.favoritedAtMs)
+      if (next && Number.isFinite(serverAt) && serverAt > 0) {
+        const synced = readDetailInteractions()
+        const cur = resolveInteractionByNovelId(synced, novel.id) ?? {}
+        writeDetailInteractions({
+          ...synced,
+          [String(novel.id)]: {
+            ...cur,
+            favorited: true,
+            favoritedAtMs: serverAt,
+          },
+        })
+      }
     })
   }
   const onShareToTelegramFriend = () => {
@@ -1042,6 +1055,18 @@ export default function ReaderPage() {
     setArticleHeaderCompact(false)
     scrollReadingArticleToTop()
   }
+
+  const historyChapterOpenedRef = useRef(false)
+  useEffect(() => {
+    historyChapterOpenedRef.current = false
+  }, [id])
+  useEffect(() => {
+    if (!novel || historyChapterOpenedRef.current) return
+    const raw = location.state?.openChapterIndex
+    if (raw == null || !Number.isFinite(Number(raw))) return
+    historyChapterOpenedRef.current = true
+    onOpenChapter(Math.max(0, Math.floor(Number(raw))))
+  }, [novel, location.state?.openChapterIndex])
 
   const onOpenStartReadPage = () => {
     if (isMiniAppLoggedIn) {
@@ -1475,26 +1500,40 @@ export default function ReaderPage() {
                             )}
                             <div className="tg-reader-detail__comment-reply-main">
                               <div className="tg-reader-detail__comment-bubble tg-reader-detail__comment-bubble--reply">
-                                <p className="tg-reader-detail__comment-item-name inline-flex max-w-full min-w-0 flex-wrap items-center gap-1">
-                                  <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1">
-                                    <span className="min-w-0 truncate">{r.name}</span>
+                                <p className="tg-reader-detail__comment-item-name tg-reader-detail__comment-reply-head">
+                                  <span
+                                    className={[
+                                      'tg-reader-detail__comment-reply-head__party',
+                                      'tg-reader-detail__comment-reply-head__party--actor',
+                                      !displayReplyToName ? 'tg-reader-detail__comment-reply-head__party--solo' : '',
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' ')}
+                                  >
+                                    <span className="tg-reader-detail__comment-reply-head__name">{r.name}</span>
                                     <CommentMemberBadges {...buildCommentBadgeProps(r)} />
-                                    {displayReplyToName ? (
-                                      <>
-                                        <span className="shrink-0 text-white/75" aria-hidden>
-                                          ▶
-                                        </span>
-                                        <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1">
-                                          <span className="min-w-0 truncate">{displayReplyToName}</span>
-                                          {recipientBadgeSource != null ? (
-                                            <CommentMemberBadges {...buildCommentBadgeProps(recipientBadgeSource)} />
-                                          ) : null}
-                                        </span>
-                                      </>
-                                    ) : null}
                                   </span>
-                                  <span className="text-white/45">·</span>
-                                  <span className="shrink-0 text-[11px] text-white/45">{formatCommentTimeAgo(r.at, nowTs)}</span>
+                                  {displayReplyToName ? (
+                                    <>
+                                      <span className="tg-reader-detail__comment-reply-head__arrow" aria-hidden>
+                                        ▶
+                                      </span>
+                                      <span className="tg-reader-detail__comment-reply-head__party tg-reader-detail__comment-reply-head__party--target">
+                                        <span className="tg-reader-detail__comment-reply-head__name tg-reader-detail__reply-to-name">
+                                          {displayReplyToName}
+                                        </span>
+                                        {recipientBadgeSource != null ? (
+                                          <CommentMemberBadges {...buildCommentBadgeProps(recipientBadgeSource)} />
+                                        ) : null}
+                                      </span>
+                                    </>
+                                  ) : null}
+                                  <span className="tg-reader-detail__comment-reply-head__sep" aria-hidden>
+                                    ·
+                                  </span>
+                                  <span className="tg-reader-detail__comment-reply-head__time">
+                                    {formatCommentTimeAgo(r.at, nowTs)}
+                                  </span>
                                 </p>
                                 <p
                                   className={[

@@ -1,5 +1,8 @@
 const WATERMARK_TILE_KEYS = Array.from({ length: 18 }, (_, i) => `wm-${i}`)
 
+/** 投资人要求：水印底部展示中性 App 名（非书名） */
+const READER_WATERMARK_APP_NAME = '69KKH NOVEL'
+
 function pad2(n) {
   return String(Math.trunc(Number(n) || 0)).padStart(2, '0')
 }
@@ -30,6 +33,7 @@ export default function ReaderWatermarkOverlay({ tgUser, nowTs }) {
             <p className="tg-reader-watermark__line">{username}</p>
             <p className="tg-reader-watermark__line">{userId}</p>
             <p className="tg-reader-watermark__line">{timeLabel}</p>
+            <p className="tg-reader-watermark__line tg-reader-watermark__line--brand">{READER_WATERMARK_APP_NAME}</p>
           </div>
         ))}
       </div>

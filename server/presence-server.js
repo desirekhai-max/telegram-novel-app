@@ -4,6 +4,16 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import {
+  buildPurchaseFormFields,
+  buildVipTranId,
+  checkPayWayTransaction,
+  getPayWayCheckoutUrl,
+  isPayWayConfigured,
+  parseUsdAmountFromLabel,
+} from './payway.js'
+import { buildPayWayCustomFields, getNeutralVipOrderProductLabel } from './paywayNeutralCopy.js'
+import { filterCheckoutFormFieldsForClient, stripSensitivePaymentFields } from './payway-security.js'
 
 const HOST = process.env.HOST || '0.0.0.0'
 const PORT = Number(process.env.PORT || 8787)
@@ -44,6 +54,14 @@ const novelFavorites = new Map()
 const novelReports = new Map()
 const memberProfiles = new Map()
 const vipOrdersByUser = new Map()
+const pendingVipOrdersByTranId = new Map()
+const fulfilledVipTranIds = new Set()
+const APP_PUBLIC_URL = String(
+  process.env.PAYWAY_APP_PUBLIC_URL
+  || process.env.APP_PUBLIC_URL
+  || process.env.FRONTEND_URL
+  || 'https://statuesque-scone-309617.netlify.app',
+).trim().replace(/\/+$/, '')
 
 const READ_RECORDS_CAP = 2000
 const READ_RECORD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
@@ -112,6 +130,23 @@ function verifyAdminPassword(password) {
   return inputPassword === ADMIN_PASS
 }
 
+function normalizeTelegramUserIdIn(raw) {
+  if (raw == null || raw === '') return null
+  const n = Number(raw)
+  if (Number.isFinite(n) && n > 0) return Math.floor(n)
+  const s = String(raw).trim()
+  const m = s.match(/^tg_(\d+)$/i)
+  if (m) {
+    const id = Number(m[1])
+    return Number.isFinite(id) && id > 0 ? Math.floor(id) : null
+  }
+  if (/^\d+$/.test(s)) {
+    const id = Number(s)
+    return Number.isFinite(id) && id > 0 ? Math.floor(id) : null
+  }
+  return null
+}
+
 function normalizeReviewIn(raw, novelId = '') {
   if (!raw || typeof raw !== 'object') return null
   const scoreRaw = Number(raw.score)
@@ -120,7 +155,7 @@ function normalizeReviewIn(raw, novelId = '') {
   const atRaw = Number(raw.at ?? raw.createdAt ?? raw.time)
   const at = Number.isFinite(atRaw) && atRaw > 0 ? atRaw : now()
   const id = String(raw.id || `rv-${novelId || 'novel'}-${at}-${Math.floor(Math.random() * 100000)}`).slice(0, 120)
-  const userIdRaw = Number(raw.userId)
+  const userIdNorm = normalizeTelegramUserIdIn(raw.userId)
   const memberRole = normalizeViewerSnapshotRole(raw.memberRole, raw.memberTier)
   const vipActive = normalizeViewerSnapshotVipActive(raw.vipActive, raw.memberTier)
   return {
@@ -130,11 +165,23 @@ function normalizeReviewIn(raw, novelId = '') {
     at,
     userName: String(raw.userName || raw.name || 'A').slice(0, 120),
     userAvatar: raw.userAvatar ?? raw.avatar ?? null,
-    userId: Number.isFinite(userIdRaw) ? userIdRaw : undefined,
+    userId: userIdNorm ?? undefined,
     memberTier: deriveViewerBadgeTier(memberRole, vipActive),
     memberRole,
     vipActive,
   }
+}
+
+function enrichReplyNotificationTargets(item, novelId) {
+  if (!item) return item
+  const parentReplyId = String(item.parentReplyId || '').trim()
+  if (!parentReplyId) return item
+  const parent = resolveNovelReplies(novelId).find((row) => String(row?.id || '') === parentReplyId)
+  if (!parent) return item
+  if (!item.replyToUserId && parent.userId) item.replyToUserId = parent.userId
+  const parentName = String(parent.userName || '').trim()
+  if (!String(item.replyToName || '').trim() && parentName) item.replyToName = parentName
+  return item
 }
 
 function normalizeReplyIn(raw, novelId = '', commentId = '') {
@@ -144,9 +191,9 @@ function normalizeReplyIn(raw, novelId = '', commentId = '') {
   const parentCommentId = String(raw.parentCommentId || commentId || '').trim().slice(0, 120)
   if (!parentCommentId) return null
   const parentReplyId = String(raw.parentReplyId || '').trim().slice(0, 140)
-  const replyToUserIdRaw = Number(raw.replyToUserId)
   const id = String(raw.id || `rp-${novelId || 'novel'}-${parentCommentId}-${at}-${Math.floor(Math.random() * 100000)}`).slice(0, 140)
-  const userIdRaw = Number(raw.userId)
+  const userIdNorm = normalizeTelegramUserIdIn(raw.userId)
+  const replyToUserIdNorm = normalizeTelegramUserIdIn(raw.replyToUserId)
   const memberRole = normalizeViewerSnapshotRole(raw.memberRole, raw.memberTier)
   const vipActive = normalizeViewerSnapshotVipActive(raw.vipActive, raw.memberTier)
   return {
@@ -155,11 +202,11 @@ function normalizeReplyIn(raw, novelId = '', commentId = '') {
     parentReplyId,
     text: String(raw.text || '').slice(0, 500),
     replyToName: String(raw.replyToName || '').slice(0, 120),
-    replyToUserId: Number.isFinite(replyToUserIdRaw) ? replyToUserIdRaw : undefined,
+    replyToUserId: replyToUserIdNorm ?? undefined,
     at,
     userName: String(raw.userName || raw.name || 'A').slice(0, 120),
     userAvatar: raw.userAvatar ?? raw.avatar ?? null,
-    userId: Number.isFinite(userIdRaw) ? userIdRaw : undefined,
+    userId: userIdNorm ?? undefined,
     memberTier: deriveViewerBadgeTier(memberRole, vipActive),
     memberRole,
     vipActive,
@@ -569,7 +616,7 @@ function createSuccessfulVipOrderForViewer(profile, planId) {
     statusLabel: 'បង់ប្រាក់ជោគជ័យ',
     time: formatOrderTime(atMs),
     atMs,
-    product: `${plan.titleKm} · ${plan.durationKm}`,
+    product: getNeutralVipOrderProductLabel(),
     audience: profile.role,
     durationHours: plan.durationHours,
     priceUsdLabel: plan.priceUsdLabel,
@@ -590,6 +637,112 @@ function createSuccessfulVipOrderForViewer(profile, planId) {
   txMetrics.orderEvents.push(atMs)
   txMetrics.successEvents.push(atMs)
   return { order, profile: updatedProfile }
+}
+
+function parseMemberIdToTelegramUserId(memberId) {
+  const mid = String(memberId || '').trim()
+  const matched = mid.match(/^tg_(\d+)$/i)
+  if (matched) return normalizeTelegramUserId(matched[1])
+  return normalizeTelegramUserId(mid)
+}
+
+function markMemberPaidPresence(memberId, req, atMs = now()) {
+  if (!memberId) return
+  ensurePresenceMemberKnown(memberId, req, atMs)
+  if (!paidMembers.has(memberId)) {
+    paidMembers.add(memberId)
+    memberPaidAt.set(memberId, atMs)
+  }
+}
+
+function fulfillVipAfterPayment(input = {}) {
+  const tranId = String(input.tranId || input.tran_id || '').trim().slice(0, 20)
+  const pending = tranId ? pendingVipOrdersByTranId.get(tranId) : null
+  const planId = String(input.planId || input.plan_id || pending?.planId || '').trim()
+  const telegramUserId = normalizeTelegramUserId(
+    input.telegramUserId || input.telegram_user_id || pending?.telegramUserId,
+  ) || parseMemberIdToTelegramUserId(input.memberId || pending?.memberId)
+  if (!telegramUserId) {
+    return { ok: false, error: 'telegram user required', profile: null, order: null, alreadyFulfilled: false }
+  }
+  if (!planId) {
+    return { ok: false, error: 'planId required', profile: null, order: null, alreadyFulfilled: false }
+  }
+  if (tranId && fulfilledVipTranIds.has(tranId)) {
+    const existing = resolveViewerProfileByTelegramUserId(telegramUserId)
+    return {
+      ok: true,
+      error: '',
+      profile: buildViewerProfileResponse(existing),
+      order: null,
+      alreadyFulfilled: true,
+    }
+  }
+
+  let profile = null
+  if (input.telegramUser && typeof input.telegramUser === 'object') {
+    profile = upsertViewerProfile(input.telegramUser, input.req, {
+      authVerified: input.authVerified === true,
+      authMode: String(input.authMode || ''),
+    })
+  } else {
+    profile = resolveViewerProfileByTelegramUserId(telegramUserId)
+  }
+  if (!profile) {
+    return { ok: false, error: 'profile not found', profile: null, order: null, alreadyFulfilled: false }
+  }
+
+  const result = createSuccessfulVipOrderForViewer(profile, planId)
+  if (!result) {
+    return { ok: false, error: 'invalid vip plan', profile: null, order: null, alreadyFulfilled: false }
+  }
+
+  if (tranId) {
+    fulfilledVipTranIds.add(tranId)
+    const row = pendingVipOrdersByTranId.get(tranId)
+    if (row) pendingVipOrdersByTranId.set(tranId, { ...row, status: 'paid', paidAt: now() })
+  }
+  markMemberPaidPresence(result.profile.memberId, input.req)
+
+  return {
+    ok: true,
+    error: '',
+    profile: buildViewerProfileResponse(result.profile),
+    order: result.order,
+    alreadyFulfilled: false,
+  }
+}
+
+function applyPaymentSuccessPayload(body, req) {
+  const safeBody = stripSensitivePaymentFields(body)
+  const payload = safeBody && typeof safeBody === 'object' && !Array.isArray(safeBody) ? safeBody : {}
+  const memberId = String(payload.memberId || '').trim()
+  const atMs = now()
+  const reqIp = getRequestIp(req)
+  const reqGeo = getRequestGeoLabel(req)
+  if (memberId) {
+    if (!knownMembers.has(memberId)) {
+      knownMembers.add(memberId)
+      memberFirstSeenAt.set(memberId, atMs)
+      if (reqIp) memberRegisterIp.set(memberId, reqIp)
+      if (reqGeo) memberRegisterGeo.set(memberId, reqGeo)
+    }
+    if (reqIp) memberLastLoginIp.set(memberId, reqIp)
+    if (reqGeo) memberLastLoginGeo.set(memberId, reqGeo)
+    memberLastLoginAt.set(memberId, atMs)
+    markMemberPaidPresence(memberId, req, atMs)
+  }
+  const fulfillment = fulfillVipAfterPayment({
+    memberId,
+    planId: payload.planId || payload.plan_id,
+    tranId: payload.tranId || payload.tran_id,
+    telegramUserId: payload.telegramUserId || payload.telegram_user_id,
+    telegramUser: payload.telegramUser,
+    authVerified: payload.authVerified,
+    authMode: payload.authMode,
+    req,
+  })
+  return { memberId, fulfillment }
 }
 
 function loadPersistedMembers() {
@@ -626,6 +779,10 @@ function loadPersistedMembers() {
     const vipOrdersByUserObj = parsed?.vipOrdersByUser && typeof parsed.vipOrdersByUser === 'object'
       ? parsed.vipOrdersByUser
       : {}
+    const pendingVipOrdersObj = parsed?.pendingVipOrdersByTranId && typeof parsed.pendingVipOrdersByTranId === 'object'
+      ? parsed.pendingVipOrdersByTranId
+      : {}
+    const fulfilledTranIds = Array.isArray(parsed?.fulfilledVipTranIds) ? parsed.fulfilledVipTranIds : []
     const tx = parsed?.txMetrics && typeof parsed.txMetrics === 'object' ? parsed.txMetrics : {}
     for (const id of members) {
       if (id) knownMembers.add(String(id))
@@ -668,6 +825,24 @@ function loadPersistedMembers() {
       if (!id) continue
       const list = Array.isArray(rows) ? rows.map((it) => normalizeVipOrderIn(it)).filter(Boolean) : []
       vipOrdersByUser.set(id, list.sort((a, b) => Number(b?.atMs || 0) - Number(a?.atMs || 0)))
+    }
+    for (const [tranId, row] of Object.entries(pendingVipOrdersObj)) {
+      const tid = String(tranId || '').trim().slice(0, 20)
+      if (!tid || !row || typeof row !== 'object') continue
+      pendingVipOrdersByTranId.set(tid, {
+        tranId: tid,
+        planId: String(row.planId || '').trim(),
+        telegramUserId: normalizeTelegramUserId(row.telegramUserId),
+        memberId: String(row.memberId || '').trim(),
+        amount: String(row.amount || '').trim(),
+        status: String(row.status || 'pending').trim(),
+        createdAt: Number(row.createdAt || 0) || 0,
+        paidAt: Number(row.paidAt || 0) || 0,
+      })
+    }
+    for (const tranId of fulfilledTranIds) {
+      const tid = String(tranId || '').trim().slice(0, 20)
+      if (tid) fulfilledVipTranIds.add(tid)
     }
     txMetrics.readEvents = Array.isArray(tx.readEvents) ? tx.readEvents.map(Number).filter(Boolean) : []
     txMetrics.orderEvents = Array.isArray(tx.orderEvents) ? tx.orderEvents.map(Number).filter(Boolean) : []
@@ -763,8 +938,7 @@ function loadPersistedMembers() {
       ? parsed.novelFavorites
       : {}
     for (const [novelId, row] of Object.entries(novelFavoritesObj)) {
-      const users = Array.isArray(row?.users) ? row.users.map((v) => String(v || '').trim()).filter(Boolean) : []
-      novelFavorites.set(String(novelId), { users: [...new Set(users)] })
+      novelFavorites.set(String(novelId), normalizeNovelFavoritesRow(row))
     }
     const novelReportsObj = parsed?.novelReports && typeof parsed.novelReports === 'object'
       ? parsed.novelReports
@@ -797,6 +971,8 @@ function persistMembers() {
       memberLastLoginAt: Object.fromEntries(memberLastLoginAt),
       memberProfiles: Object.fromEntries(memberProfiles),
       vipOrdersByUser: Object.fromEntries(vipOrdersByUser),
+      pendingVipOrdersByTranId: Object.fromEntries(pendingVipOrdersByTranId),
+      fulfilledVipTranIds: [...fulfilledVipTranIds],
       txMetrics,
       novelViews: Object.fromEntries(novelViews),
       novelReviews: Object.fromEntries(novelReviews),
@@ -852,23 +1028,43 @@ function resolveNovelLikeUsers(novelId) {
   return users
 }
 
+function normalizeNovelFavoritesRow(raw) {
+  const users = Array.isArray(raw?.users)
+    ? raw.users.map((v) => String(v || '').trim()).filter(Boolean)
+    : []
+  const atByUser =
+    raw?.atByUser && typeof raw.atByUser === 'object' && !Array.isArray(raw.atByUser)
+      ? Object.fromEntries(
+          Object.entries(raw.atByUser)
+            .map(([uid, ms]) => [String(uid || '').trim(), Number(ms)])
+            .filter(([uid, ms]) => uid && Number.isFinite(ms) && ms > 0),
+        )
+      : {}
+  return { users: [...new Set(users)], atByUser }
+}
+
 function resolveNovelFavoriteUsers(novelId) {
   const key = String(novelId || '').trim()
   if (!key) return []
-  const row = novelFavorites.get(key)
-  const users = Array.isArray(row?.users) ? row.users : []
-  return users
+  return normalizeNovelFavoritesRow(novelFavorites.get(key)).users
 }
 
-function resolveUserFavoritedNovelIds(userId) {
+function resolveUserFavoritedNovels(userId) {
   const uid = String(userId || '').trim()
   if (!uid) return []
   const out = []
   for (const [novelId, row] of novelFavorites.entries()) {
-    const users = Array.isArray(row?.users) ? row.users : []
-    if (users.includes(uid)) out.push(String(novelId))
+    const normalized = normalizeNovelFavoritesRow(row)
+    if (!normalized.users.includes(uid)) continue
+    const favoritedAtMs = Number(normalized.atByUser[uid]) || 0
+    out.push({ novelId: String(novelId), favoritedAtMs })
   }
+  out.sort((a, b) => b.favoritedAtMs - a.favoritedAtMs)
   return out
+}
+
+function resolveUserFavoritedNovelIds(userId) {
+  return resolveUserFavoritedNovels(userId).map((it) => it.novelId)
 }
 
 function resolveNovelReports(novelId) {
@@ -1315,6 +1511,108 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true, items, profile: buildViewerProfileResponse(profile) })
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/vip-orders/checkout') {
+    const body = await parseJsonBody(req)
+    const auth = resolveViewerAuth(body)
+    if (!auth.telegramUser?.telegramUserId) {
+      return sendJson(res, 401, { ok: false, error: 'telegram user required' })
+    }
+    if (TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
+      return sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
+    }
+    if (!isPayWayConfigured()) {
+      return sendJson(res, 503, { ok: false, paywayConfigured: false, error: 'payway_not_configured' })
+    }
+    const planId = String(body.planId || '').trim()
+    if (!planId) return sendJson(res, 400, { ok: false, error: 'planId required' })
+    const profile = upsertViewerProfile(auth.telegramUser, req, auth)
+    const plan = getVipPlanForRole(planId, profile.role)
+    if (!plan || plan.durationHours <= 0) {
+      return sendJson(res, 400, { ok: false, error: 'invalid vip plan' })
+    }
+    const atMs = now()
+    const tranId = buildVipTranId(profile.telegramUserId, atMs)
+    const amount = parseUsdAmountFromLabel(plan.priceUsdLabel)
+    const returnUrl = `${APP_PUBLIC_URL}/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
+    pendingVipOrdersByTranId.set(tranId, {
+      tranId,
+      planId: plan.planId,
+      telegramUserId: profile.telegramUserId,
+      memberId: profile.memberId,
+      amount,
+      status: 'pending',
+      createdAt: atMs,
+      paidAt: 0,
+    })
+    const formFields = buildPurchaseFormFields({
+      tranId,
+      amount,
+      planId: plan.planId,
+      customFields: buildPayWayCustomFields({ tranId, planId: plan.planId }),
+      returnUrl,
+      cancelUrl: `${APP_PUBLIC_URL}/vip?cancel=1`,
+      continueSuccessUrl: returnUrl,
+      returnParams: JSON.stringify({ planId: plan.planId, telegramUserId: profile.telegramUserId }),
+    })
+    persistMembers()
+    return sendJson(res, 200, {
+      ok: true,
+      paywayConfigured: true,
+      tranId,
+      checkoutUrl: getPayWayCheckoutUrl(),
+      formFields: filterCheckoutFormFieldsForClient(formFields),
+      hostedCheckout: true,
+      profile: buildViewerProfileResponse(profile),
+    })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/vip-orders/confirm-payment') {
+    const body = stripSensitivePaymentFields(await parseJsonBody(req))
+    const auth = resolveViewerAuth(body)
+    if (!auth.telegramUser?.telegramUserId) {
+      return sendJson(res, 401, { ok: false, error: 'telegram user required' })
+    }
+    if (TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
+      return sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
+    }
+    const tranId = String(body.tranId || body.tran_id || '').trim().slice(0, 20)
+    const planId = String(body.planId || body.plan_id || '').trim()
+    if (!tranId) return sendJson(res, 400, { ok: false, error: 'tranId required' })
+    const pending = pendingVipOrdersByTranId.get(tranId)
+    if (pending && pending.telegramUserId !== auth.telegramUser.telegramUserId) {
+      return sendJson(res, 403, { ok: false, error: 'tran_id owner mismatch' })
+    }
+    const skipVerify = body.skipVerify === true || process.env.PAYWAY_SKIP_VERIFY === '1'
+    if (isPayWayConfigured() && !skipVerify) {
+      const checked = await checkPayWayTransaction(tranId)
+      if (!checked.ok) {
+        return sendJson(res, 402, {
+          ok: false,
+          error: 'payment_not_confirmed',
+          paywayStatus: checked.status,
+          paywayError: checked.error,
+        })
+      }
+    }
+    const fulfillment = fulfillVipAfterPayment({
+      tranId,
+      planId,
+      memberId: auth.telegramUser.telegramUserId ? `tg_${auth.telegramUser.telegramUserId}` : '',
+      telegramUser: auth.telegramUser,
+      authVerified: auth.authVerified,
+      authMode: auth.authMode,
+      req,
+    })
+    if (!fulfillment.ok) return sendJson(res, 400, { ok: false, error: fulfillment.error })
+    persistMembers()
+    return sendJson(res, 200, {
+      ok: true,
+      alreadyFulfilled: fulfillment.alreadyFulfilled,
+      order: fulfillment.order,
+      profile: fulfillment.profile,
+    })
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/vip-orders/purchase') {
     const body = await parseJsonBody(req)
     const auth = resolveViewerAuth(body)
@@ -1445,9 +1743,8 @@ const server = http.createServer(async (req, res) => {
     if (reqIp) memberLastLoginIp.set(memberId, reqIp)
     if (reqGeo) memberLastLoginGeo.set(memberId, reqGeo)
     memberLastLoginAt.set(memberId, now())
-    if (body.paidSuccess && !paidMembers.has(memberId)) {
-      paidMembers.add(memberId)
-      memberPaidAt.set(memberId, now())
+    if (body.paidSuccess) {
+      applyPaymentSuccessPayload(body, req)
       persistMembers()
     }
     records.set(memberId, { device, isAdmin, lastSeenAt: now() })
@@ -1459,23 +1756,16 @@ const server = http.createServer(async (req, res) => {
     const body = await parseJsonBody(req)
     const memberId = String(body.memberId || '').trim()
     if (!memberId) return sendJson(res, 400, { ok: false, error: 'memberId required' })
-    const reqIp = getRequestIp(req)
-    const reqGeo = getRequestGeoLabel(req)
-    if (!knownMembers.has(memberId)) {
-      knownMembers.add(memberId)
-      memberFirstSeenAt.set(memberId, now())
-      if (reqIp) memberRegisterIp.set(memberId, reqIp)
-      if (reqGeo) memberRegisterGeo.set(memberId, reqGeo)
-    }
-    if (reqIp) memberLastLoginIp.set(memberId, reqIp)
-    if (reqGeo) memberLastLoginGeo.set(memberId, reqGeo)
-    memberLastLoginAt.set(memberId, now())
-    if (!paidMembers.has(memberId)) {
-      paidMembers.add(memberId)
-      memberPaidAt.set(memberId, now())
-    }
+    const { fulfillment } = applyPaymentSuccessPayload(body, req)
     persistMembers()
-    return sendJson(res, 200, { ok: true, counts: makeCounts() })
+    return sendJson(res, 200, {
+      ok: true,
+      counts: makeCounts(),
+      vipActivated: fulfillment.ok,
+      vipError: fulfillment.ok ? '' : fulfillment.error,
+      profile: fulfillment.profile,
+      order: fulfillment.order,
+    })
   }
 
   if (req.method === 'POST' && url.pathname === '/api/metrics/tx-event') {
@@ -1655,10 +1945,14 @@ const server = http.createServer(async (req, res) => {
     const prevProfile = commentProfiles[voterId] && typeof commentProfiles[voterId] === 'object'
       ? commentProfiles[voterId]
       : {}
-    commentProfiles[voterId] = {
-      name: voterName || String(prevProfile?.name || ''),
-      avatar: voterAvatar || String(prevProfile?.avatar || ''),
-      lastUpAt: action === 'up' ? now() : Number(prevProfile?.lastUpAt || 0),
+    if (action === 'clear') {
+      delete commentProfiles[voterId]
+    } else {
+      commentProfiles[voterId] = {
+        name: voterName || String(prevProfile?.name || ''),
+        avatar: voterAvatar || String(prevProfile?.avatar || ''),
+        lastUpAt: action === 'up' ? now() : Number(prevProfile?.lastUpAt || 0),
+      }
     }
     allVotes[commentId] = { up: [...upSet], down: [...downSet] }
     allProfiles[commentId] = commentProfiles
@@ -1712,8 +2006,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/novel-favorites/by-user') {
     const userId = String(url.searchParams.get('userId') || '').trim()
     if (!userId) return sendJson(res, 400, { ok: false, error: 'userId required' })
-    const novelIds = resolveUserFavoritedNovelIds(userId)
-    return sendJson(res, 200, { ok: true, userId, novelIds })
+    const items = resolveUserFavoritedNovels(userId)
+    return sendJson(res, 200, {
+      ok: true,
+      userId,
+      novelIds: items.map((it) => it.novelId),
+      items,
+    })
   }
 
   if (req.method === 'POST' && url.pathname === '/api/novel-favorites/toggle') {
@@ -1723,16 +2022,26 @@ const server = http.createServer(async (req, res) => {
     const userId = String(body.userId || '').trim()
     if (!userId) return sendJson(res, 400, { ok: false, error: 'userId required' })
     const shouldFavorite = Boolean(body.favorite)
-    const users = new Set(resolveNovelFavoriteUsers(novelId))
-    if (shouldFavorite) users.add(userId)
-    else users.delete(userId)
-    novelFavorites.set(novelId, { users: [...users] })
+    const prev = normalizeNovelFavoritesRow(novelFavorites.get(novelId))
+    const users = new Set(prev.users)
+    const atByUser = { ...prev.atByUser }
+    let favoritedAtMs = 0
+    if (shouldFavorite) {
+      users.add(userId)
+      favoritedAtMs = Date.now()
+      atByUser[userId] = favoritedAtMs
+    } else {
+      users.delete(userId)
+      delete atByUser[userId]
+    }
+    novelFavorites.set(novelId, { users: [...users], atByUser })
     persistMembers()
     return sendJson(res, 200, {
       ok: true,
       novelId,
       count: users.size,
       favorited: shouldFavorite,
+      favoritedAtMs: shouldFavorite ? favoritedAtMs : null,
     })
   }
 
@@ -1770,8 +2079,9 @@ const server = http.createServer(async (req, res) => {
     if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
     const parentCommentId = String(body.parentCommentId || body.entry?.parentCommentId || '').trim()
     if (!parentCommentId) return sendJson(res, 400, { ok: false, error: 'parentCommentId required' })
-    const item = normalizeReplyIn(applyViewerSnapshotFields(body.entry ?? body), novelId, parentCommentId)
+    let item = normalizeReplyIn(applyViewerSnapshotFields(body.entry ?? body), novelId, parentCommentId)
     if (!item) return sendJson(res, 400, { ok: false, error: 'invalid reply entry' })
+    item = enrichReplyNotificationTargets(item, novelId)
     const items = resolveNovelReplies(novelId).slice()
     items.push(item)
     novelReplies.set(novelId, { items })

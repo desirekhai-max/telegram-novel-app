@@ -3,20 +3,30 @@ import { Bell, Heart, MessageCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { novels } from '../data/novels.js'
 import { formatTelegramDisplayName, useTelegramUser } from '../hooks/useTelegramUser.js'
-import { fetchNovelReplies, fetchNovelReviews, getPresenceMemberId } from '../lib/miniAppPresence.js'
+import { fetchNovelReplies, fetchNovelReviews } from '../lib/miniAppPresence.js'
+import {
+  collectLikeNotificationsForNovel,
+  formatLikeNotificationHeadline,
+} from '../lib/likeNotifications.js'
+import {
+  buildViewerNameSet,
+  collectReplyNotificationsForNovel,
+  formatReplyNotificationHeadline,
+  isCommentOwnedByViewer,
+} from '../lib/replyNotifications.js'
+import {
+  dispatchNotificationReadChanged,
+  isNotificationRead,
+  markNotificationReadInMap,
+  readByViewer,
+  readReadMap,
+  resolveNotificationViewerId,
+  syncReadMapWithNotifications,
+  writeReadMap,
+} from '../lib/notificationReadStorage.js'
 
-const NOTIFICATION_READ_STORAGE_KEY = 'tg_notification_read_ids_v1'
-const NOTIFICATION_READ_CHANGED_EVENT = 'tg-notifications-read-changed'
 const NOTIFICATION_POLL_INTERVAL_MS = 1500
 const SYSTEM_NOTIFICATION_STORAGE_KEY = 'tg_system_notifications_v1'
-
-function resolveViewerId(tgUser) {
-  if (tgUser?.id != null) return Number(tgUser.id)
-  const raw = String(getPresenceMemberId() || '')
-  const m = raw.match(/^tg_(\d+)$/)
-  if (m) return Number(m[1])
-  return null
-}
 
 function formatAgo(ts) {
   const t = Number(ts || 0)
@@ -31,42 +41,6 @@ function formatAgo(ts) {
   return `${diffDay} ថ្ងៃមុន`
 }
 
-function buildReplyId(novelId, parentCommentId, rp) {
-  const rid = String(rp?.id || '').trim()
-  if (rid) return `reply-${novelId}-${rid}`
-  return `reply-${novelId}-${String(parentCommentId || '')}-${Number(rp?.at || 0)}`
-}
-
-function buildLikeId(novelId, commentId, likerId) {
-  return `like-${String(novelId || '')}-${String(commentId || '')}-${String(likerId || '')}`
-}
-
-function readReadMap() {
-  try {
-    const raw = localStorage.getItem(NOTIFICATION_READ_STORAGE_KEY)
-    const parsed = raw ? JSON.parse(raw) : {}
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
-  }
-}
-
-function writeReadMap(next) {
-  try {
-    localStorage.setItem(NOTIFICATION_READ_STORAGE_KEY, JSON.stringify(next))
-  } catch {
-    /* ignore storage failure */
-  }
-}
-
-function readByViewer(all, viewerId) {
-  const src = all && typeof all === 'object' ? all : {}
-  const byUser = src[String(viewerId)]
-  if (byUser && typeof byUser === 'object') return byUser
-  // 兼容旧的“平铺结构”
-  return src
-}
-
 function readSystemNotifications() {
   try {
     const raw = localStorage.getItem(SYSTEM_NOTIFICATION_STORAGE_KEY)
@@ -77,25 +51,9 @@ function readSystemNotifications() {
   }
 }
 
-function pruneReadStateByVisibleItems(allReadMap, viewerId, items) {
-  const all = allReadMap && typeof allReadMap === 'object' ? allReadMap : {}
-  const current = readByViewer(all, viewerId)
-  const visibleIds = new Set(
-    (Array.isArray(items) ? items : [])
-      .map((it) => String(it?.id || '').trim())
-      .filter(Boolean),
-  )
-  const next = {}
-  for (const [id, ts] of Object.entries(current)) {
-    if (visibleIds.has(String(id))) next[String(id)] = ts
-  }
-  all[String(viewerId)] = next
-  return { all, next }
-}
-
 export default function NotificationsPage() {
   const tgUser = useTelegramUser()
-  const viewerId = useMemo(() => resolveViewerId(tgUser), [tgUser])
+  const viewerId = useMemo(() => resolveNotificationViewerId(tgUser), [tgUser])
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState([])
   const [readMetaMap, setReadMetaMap] = useState({})
@@ -109,34 +67,34 @@ export default function NotificationsPage() {
     setReadMetaMap(readByViewer(all, viewerId))
   }, [viewerId])
 
-  const markAsRead = (id) => {
-    const key = String(id || '').trim()
-    if (!key || viewerId == null) return
+  const markAsRead = (notification) => {
+    if (viewerId == null) return
+    const target = typeof notification === 'string'
+      ? items.find((it) => it.id === notification) || { id: notification, readAliases: [notification] }
+      : notification
     const all = readReadMap()
     const current = readByViewer(all, viewerId)
-    if (current[key]) return
-    const next = { ...current, [key]: Date.now() }
+    if (isNotificationRead(current, target)) return
+    const { next } = markNotificationReadInMap(current, target)
     all[String(viewerId)] = next
     writeReadMap(all)
     setReadMetaMap(next)
-    window.dispatchEvent(new CustomEvent(NOTIFICATION_READ_CHANGED_EVENT))
+    dispatchNotificationReadChanged()
   }
 
   const markAllAsRead = () => {
     if (viewerId == null || items.length === 0) return
     const all = readReadMap()
-    const current = readByViewer(all, viewerId)
+    let current = readByViewer(all, viewerId)
     const nowAt = Date.now()
-    const next = { ...current }
     for (const it of items) {
-      const id = String(it?.id || '').trim()
-      if (!id) continue
-      next[id] = nowAt
+      const { next } = markNotificationReadInMap(current, it, nowAt)
+      current = next
     }
-    all[String(viewerId)] = next
+    all[String(viewerId)] = current
     writeReadMap(all)
-    setReadMetaMap(next)
-    window.dispatchEvent(new CustomEvent(NOTIFICATION_READ_CHANGED_EVENT))
+    setReadMetaMap(current)
+    dispatchNotificationReadChanged()
   }
 
   useEffect(() => {
@@ -145,12 +103,7 @@ export default function NotificationsPage() {
 
     const loadNotifications = async () => {
       if (!active || viewerId == null) return
-      const viewerNames = new Set([
-        String(tgUser ? formatTelegramDisplayName(tgUser) : '').trim(),
-        String(tgUser?.first_name || '').trim(),
-        String(tgUser?.username || '').trim(),
-        String(tgUser?.username ? `@${tgUser.username}` : '').trim(),
-      ].filter(Boolean))
+      const viewerNames = buildViewerNameSet(tgUser, formatTelegramDisplayName)
       const allRows = await Promise.all(
         novels.map(async (novel) => {
           const novelId = String(novel?.id || '').trim()
@@ -161,99 +114,22 @@ export default function NotificationsPage() {
           ])
           const reviewRows = Array.isArray(reviews) ? reviews : []
           const replyRows = Array.isArray(replies) ? replies : []
-          const profileByUserId = new Map()
-          const pushProfile = (uidRaw, nameRaw, avatarRaw) => {
-            const uid = Number(uidRaw)
-            if (!Number.isFinite(uid)) return
-            const key = String(uid)
-            const prev = profileByUserId.get(key) || { name: '', avatar: '' }
-            const name = String(nameRaw || '').trim()
-            const avatar = String(avatarRaw || '').trim()
-            profileByUserId.set(key, {
-              name: name || prev.name,
-              avatar: avatar || prev.avatar,
-            })
-          }
-          for (const r of reviewRows) {
-            pushProfile(r?.userId, r?.userName || r?.name || '', r?.userAvatar || r?.avatar || '')
-          }
-          for (const rp of replyRows) {
-            pushProfile(rp?.userId, rp?.userName || rp?.name || '', rp?.userAvatar || rp?.avatar || '')
-          }
-          const resolveProfile = (likerIdRaw) => {
-            const likerId = String(likerIdRaw || '').trim()
-            if (!likerId) return null
-            const direct = profileByUserId.get(likerId)
-            if (direct) return direct
-            const m = likerId.match(/^tg_(\d+)$/)
-            if (m) return profileByUserId.get(String(m[1])) || null
-            return null
-          }
-          const mineComments = reviewRows.filter((row) => {
-            const uid = Number(row?.userId)
-            if (Number.isFinite(uid) && uid === viewerId) return true
-            const name = String(row?.userName || row?.name || '').trim()
-            return !!name && viewerNames.has(name)
-          })
-          const mineCommentIds = new Set(mineComments.map((row) => String(row?.id || '').trim()).filter(Boolean))
-          const myReplyIds = new Set(
-            replyRows
-              .filter((rp) => Number(rp?.userId) === viewerId)
-              .map((rp) => String(rp?.id || '').trim())
-              .filter(Boolean),
+          const ownedComments = reviewRows.filter((row) =>
+            isCommentOwnedByViewer(row, viewerId, viewerNames),
           )
-          const out = []
 
-          for (const row of mineComments) {
-            const commentId = String(row?.id || '').trim()
-            if (!commentId) continue
-            const likeUsers = Array.isArray(row?.likeUsers) ? row.likeUsers : []
-            for (const lu of likeUsers) {
-              const likerId = String(lu?.userId || '').trim()
-              if (!likerId || likerId === `tg_${viewerId}` || likerId === String(viewerId)) continue
-              const profile = resolveProfile(likerId)
-              const rawActorName = String(lu?.name || profile?.name || '').trim()
-              const actorName = rawActorName || (likerId.startsWith('tg_') ? likerId.slice(3) : likerId)
-              const actorAvatar = String(lu?.avatar || profile?.avatar || '').trim()
-              out.push({
-                id: buildLikeId(novelId, commentId, likerId),
-                type: 'like',
-                novelId,
-                commentId,
-                replyId: '',
-                actorName,
-                actorAvatar,
-                text: String(row?.text || '').trim(),
-                coverUrl: String(novel?.coverUrl || '').trim(),
-                at: Number(lu?.at || row?.latestLikeAt || row?.at || 0),
-              })
-            }
-          }
-
-          for (const rp of replyRows) {
-            const uid = Number(rp?.userId)
-            if (Number.isFinite(uid) && uid === viewerId) continue
-            const parentCommentId = String(rp?.parentCommentId || '').trim()
-            const parentReplyId = String(rp?.parentReplyId || '').trim()
-            const hitMineComment = parentCommentId && mineCommentIds.has(parentCommentId)
-            const hitMineReply = parentReplyId && myReplyIds.has(parentReplyId)
-            const mentionMe = Number(rp?.replyToUserId) === viewerId
-            if (!hitMineComment && !hitMineReply && !mentionMe) continue
-            out.push({
-              id: buildReplyId(novelId, parentCommentId, rp),
-              type: 'reply',
-              novelId,
-              commentId: parentCommentId,
-              replyId: String(rp?.id || '').trim(),
-              actorName: String(rp?.userName || rp?.name || '').trim() || 'មិត្តអ្នកអាន',
-              actorAvatar: String(rp?.userAvatar || rp?.avatar || '').trim(),
-              text: String(rp?.text || '').trim(),
-              coverUrl: String(novel?.coverUrl || '').trim(),
-              at: Number(rp?.at || 0),
-            })
-          }
-
-          return out
+          return [
+            ...collectLikeNotificationsForNovel(novelId, novel, reviewRows, replyRows, {
+              viewerId,
+              viewerNames,
+            }),
+            ...collectReplyNotificationsForNovel(novelId, novel, reviewRows, replyRows, {
+              viewerId,
+              viewerNames,
+              mineComments: ownedComments,
+              replyRows,
+            }),
+          ]
         }),
       )
       if (!active) return
@@ -269,6 +145,7 @@ export default function NotificationsPage() {
       const systemItems = readSystemNotifications()
         .map((it) => ({
           id: String(it?.id || '').trim(),
+          readAliases: [String(it?.id || '').trim()].filter(Boolean),
           type: 'system',
           novelId: '',
           commentId: '',
@@ -284,8 +161,8 @@ export default function NotificationsPage() {
         .sort((a, b) => Number(b?.at || 0) - Number(a?.at || 0))
       setItems(nextItems)
       const allRead = readReadMap()
-      const { all, next } = pruneReadStateByVisibleItems(allRead, viewerId, nextItems)
-      writeReadMap(all)
+      const { all, next, changed } = syncReadMapWithNotifications(allRead, viewerId, nextItems)
+      if (changed) writeReadMap(all)
       setReadMetaMap(next)
       setLoading(false)
     }
@@ -372,7 +249,7 @@ export default function NotificationsPage() {
             {items.map((it) => {
               const cardClass = [
                 'rounded-2xl border px-3 py-2.5 text-left',
-                readMetaMap[it.id]
+                readMetaMap[it.id] || isNotificationRead(readMetaMap, it)
                   ? 'border-white/10 bg-white/[0.03]'
                   : 'border-blue-300/40 bg-blue-500/[0.12]',
               ].join(' ')
@@ -393,12 +270,15 @@ export default function NotificationsPage() {
                       )}
                       <span className="min-w-0 truncate">
                         {it.type === 'like'
-                          ? `${it.actorName} បានចូលចិត្តមតិរបស់អ្នក`
+                          ? formatLikeNotificationHeadline(it.actorName)
                           : it.type === 'system'
                             ? 'សារ​ជូនដំណឹង​ពីប្រព័ន្ធ'
-                            : `${it.actorName} បានឆ្លើយតបមតិរបស់អ្នក`}
+                            : formatReplyNotificationHeadline(it.actorName, it.replyToViewerName)}
                       </span>
                     </p>
+                    {it.novelTitle ? (
+                      <p className="mt-1 truncate text-[11px] font-medium text-cyan-200/85">{it.novelTitle}</p>
+                    ) : null}
                     <p className="mt-1 flex items-center gap-1.5 text-xs text-white/75">
                       {it.type === 'like' ? (
                         <Heart size={12} className="shrink-0 fill-rose-400 text-rose-400" />
@@ -410,7 +290,7 @@ export default function NotificationsPage() {
                       <span className="line-clamp-1 min-w-0">{it.text || '—'}</span>
                     </p>
                     <p className="mt-1 text-[11px] text-white/45">
-                      {readMetaMap[it.id] ? 'បានអាន' : 'មិនទាន់អាន'} · {formatAgo(it.at)}
+                      {isNotificationRead(readMetaMap, it) ? 'បានអាន' : 'មិនទាន់អាន'} · {formatAgo(it.at)}
                     </p>
                   </div>
                   {it.type === 'system' ? (
@@ -433,7 +313,7 @@ export default function NotificationsPage() {
                     type="button"
                     className={cardClass}
                     lang="km"
-                    onClick={() => markAsRead(it.id)}
+                    onClick={() => markAsRead(it)}
                   >
                     {body}
                   </button>
@@ -446,7 +326,7 @@ export default function NotificationsPage() {
                   state={{ from: 'notifications', focusCommentId: it.commentId, focusReplyId: it.replyId || '' }}
                   className={cardClass}
                   lang="km"
-                  onClick={() => markAsRead(it.id)}
+                  onClick={() => markAsRead(it)}
                 >
                   {body}
                 </Link>

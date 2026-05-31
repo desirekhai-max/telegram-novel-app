@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "node server/presence-server.js",
+    "start": "node server/presence-server.js",
     "build": "vite build",
     "export:novels-catalog": "node scripts/export-novels-catalog.mjs",
     "lint": "eslint .",

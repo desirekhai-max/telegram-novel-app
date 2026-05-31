@@ -1,6 +1,7 @@
 import { apiUrl } from './apiBase.js'
 import {
   GENRE_OPTIONS,
+  AUDIENCE_OPTIONS,
   LENGTH_OPTIONS,
   MAX_SELECTED_FILTER_TAGS as DEFAULT_MAX_TAGS,
   SOURCE_OPTIONS,
@@ -14,7 +15,6 @@ import {
  *   key: string,
  *   title: string,
  *   type: 'single' | 'tags',
- *   hintLabel?: string,
  *   allLabel?: string,
  *   options: HomeFilterOption[],
  * }} HomeFilterPanelGroup */
@@ -27,7 +27,7 @@ import {
  *   groups: HomeFilterPanelGroup[],
  * }} HomeFilterPanelConfig */
 
-const SINGLE_KEYS = new Set(['genre', 'status', 'lengthId', 'source'])
+const SINGLE_KEYS = new Set(['genre', 'status', 'lengthId', 'source', 'audience'])
 
 function clampInt(n, min, max, fallback) {
   const v = Math.floor(Number(n))
@@ -65,16 +65,16 @@ function normalizeGroup(raw, index) {
   if (!key || (type !== 'single' && type !== 'tags')) return null
   if (type === 'single' && !SINGLE_KEYS.has(key)) return null
   if (type === 'tags' && key !== 'tags') return null
-  const title = safeNonEmptyStr(raw.title, key)
+  const title = Object.prototype.hasOwnProperty.call(raw, 'title')
+    ? String(raw.title ?? '').trim()
+    : safeNonEmptyStr(raw.title, key)
   const options = normalizeOptions(raw.options, type)
   if (type === 'tags') {
-    const hintLabel = typeof raw.hintLabel === 'string' ? raw.hintLabel.trim() : ''
     const allLabel = safeNonEmptyStr(raw.allLabel, 'ស្លាកទាំងអស់')
     return {
       key,
       title,
       type,
-      hintLabel,
       allLabel,
       options,
     }
@@ -85,7 +85,7 @@ function normalizeGroup(raw, index) {
 
 /**
  * 校验并规范化后台返回的筛选面板 JSON。
- * 约定：`genre|status|lengthId|source` 下选项的 `value` 须与小说数据字段一致（如 novel.genreId）；
+ * 约定：`genre|status|lengthId|source|audience` 下选项的 `value` 须与小说数据字段一致（如 novel.genreId、novel.audience）；
  * `tags` 下选项的 `value` 须与 novel.tags 中存的字符串一致（可与 `label` 不同）。
  * @param {unknown} raw
  * @returns {HomeFilterPanelConfig | null}
@@ -153,7 +153,6 @@ export function buildDefaultHomeFilterPanelConfig() {
         key: 'tags',
         title: 'ស្លាក',
         type: 'tags',
-        hintLabel: 'ការណែនាំ',
         allLabel: 'ស្លាកទាំងអស់',
         options: TAG_CHIPS.map((t) => ({ value: t, label: t })),
       },
@@ -166,6 +165,16 @@ export function buildDefaultHomeFilterPanelConfig() {
           label: o.label,
           pill: o.id === 'all',
           long: o.id !== 'all',
+        })),
+      },
+      {
+        key: 'audience',
+        title: '',
+        type: 'single',
+        options: AUDIENCE_OPTIONS.map((o) => ({
+          value: o.id,
+          label: o.label,
+          pill: o.id === 'all',
         })),
       },
     ],

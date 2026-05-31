@@ -40,7 +40,7 @@ export default function HomeFilterPanelOverlay({ criteria, onCriteriaChange, onC
   const exitingGuardRef = useRef(false)
   const closeDoneRef = useRef(false)
 
-  const { genre, status, lengthId, source, tags } = criteria
+  const { genre, status, lengthId, source, audience, tags } = criteria
   const tagList = tags ?? []
   const tagSet = new Set(tagList)
 
@@ -50,9 +50,10 @@ export default function HomeFilterPanelOverlay({ criteria, onCriteriaChange, onC
       if (key === 'status') return status
       if (key === 'lengthId') return lengthId
       if (key === 'source') return source
+      if (key === 'audience') return audience
       return undefined
     },
-    [genre, status, lengthId, source],
+    [genre, status, lengthId, source, audience],
   )
 
   const patch = useCallback(
@@ -171,10 +172,16 @@ export default function HomeFilterPanelOverlay({ criteria, onCriteriaChange, onC
               const cur =
                 group.key === 'genre' && HIDE_SPECIFIC_GENRE_AND_TAG_FILTERS ? 'all' : criteriaSingleValue(group.key)
               return (
-                <section key={group.key} className="tg-filter-section" aria-labelledby={sid}>
-                  <h3 id={sid} className="tg-filter-section__name">
-                    {group.title}
-                  </h3>
+                <section
+                  key={group.key}
+                  className="tg-filter-section"
+                  aria-labelledby={group.title ? sid : undefined}
+                >
+                  {group.title ? (
+                    <h3 id={sid} className="tg-filter-section__name">
+                      {group.title}
+                    </h3>
+                  ) : null}
                   <div className="tg-filter-section__chips">
                     {group.options.map((o) => (
                       <button
@@ -206,10 +213,16 @@ export default function HomeFilterPanelOverlay({ criteria, onCriteriaChange, onC
             }
             if (group.type === 'tags') {
               return (
-                <section key={group.key} className="tg-filter-section" aria-labelledby={sid}>
-                  <h3 id={sid} className="tg-filter-section__name">
-                    {group.title}
-                  </h3>
+                <section
+                  key={group.key}
+                  className="tg-filter-section"
+                  aria-labelledby={group.title ? sid : undefined}
+                >
+                  {group.title ? (
+                    <h3 id={sid} className="tg-filter-section__name">
+                      {group.title}
+                    </h3>
+                  ) : null}
                   {group.hintLabel ? (
                     <div className="tg-filter-section__hint-line">
                       <button type="button" className="tg-filter-section__hint-btn">

@@ -479,7 +479,8 @@ export async function fetchNovelFavoriteState(novelId, userId = '', baseCount = 
   }
 }
 
-export async function fetchFavoritedNovelIdsByUser(userId = '') {
+/** @returns {{ novelId: string, favoritedAtMs: number }[]} */
+export async function fetchFavoritedNovelsByUser(userId = '') {
   const uid = String(userId || '').trim()
   if (!uid) return []
   try {
@@ -489,10 +490,25 @@ export async function fetchFavoritedNovelIdsByUser(userId = '') {
     )
     if (!res.ok) throw new Error('fetch user favorites failed')
     const data = await res.json()
-    return Array.isArray(data?.novelIds) ? data.novelIds.map((v) => String(v)) : []
+    if (Array.isArray(data?.items)) {
+      return data.items
+        .map((it) => ({
+          novelId: String(it?.novelId || '').trim(),
+          favoritedAtMs: Number(it?.favoritedAtMs) || 0,
+        }))
+        .filter((it) => it.novelId)
+    }
+    return Array.isArray(data?.novelIds)
+      ? data.novelIds.map((v) => ({ novelId: String(v), favoritedAtMs: 0 }))
+      : []
   } catch {
     return []
   }
+}
+
+export async function fetchFavoritedNovelIdsByUser(userId = '') {
+  const rows = await fetchFavoritedNovelsByUser(userId)
+  return rows.map((it) => it.novelId)
 }
 
 export async function toggleNovelFavoriteVerbose(novelId, userId, favorite) {
@@ -522,6 +538,7 @@ export async function toggleNovelFavoriteVerbose(novelId, userId, favorite) {
       ok: Boolean(data?.ok),
       count: Number(data?.count),
       favorited: Boolean(data?.favorited),
+      favoritedAtMs: Number(data?.favoritedAtMs) || 0,
       error: '',
       endpoint,
     }

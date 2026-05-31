@@ -60,7 +60,7 @@ export function saveLastRead(book) {
 
 /**
  * 本地阅读历史（与 `/account/reading-history` 展示字段对齐）；服务端不可用时仍可显示。
- * @returns {{ shelfTitle: string, readChapter: string, readAt: string, ts: number, novelId?: string }[]}
+ * @returns {{ shelfTitle: string, readChapter: string, readAt: string, ts: number, novelId?: string, chapterIndex?: number }[]}
  */
 export function loadReadingHistoryLocal() {
   try {
@@ -76,6 +76,9 @@ export function loadReadingHistoryLocal() {
         readAt: typeof it.readAt === 'string' ? it.readAt : '',
         ts: Number.isFinite(Number(it.ts)) ? Number(it.ts) : 0,
         ...(typeof it.novelId === 'string' && it.novelId ? { novelId: it.novelId } : {}),
+        ...(Number.isFinite(Number(it.chapterIndex)) && Number(it.chapterIndex) >= 0
+          ? { chapterIndex: Math.floor(Number(it.chapterIndex)) }
+          : {}),
       }))
       .filter((it) => it.ts > 0)
   } catch {
@@ -84,12 +87,13 @@ export function loadReadingHistoryLocal() {
 }
 
 /**
- * @param {{ shelfTitle?: string, readChapter?: string, readAt?: string, ts?: number, novelId?: string }} entry
+ * @param {{ shelfTitle?: string, readChapter?: string, readAt?: string, ts?: number, novelId?: string, chapterIndex?: number }} entry
  */
 export function appendReadingHistoryLocal(entry) {
   const shelfTitle = String(entry?.shelfTitle || '').trim()
   const readChapter = String(entry?.readChapter || '').trim()
   const novelId = entry?.novelId != null ? String(entry.novelId).trim() : ''
+  const chapterIndex = Number.isFinite(Number(entry?.chapterIndex)) ? Math.floor(Number(entry.chapterIndex)) : null
   if (!shelfTitle || !readChapter) return
   const ts = Number.isFinite(Number(entry?.ts)) ? Number(entry.ts) : Date.now()
   const readAt = typeof entry?.readAt === 'string' ? entry.readAt : ''
@@ -101,6 +105,7 @@ export function appendReadingHistoryLocal(entry) {
       readAt,
       ts,
       ...(novelId ? { novelId } : {}),
+      ...(chapterIndex != null && chapterIndex >= 0 ? { chapterIndex } : {}),
     }
     if (novelId) {
       list = list.filter((it) => String(it.novelId || '') !== novelId)
@@ -138,6 +143,9 @@ export function mergeReadingHistoryLists(serverItems, localItems) {
       readAt: typeof it.readAt === 'string' ? it.readAt : '',
       ts,
       ...(String(it.novelId || '').trim() ? { novelId: String(it.novelId).trim() } : {}),
+      ...(Number.isFinite(Number(it.chapterIndex)) && Number(it.chapterIndex) >= 0
+        ? { chapterIndex: Math.floor(Number(it.chapterIndex)) }
+        : {}),
     }
     if (!prev || ts > Number(prev.ts)) map.set(k, row)
   }

@@ -1,54 +1,98 @@
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
-import { tryOpenTelegramMeLink } from '../lib/telegramWebApp.js'
+import {
+  buildSupportEmailOpenHref,
+  DEFAULT_SUPPORT_EMAIL,
+  DEFAULT_SUPPORT_EMAIL_SUBJECT,
+  openMailtoEmail,
+  tryOpenTelegramMeLink,
+} from '../lib/telegramWebApp.js'
+
+const TELEGRAM_SUPPORT_URL = 'https://t.me/VIP_69kkh'
+const SUPPORT_EMAIL = DEFAULT_SUPPORT_EMAIL
 
 export default function ContactUsPage() {
   const swipeHandlers = useEdgeSwipeBack()
+  const supportEmailOpenHref = buildSupportEmailOpenHref(
+    SUPPORT_EMAIL,
+    DEFAULT_SUPPORT_EMAIL_SUBJECT,
+  )
 
   return (
     <div className="tg-app tg-app--about">
-      <BrandTabToolbar title="Contact Us" titleLang="en" showDivider />
+      <BrandTabToolbar
+        title="Contact Us · ទាក់ទងមកយើង"
+        titleLang="km"
+        titleClassName="text-[16px]"
+        showDivider
+      />
       <main
         className="tg-list-wrap tg-about-scroll flex flex-1 flex-col gap-5 px-6 pb-32 pt-8"
         {...swipeHandlers}
       >
         <p
           className="mx-auto max-w-md text-center text-[1.05rem] font-medium leading-relaxed text-white/90"
-          lang="en"
+          lang="km"
         >
-          Contact Us
+          ទាក់ទងមកយើងខ្ញុំ
         </p>
-        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="en">
-          If you have any questions or need support, please contact us:
+
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          ប្រសិនបើអ្នកមានសំណួរ បញ្ហាបច្ចេកទេស ឬត្រូវការជំនួយទាក់ទងនឹងការប្រើប្រាស់ 69KKH NOVEL
+          អ្នកអាចទាក់ទងក្រុមការងាររបស់យើងបានគ្រប់ពេល។
         </p>
-        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="en">
-          Telegram:{' '}
-          <a
-            href="https://t.me/VIP_69kkh"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--tg-blue)] underline-offset-2 transition-colors hover:text-[var(--tg-blue-hover)] hover:underline"
-            onClick={(e) => {
-              if (tryOpenTelegramMeLink('https://t.me/VIP_69kkh')) e.preventDefault()
-            }}
-          >
-            @VIP_69kkh
-          </a>
-        </p>
-        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="en">
-          Email:{' '}
-          <a
-            href="mailto:ACB123@Gmail.com"
-            className="text-[var(--tg-blue)] underline-offset-2 transition-colors hover:text-[var(--tg-blue-hover)] hover:underline"
-          >
-            ACB123@Gmail.com
-          </a>
-        </p>
-        <div className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="en">
-          <p>Business Hours:</p>
-          <p>Monday - Friday</p>
-          <p>9:00 AM - 6:00 PM</p>
+
+        <div className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          <p className="mb-3 font-semibold text-white/85">សេវាកម្មគាំទ្រអតិថិជន</p>
+          <ul className="list-none space-y-2 pl-0">
+            <li>
+              Telegram Support:{' '}
+              <a
+                href={TELEGRAM_SUPPORT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-200/90 underline-offset-2 hover:underline"
+                onClick={(e) => {
+                  if (tryOpenTelegramMeLink(TELEGRAM_SUPPORT_URL)) e.preventDefault()
+                }}
+              >
+                @VIP_69kkh
+              </a>
+            </li>
+            <li>
+              Email:{' '}
+              <a
+                href={supportEmailOpenHref}
+                className="text-cyan-200/90 underline-offset-2 hover:underline"
+                onClick={(e) => {
+                  e.preventDefault()
+                  void openMailtoEmail(SUPPORT_EMAIL, { subject: DEFAULT_SUPPORT_EMAIL_SUBJECT })
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' && e.key !== ' ') return
+                  e.preventDefault()
+                  void openMailtoEmail(SUPPORT_EMAIL, { subject: DEFAULT_SUPPORT_EMAIL_SUBJECT })
+                }}
+              >
+                {SUPPORT_EMAIL}
+              </a>
+            </li>
+          </ul>
         </div>
+
+        <div className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          <p className="mb-2 font-semibold text-white/85">ម៉ោងធ្វើការ</p>
+          <p>ថ្ងៃចន្ទ ដល់ ថ្ងៃសុក្រ</p>
+          <p className="tabular-nums">9:00 AM – 6:00 PM</p>
+        </div>
+
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          យើងខិតខំឆ្លើយតប និងដោះស្រាយបញ្ហារបស់អ្នកឱ្យបានលឿនតាមដែលអាចធ្វើទៅបាន។
+        </p>
+
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          សូមអរគុណចំពោះការគាំទ្រ និងការប្រើប្រាស់ 69KKH NOVEL។
+        </p>
       </main>
     </div>
   )

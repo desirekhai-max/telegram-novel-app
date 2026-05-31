@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import AmbientBackdrop from './components/AmbientBackdrop.jsx'
 import BottomNav from './components/BottomNav.jsx'
 import { AppChromeProvider } from './contexts/AppChromeProvider.jsx'
+import { ViewerProfileProvider } from './contexts/ViewerProfileProvider.jsx'
 import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.jsx'
 import { useAppChrome } from './contexts/useAppChrome.js'
 import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
@@ -17,10 +18,13 @@ import HomePage from './pages/HomePage.jsx'
 import NotificationsPage from './pages/NotificationsPage.jsx'
 import OrderHistoryPage from './pages/OrderHistoryPage.jsx'
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage.jsx'
+import RefundPolicyPage from './pages/RefundPolicyPage.jsx'
 import ReadingHistoryPage from './pages/ReadingHistoryPage.jsx'
 import ReaderPage from './pages/ReaderPage.jsx'
 import SavedPage from './pages/SavedPage.jsx'
 import TermsOfServicePage from './pages/TermsOfServicePage.jsx'
+import PaymentReturnPage from './pages/PaymentReturnPage.jsx'
+import VipCheckoutRedirectPage from './pages/VipCheckoutRedirectPage.jsx'
 import VipPage from './pages/VipPage.jsx'
 
 function AdminGuard() {
@@ -56,8 +60,11 @@ function AppRoutes({ routeLocation }) {
         <Route path="/about" element={<AboutPage />} />
         <Route path="/terms-of-service" element={<TermsOfServicePage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/refund-policy" element={<RefundPolicyPage />} />
         <Route path="/contact-us" element={<ContactUsPage />} />
         <Route path="/vip" element={<VipPage />} />
+        <Route path="/vip/checkout-redirect" element={<VipCheckoutRedirectPage />} />
+        <Route path="/vip/payment-return" element={<PaymentReturnPage />} />
         <Route path="/admin" element={<AdminGuard />} />
         <Route path="/admin-login" element={<AdminLoginPage />} />
         <Route path="/read/:id" element={<ReaderPage />} />
@@ -170,9 +177,11 @@ export default function App() {
   return (
     <BrowserRouter unstable_useTransitions={false}>
       <AppChromeProvider>
-        <SwipeBackProvider>
-          <AppShell />
-        </SwipeBackProvider>
+        <ViewerProfileProvider>
+          <SwipeBackProvider>
+            <AppShell />
+          </SwipeBackProvider>
+        </ViewerProfileProvider>
       </AppChromeProvider>
     </BrowserRouter>
   )

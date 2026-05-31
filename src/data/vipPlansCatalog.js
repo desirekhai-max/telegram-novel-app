@@ -14,11 +14,14 @@
  * @property {string} titleKm 套餐标题
  * @property {string} flagKm 副标题 / 卖点一行
  * @property {string} priceUsdLabel 价格展示，如 `$1`
- * @property {string} priceHintKm 价格旁说明，如一次性开通
+ * @property {string} priceHintKm 价格旁小标签，如 VIP 阅读权限
  * @property {string} durationKm 时长说明（展示）
  * @property {number} durationHours 时长数值（小时，供后台/支付逻辑）
  * @property {string} buyButtonKm 按钮文案
  */
+
+/** 每张套餐卡价格旁小标签（与各档统一） */
+export const VIP_PLAN_PRICE_HINT_KM = 'សិទ្ធិអាន VIP'
 
 /** 每张套餐卡底部灰色说明（与各档共用） */
 export const VIP_MEMBER_FOOTER_KM =
@@ -33,7 +36,7 @@ export const VIP_PLANS_CATALOG_NORMAL = [
     titleKm: 'VIPកម្រិតដំបូង',
     flagKm: 'សាកល្បងកម្រិតស្រាល',
     priceUsdLabel: '$1',
-    priceHintKm: 'បើកប្រើតែម្តង',
+    priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 3 ម៉ោង',
     durationHours: 3,
     buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
@@ -45,7 +48,7 @@ export const VIP_PLANS_CATALOG_NORMAL = [
     titleKm: 'VIPស្តង់ដារ',
     flagKm: 'ពេញនិយមបំផុត',
     priceUsdLabel: '$3',
-    priceHintKm: 'បើកប្រើតែម្តង',
+    priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 12 ម៉ោង',
     durationHours: 12,
     buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
@@ -57,7 +60,7 @@ export const VIP_PLANS_CATALOG_NORMAL = [
     titleKm: 'VIPកម្រិតខ្ពស់',
     flagKm: 'អានដោយគ្មានកំណត់ ២៤ម៉ោង',
     priceUsdLabel: '$5',
-    priceHintKm: 'បើកប្រើតែម្តង',
+    priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 24 ម៉ោង',
     durationHours: 24,
     buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
@@ -73,7 +76,7 @@ export const VIP_PLANS_CATALOG_AUTHOR = [
     titleKm: 'VIPកម្រិតដំបូង',
     flagKm: 'សាកល្បងកម្រិតស្រាល · អ្នកនិពន្ធ',
     priceUsdLabel: '$1',
-    priceHintKm: 'បើកប្រើតែម្តង',
+    priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 5 ម៉ោង',
     durationHours: 5,
     buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
@@ -85,7 +88,7 @@ export const VIP_PLANS_CATALOG_AUTHOR = [
     titleKm: 'VIPស្តង់ដារ',
     flagKm: 'ពេញនិយមបំផុត · អ្នកនិពន្ធ',
     priceUsdLabel: '$3',
-    priceHintKm: 'បើកប្រើតែម្តង',
+    priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 18 ម៉ោង',
     durationHours: 18,
     buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
@@ -97,7 +100,7 @@ export const VIP_PLANS_CATALOG_AUTHOR = [
     titleKm: 'VIPកម្រិតខ្ពស់',
     flagKm: 'អានដោយគ្មានកំណត់ ៣៦ម៉ោង',
     priceUsdLabel: '$5',
-    priceHintKm: 'បើកប្រើតែម្តង',
+    priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 36 ម៉ោង',
     durationHours: 36,
     buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
@@ -158,9 +161,7 @@ export function getVipPlanForPurchase(planId, role) {
   return getVipPlanById(planId, { authorPricing })
 }
 
-/** 订单商品名：`标题 · 时长`（未传分支时按普通会员目录解析） */
-export function formatVipOrderProductLabel(planId, authorPricing = false) {
-  const p = getVipPlanById(planId, { authorPricing })
-  if (!p) return ''
-  return `${p.titleKm} · ${p.durationKm}`
+/** 订单商品名：中性英文（禁止高棉套餐标题进入支付/订单对外字段） */
+export function formatVipOrderProductLabel(_planId, _authorPricing = false) {
+  return 'VIP-Subscription'
 }

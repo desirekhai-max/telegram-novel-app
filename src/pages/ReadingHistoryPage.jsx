@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { fetchReadingRecordsByMemberId, getPresenceMemberId } from '../lib/miniAppPresence.js'
+import { buildReadingHistoryNavigateTarget } from '../lib/readingHistoryNav.js'
 import { loadReadingHistoryLocal, mergeReadingHistoryLists } from '../lib/readerStorage.js'
 
 function formatChapterLabelKh(raw) {
@@ -87,16 +89,38 @@ export default function ReadingHistoryPage() {
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-md flex-col gap-3">
-            {items.map((it, idx) => (
-              <article
-                key={`${it.ts || idx}-${it.shelfTitle || ''}-${idx}`}
-                className="group rounded-2xl border border-white/10 bg-white/[0.05] p-3 transition-colors active:bg-white/[0.08]"
-              >
-                <p className="truncate text-[15px] font-semibold text-white">{it.shelfTitle || '—'}</p>
-                <p className="mt-1 truncate text-sm text-white/65">{formatChapterLabelKh(it.readChapter)}</p>
-                <p className="mt-1 truncate text-xs text-white/45">{it.readAt || ''}</p>
-              </article>
-            ))}
+            {items.map((it, idx) => {
+              const navTarget = buildReadingHistoryNavigateTarget(it)
+              const cardClass =
+                'group block rounded-2xl border border-white/10 bg-white/[0.05] p-3 transition-colors active:bg-white/[0.08] ' +
+                (navTarget ? 'cursor-pointer hover:bg-white/[0.07]' : 'cursor-default opacity-70')
+              const cardBody = (
+                <>
+                  <p className="truncate text-[15px] font-semibold text-white">{it.shelfTitle || '—'}</p>
+                  <p className="mt-1 truncate text-sm text-white/65">{formatChapterLabelKh(it.readChapter)}</p>
+                  <p className="mt-1 truncate text-xs text-white/45">{it.readAt || ''}</p>
+                </>
+              )
+              return navTarget ? (
+                <Link
+                  key={`${it.ts || idx}-${it.shelfTitle || ''}-${it.novelId || ''}-${idx}`}
+                  to={navTarget.pathname}
+                  state={navTarget.state}
+                  className={cardClass}
+                >
+                  {cardBody}
+                </Link>
+              ) : (
+                <article
+                  key={`${it.ts || idx}-${it.shelfTitle || ''}-${idx}`}
+                  className={cardClass}
+                  aria-disabled="true"
+                  title="មិនអាចបើករឿងនេះបាន"
+                >
+                  {cardBody}
+                </article>
+              )
+            })}
           </div>
         )}
       </main>

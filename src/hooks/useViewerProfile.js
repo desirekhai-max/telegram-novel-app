@@ -1,31 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { getDefaultViewerProfile, resolveViewerProfile } from '../lib/viewerProfileApi.js'
+import { useViewerProfileContext } from '../contexts/useViewerProfileContext.js'
 
-export function useViewerProfile(tgUser) {
-  const tgUserId = tgUser?.id
-  const [viewerProfile, setViewerProfile] = useState(() => getDefaultViewerProfile(tgUser))
-  const [viewerProfileLoading, setViewerProfileLoading] = useState(Boolean(tgUserId))
-
-  const refreshViewerProfile = useCallback(async () => {
-    if (!tgUserId) {
-      setViewerProfile(getDefaultViewerProfile(null))
-      setViewerProfileLoading(false)
-      return getDefaultViewerProfile(null)
-    }
-    setViewerProfileLoading(true)
-    const next = await resolveViewerProfile()
-    setViewerProfile(next)
-    setViewerProfileLoading(false)
-    return next
-  }, [tgUserId])
-
-  useEffect(() => {
-    void refreshViewerProfile()
-  }, [refreshViewerProfile])
-
-  return {
-    viewerProfile,
-    viewerProfileLoading,
-    refreshViewerProfile,
-  }
+/** 全局会员资料（见 ViewerProfileProvider）：各 Tab 共用缓存，避免重复请求与方案标签闪烁 */
+export function useViewerProfile() {
+  return useViewerProfileContext()
 }

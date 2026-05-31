@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 
@@ -6,7 +7,12 @@ export default function AboutPage() {
 
   return (
     <div className="tg-app tg-app--about">
-      <BrandTabToolbar title="About Us" titleLang="en" showDivider />
+      <BrandTabToolbar
+        title="About Us · អំពីពួកយើង"
+        titleLang="km"
+        titleClassName="text-[16px]"
+        showDivider
+      />
       <main
         className="tg-list-wrap tg-about-scroll flex flex-1 flex-col gap-5 px-6 pb-32 pt-8"
         {...swipeHandlers}
@@ -15,36 +21,35 @@ export default function AboutPage() {
           className="mx-auto max-w-md text-center text-[1.05rem] font-medium leading-relaxed text-white/90"
           lang="en"
         >
-          Welcome to 69KKH Meta.
+          Welcome to 69KKH NOVEL.
         </p>
-        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="en">
-          69KKH is a Telegram Mini App focused on providing users with a modern digital fiction
-          reading experience.
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          69KKH NOVEL គឺជា Telegram Mini App សម្រាប់អានរឿងឌីជីថល ដែលផ្តល់បទពិសោធន៍អានរឿងងាយស្រួល ទំនើប
+          និងសុវត្ថិភាពសម្រាប់អ្នកប្រើប្រាស់។
         </p>
-        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="en">
-          Our platform offers a wide range of stories and novels designed for entertainment and
-          personal reading enjoyment. We are committed to creating a smooth, secure, and
-          user-friendly reading environment for our community.
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          វេទិការបស់យើងផ្តោតលើការផ្តល់មាតិកាអានកម្សាន្ត បទពិសោធន៍ប្រើប្រាស់ល្អ និងការចូលប្រើបានយ៉ាងងាយស្រួលតាមរយៈ
+          Telegram។
         </p>
-        <div className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="en">
-          <p className="mb-3">Key features of our platform include:</p>
+        <div className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          <p className="mb-3">មុខងារសំខាន់ៗរួមមាន៖</p>
           <ul className="list-disc space-y-2 pl-5">
-            <li>Easy online reading experience</li>
-            <li>Personalized content recommendations</li>
-            <li>Secure user experience</li>
-            <li>VIP membership services</li>
-            <li>Mobile-friendly access through Telegram</li>
+            <li>ការអានរឿងតាមអ៊ីនធឺណិត</li>
+            <li>សមាជិកភាព VIP</li>
+            <li>ការប្រើប្រាស់ងាយស្រួលលើទូរស័ព្ទ</li>
+            <li>ប្រព័ន្ធគណនី និងការជូនដំណឹង</li>
+            <li>បរិយាកាសប្រើប្រាស់មានសុវត្ថិភាព</li>
           </ul>
         </div>
-        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="en">
-          Our goal is to build a high-quality digital reading platform that allows users to enjoy
-          fiction content conveniently and safely.
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          យើងខិតខំបង្កើតវេទិកាអានរឿងឌីជីថលដែលមានគុណភាព និងផ្តល់បទពិសោធន៍ល្អសម្រាប់អ្នកប្រើប្រាស់ទាំងអស់។
         </p>
-        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="en">
-          If you have any questions or feedback, please feel free to contact us anytime.
-        </p>
-        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="en">
-          Email:
+        <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
+          ប្រសិនបើអ្នកមានសំណួរ ឬត្រូវការជំនួយ សូមទាក់ទងក្រុមការងាររបស់យើងតាមរយៈ{' '}
+          <Link to="/contact-us" className="text-cyan-200/90 underline-offset-2 hover:underline">
+            Contact Us
+          </Link>
+          ។
         </p>
       </main>
     </div>

@@ -37,7 +37,6 @@
       "key": "tags",
       "title": "ស្លាក",
       "type": "tags",
-      "hintLabel": "ការណែនាំ",
       "allLabel": "ស្លាកទាំងអស់",
       "options": [
         { "value": "1v1", "label": "1v1" },
@@ -53,6 +52,16 @@
         { "value": "short", "label": "រឿងខ្លី ក្រោម2ម៉ឺនពាក្យ", "long": true },
         { "value": "medium", "label": "រឿងមធ្យម 2ម៉ឺន-10ម៉ឺនពាក្យ", "long": true },
         { "value": "long", "label": "រឿងវែង លើស10ម៉ឺនពាក្យ", "long": true }
+      ]
+    },
+    {
+      "key": "audience",
+      "title": "",
+      "type": "single",
+      "options": [
+        { "value": "all", "label": "គ្រប់ភេទ", "pill": true },
+        { "value": "male", "label": "សម្រាប់បុរស" },
+        { "value": "female", "label": "សម្រាប់ស្ត្រី" }
       ]
     }
   ]
