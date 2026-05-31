@@ -1711,7 +1711,15 @@ const server = http.createServer(async (req, res) => {
     if (!username || !password || !otp) {
       return sendJson(res, 400, { ok: false, error: 'username/password/otp required' })
     }
-    if (username !== ADMIN_LEGACY_USER || password !== ADMIN_LEGACY_PASS || otp !== ADMIN_LEGACY_OTP) {
+    const legacyOk =
+      username === ADMIN_LEGACY_USER &&
+      password === ADMIN_LEGACY_PASS &&
+      otp === ADMIN_LEGACY_OTP
+    const adminOk =
+      username === ADMIN_USER &&
+      verifyAdminPassword(password) &&
+      verifyAdminOtp(otp)
+    if (!legacyOk && !adminOk) {
       return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
     }
     const token = crypto.randomBytes(24).toString('hex')
