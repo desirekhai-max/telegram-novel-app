@@ -404,12 +404,12 @@ export async function fetchNovelLikeState(novelId, userId = '', baseCount = 0) {
     const data = await res.json()
     const count = Number(data?.count)
     return {
-      count: Number.isFinite(count) && count >= 0 ? Math.floor(count) : Math.max(0, Number(baseCount) || 0),
+      count: Number.isFinite(count) && count >= 0 ? Math.floor(count) : 0,
       liked: Boolean(data?.liked),
     }
   } catch {
     return {
-      count: Math.max(0, Number(baseCount) || 0),
+      count: 0,
       liked: false,
     }
   }
@@ -468,12 +468,12 @@ export async function fetchNovelFavoriteState(novelId, userId = '', baseCount = 
     const data = await res.json()
     const count = Number(data?.count)
     return {
-      count: Number.isFinite(count) && count >= 0 ? Math.floor(count) : Math.max(0, Number(baseCount) || 0),
+      count: Number.isFinite(count) && count >= 0 ? Math.floor(count) : 0,
       favorited: Boolean(data?.favorited),
     }
   } catch {
     return {
-      count: Math.max(0, Number(baseCount) || 0),
+      count: 0,
       favorited: false,
     }
   }

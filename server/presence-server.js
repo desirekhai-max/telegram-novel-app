@@ -1148,7 +1148,14 @@ function resolveNovelViewCount(novelId, baseCount = 0) {
   const base = Number(baseCount)
   const safeBase = Number.isFinite(base) && base >= 0 ? Math.floor(base) : 0
   const existing = novelViews.get(key)
-  if (Number.isFinite(existing) && existing >= 0) return existing
+  if (Number.isFinite(existing) && existing >= 0) {
+    const elevated = Math.max(Math.floor(existing), safeBase)
+    if (elevated !== existing) {
+      novelViews.set(key, elevated)
+      persistMembers()
+    }
+    return elevated
+  }
   novelViews.set(key, safeBase)
   persistMembers()
   return safeBase

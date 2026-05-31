@@ -28,7 +28,7 @@ import {
   loadPersistedDetailStats,
   NOVEL_DETAIL_STATS_EVENT,
 } from '../lib/novelDetailStatsSync.js'
-import { mergeDisplayedCount, getSeedFavoriteCount, getSeedLikeCount, getSeedViewCount } from '../lib/novelSeedStats.js'
+import { mergeDisplayedViewCount, mergeDisplayedInteractionCount, getSeedFavoriteCount, getSeedLikeCount, getSeedViewCount } from '../lib/novelSeedStats.js'
 import { getLocalViewMax } from '../lib/novelViewCountLocal.js'
 import { fetchHomeStats, fetchNovelFavoriteState, fetchNovelLikeState } from '../lib/miniAppPresence.js'
 import { novelMatchesInlineSearch } from '../lib/novelInlineSearch.js'
@@ -269,15 +269,15 @@ export default function HomePage() {
         return {
           ...n,
           cardViewCount: Math.max(
-            fromDetail ? snap.viewCount : mergeDisplayedCount(getSeedViewCount(n), apiView),
+            fromDetail ? snap.viewCount : mergeDisplayedViewCount(getSeedViewCount(n), apiView),
             localViewFloor,
           ),
           cardLikeCount: fromDetail
             ? snap.likeCount
-            : mergeDisplayedCount(getSeedLikeCount(n), apiLike),
+            : mergeDisplayedInteractionCount(getSeedLikeCount(n), apiLike),
           cardFavoriteCount: fromDetail
             ? snap.favoriteCount
-            : mergeDisplayedCount(getSeedFavoriteCount(n), apiFav),
+            : mergeDisplayedInteractionCount(getSeedFavoriteCount(n), apiFav),
           cardRatingPoints: Number(s?.ratingPoints) >= 0 ? Number(s.ratingPoints) : 0,
           cardUpdatedAtMs: Number(s?.lastUpdateAtMs) > 0 ? Number(s.lastUpdateAtMs) : 0,
         }

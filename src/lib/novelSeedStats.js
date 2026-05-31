@@ -1,6 +1,7 @@
 /**
  * 书本内置的演示/兜底计数（与 novels.js 注释一致），与服务端持久化统计合并展示。
- * 服务端若暂无记录或曾用错误基数初始化，首页/详情仍不低于书本配置。
+ * - 浏览量：服务端存绝对总数，展示 = max(种子, 服务端总数)
+ * - 点赞/收藏：服务端存真实互动人数（增量），展示 = 种子 + 服务端增量
  */
 
 /** @param {object|null|undefined} novel */
@@ -31,11 +32,28 @@ export function getSeedFavoriteCount(novel) {
 }
 
 /**
+ * 浏览量：服务端为绝对总数，展示不低于书本种子。
  * @param {number} seed
- * @param {unknown} serverVal
+ * @param {unknown} serverTotal
  */
-export function mergeDisplayedCount(seed, serverVal) {
+export function mergeDisplayedViewCount(seed, serverTotal) {
   const s = Number.isFinite(Number(seed)) && Number(seed) >= 0 ? Math.floor(Number(seed)) : 0
-  const v = Number.isFinite(Number(serverVal)) && Number(serverVal) >= 0 ? Math.floor(Number(serverVal)) : 0
+  const v = Number.isFinite(Number(serverTotal)) && Number(serverTotal) >= 0 ? Math.floor(Number(serverTotal)) : 0
   return Math.max(s, v)
+}
+
+/**
+ * 点赞/收藏：服务端为真实互动增量，展示 = 种子 + 增量。
+ * @param {number} seed
+ * @param {unknown} serverDelta
+ */
+export function mergeDisplayedInteractionCount(seed, serverDelta) {
+  const s = Number.isFinite(Number(seed)) && Number(seed) >= 0 ? Math.floor(Number(seed)) : 0
+  const d = Number.isFinite(Number(serverDelta)) && Number(serverDelta) >= 0 ? Math.floor(Number(serverDelta)) : 0
+  return s + d
+}
+
+/** @deprecated 使用 mergeDisplayedViewCount 或 mergeDisplayedInteractionCount */
+export function mergeDisplayedCount(seed, serverVal) {
+  return mergeDisplayedViewCount(seed, serverVal)
 }

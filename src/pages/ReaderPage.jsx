@@ -68,7 +68,7 @@ import {
   READER_VIP_CHAPTER_GATE_TITLE_KM,
 } from '../lib/errorMessagesKm.js'
 import { persistAndBroadcastDetailStats } from '../lib/novelDetailStatsSync.js'
-import { mergeDisplayedCount, getSeedFavoriteCount, getSeedLikeCount, getSeedViewCount } from '../lib/novelSeedStats.js'
+import { mergeDisplayedViewCount, mergeDisplayedInteractionCount, getSeedFavoriteCount, getSeedLikeCount, getSeedViewCount } from '../lib/novelSeedStats.js'
 import { bumpLocalViewMax } from '../lib/novelViewCountLocal.js'
 import { appendReadingHistoryLocal, saveLastRead } from '../lib/readerStorage.js'
 
@@ -465,7 +465,7 @@ export default function ReaderPage() {
     const safeBaseViewCount = getSeedViewCount(novel)
     setViewCount(safeBaseViewCount)
     void fetchNovelViewCount(novel.id, safeBaseViewCount).then((count) => {
-      setViewCount(mergeDisplayedCount(safeBaseViewCount, count))
+      setViewCount(mergeDisplayedViewCount(safeBaseViewCount, count))
     })
     const baseLikeCount = getSeedLikeCount(novel)
     const baseFavoriteCount = getSeedFavoriteCount(novel)
@@ -479,12 +479,12 @@ export default function ReaderPage() {
       fetchNovelFavoriteState(novel.id, likerId, baseFavoriteCount),
     ]).then(([likeState, favoriteState]) => {
       const mergedLike = mergeCountByLocalPreference(
-        mergeDisplayedCount(baseLikeCount, Number(likeState?.count) || 0),
+        mergeDisplayedInteractionCount(baseLikeCount, Number(likeState?.count) || 0),
         Boolean(likeState?.liked),
         localInteractions?.liked,
       )
       const mergedFavorite = mergeCountByLocalPreference(
-        mergeDisplayedCount(baseFavoriteCount, Number(favoriteState?.count) || 0),
+        mergeDisplayedInteractionCount(baseFavoriteCount, Number(favoriteState?.count) || 0),
         Boolean(favoriteState?.favorited),
         localInteractions?.favorited,
       )
@@ -587,14 +587,14 @@ export default function ReaderPage() {
         fetchNovelFavoriteState(novel.id, likerId, seedF),
       ])
       if (cancelled) return
-      setViewCount(mergeDisplayedCount(seedV, latestViewCount))
+      setViewCount(mergeDisplayedViewCount(seedV, latestViewCount))
       const mergedLike = mergeCountByLocalPreference(
-        mergeDisplayedCount(seedL, Number(latestLikeState?.count) || 0),
+        mergeDisplayedInteractionCount(seedL, Number(latestLikeState?.count) || 0),
         Boolean(latestLikeState?.liked),
         localInteractions?.liked,
       )
       const mergedFavorite = mergeCountByLocalPreference(
-        mergeDisplayedCount(seedF, Number(latestFavoriteState?.count) || 0),
+        mergeDisplayedInteractionCount(seedF, Number(latestFavoriteState?.count) || 0),
         Boolean(latestFavoriteState?.favorited),
         localInteractions?.favorited,
       )
@@ -921,7 +921,7 @@ export default function ReaderPage() {
       if (!resp.ok) return
       setLikedDetail(Boolean(resp.liked))
       if (Number.isFinite(resp.count)) {
-        setLikeCount(mergeDisplayedCount(getSeedLikeCount(novel), resp.count))
+        setLikeCount(mergeDisplayedInteractionCount(getSeedLikeCount(novel), resp.count))
       }
     })
   }
@@ -946,7 +946,7 @@ export default function ReaderPage() {
       if (!resp.ok) return
       setFavoritedDetail(Boolean(resp.favorited))
       if (Number.isFinite(resp.count)) {
-        setFavoriteCount(mergeDisplayedCount(getSeedFavoriteCount(novel), resp.count))
+        setFavoriteCount(mergeDisplayedInteractionCount(getSeedFavoriteCount(novel), resp.count))
       }
       const serverAt = Number(resp.favoritedAtMs)
       if (next && Number.isFinite(serverAt) && serverAt > 0) {
@@ -1044,7 +1044,7 @@ export default function ReaderPage() {
     setViewCount(optimisticNext)
     bumpLocalViewMax(novel.id, optimisticNext)
     void incrementNovelViewCount(novel.id, 1, safeBaseViewCount).then((serverCount) => {
-      if (serverCount != null) setViewCount(mergeDisplayedCount(safeBaseViewCount, serverCount))
+      if (serverCount != null) setViewCount(mergeDisplayedViewCount(safeBaseViewCount, serverCount))
     })
     if (articleSwipeResetTimerRef.current) {
       window.clearTimeout(articleSwipeResetTimerRef.current)
