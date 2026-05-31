@@ -2,9 +2,13 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { hydrateNotificationReadFromTelegramCloud } from './lib/notificationReadStorage.js'
 import { initTelegramWebApp } from './lib/telegramWebApp.js'
+import { hydrateVipPurchaseFromTelegramCloud } from './lib/vipMembership.js'
 
 initTelegramWebApp()
+hydrateVipPurchaseFromTelegramCloud()
+hydrateNotificationReadFromTelegramCloud()
 
 // 首屏渲染前先标记 admin 路由，避免 #root 先按手机宽度渲染导致闪屏
 if (typeof window !== 'undefined') {

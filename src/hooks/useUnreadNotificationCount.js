@@ -5,13 +5,10 @@ import { collectLikeNotificationsForNovel } from '../lib/likeNotifications.js'
 import { buildViewerNameSet, collectReplyNotificationsForNovel } from '../lib/replyNotifications.js'
 import {
   countUnreadNotifications,
-  dispatchNotificationReadChanged,
   NOTIFICATION_READ_CHANGED_EVENT,
   readByViewer,
   readReadMap,
   resolveNotificationViewerId,
-  syncReadMapWithNotifications,
-  writeReadMap,
 } from '../lib/notificationReadStorage.js'
 import { formatTelegramDisplayName } from './useTelegramUser.js'
 

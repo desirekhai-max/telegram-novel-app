@@ -1,6 +1,7 @@
 import { getPresenceMemberId } from './miniAppPresence.js'
 
 export const NOTIFICATION_READ_STORAGE_KEY = 'tg_notification_read_ids_v1'
+export const NOTIFICATION_READ_CLOUD_KEY = 'tg_notification_read_ids_v1'
 export const NOTIFICATION_READ_CHANGED_EVENT = 'tg-notifications-read-changed'
 
 function hasNotificationIdKeys(obj) {
@@ -8,6 +9,55 @@ function hasNotificationIdKeys(obj) {
     if (k.startsWith('like-') || k.startsWith('reply-') || k.startsWith('sys-')) return true
   }
   return false
+}
+
+
+function mergeViewerReadMaps(a, b) {
+  const out = { ...(a && typeof a === 'object' ? a : {}) }
+  for (const [k, v] of Object.entries(b || {})) {
+    const ts = Number(v || 0)
+    if (Number.isFinite(ts) && ts > 0) out[k] = Math.max(Number(out[k] || 0), ts)
+  }
+  return out
+}
+
+function mergeReadMaps(local, remote) {
+  const out = { ...(local && typeof local === 'object' ? local : {}) }
+  const remoteObj = remote && typeof remote === 'object' ? remote : {}
+
+  for (const [key, remoteVal] of Object.entries(remoteObj)) {
+    if (/^\d+$/.test(key) && remoteVal && typeof remoteVal === 'object' && !Array.isArray(remoteVal)) {
+      const localMap = out[key] && typeof out[key] === 'object' ? out[key] : {}
+      out[key] = mergeViewerReadMaps(localMap, remoteVal)
+      continue
+    }
+    if (key.startsWith('like-') || key.startsWith('reply-') || key.startsWith('sys-')) {
+      const ts = Number(remoteVal || 0)
+      if (Number.isFinite(ts) && ts > 0) {
+        out[key] = Math.max(Number(out[key] || 0), ts)
+      }
+    }
+  }
+  return out
+}
+
+function readMapsEqual(a, b) {
+  try {
+    return JSON.stringify(a || {}) === JSON.stringify(b || {})
+  } catch {
+    return false
+  }
+}
+
+function writeReadMapToCloud(json) {
+  try {
+    const cs = window.Telegram?.WebApp?.CloudStorage
+    if (cs && typeof cs.setItem === 'function') {
+      cs.setItem(NOTIFICATION_READ_CLOUD_KEY, json, () => {})
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function resolveNotificationViewerId(tgUser) {
@@ -29,11 +79,39 @@ export function readReadMap() {
 }
 
 export function writeReadMap(next) {
+  let json = ''
   try {
-    localStorage.setItem(NOTIFICATION_READ_STORAGE_KEY, JSON.stringify(next))
+    json = JSON.stringify(next)
+    localStorage.setItem(NOTIFICATION_READ_STORAGE_KEY, json)
   } catch {
     /* ignore storage failure */
   }
+  if (json) writeReadMapToCloud(json)
+}
+
+/**
+ * 启动时从 Telegram CloudStorage 拉取并与 localStorage 合并（Mini App 跨重启持久化）。
+ */
+export function hydrateNotificationReadFromTelegramCloud() {
+  const cs = window.Telegram?.WebApp?.CloudStorage
+  if (!cs || typeof cs.getItem !== 'function') return
+
+  cs.getItem(NOTIFICATION_READ_CLOUD_KEY, (err, value) => {
+    if (err || value == null || value === '') return
+    let cloud = null
+    try {
+      cloud = JSON.parse(value)
+    } catch {
+      return
+    }
+    if (!cloud || typeof cloud !== 'object') return
+
+    const local = readReadMap()
+    const merged = mergeReadMaps(local, cloud)
+    if (readMapsEqual(local, merged)) return
+    writeReadMap(merged)
+    dispatchNotificationReadChanged()
+  })
 }
 
 /** 读取某用户的已读 map；兼容旧版根级平铺结构。 */
@@ -99,31 +177,44 @@ export function markNotificationReadInMap(readMap, notification, ts = Date.now()
 
 /**
  * 成功加载通知列表后：把旧 ID 的已读状态合并到 canonical id，并清理多余 alias 键。
+ * 保留当前列表外的已读记录，避免匹配失败时清空整个 map。
  * @param {object[]} notifications
  */
 export function syncReadMapWithNotifications(allReadMap, viewerId, notifications) {
   const all = ensureNestedReadMap(allReadMap, viewerId)
   const current = { ...readByViewer(all, viewerId) }
   const items = Array.isArray(notifications) ? notifications : []
-  const next = {}
+  const next = { ...current }
   let changed = false
 
   for (const it of items) {
     const canonical = String(it?.id || '').trim()
     if (!canonical) continue
-    const readTs = getNotificationReadKeys(it).reduce(
+    const keys = getNotificationReadKeys(it)
+    const readTs = keys.reduce(
       (max, k) => Math.max(max, Number(current[k] || 0)),
       0,
     )
+
+    for (const k of keys) {
+      if (k !== canonical && next[k]) {
+        delete next[k]
+        changed = true
+      }
+    }
+
     if (readTs > 0) {
-      next[canonical] = readTs
-      if (!current[canonical] || Number(current[canonical]) !== readTs) changed = true
+      if (!next[canonical] || Number(next[canonical]) !== readTs) {
+        next[canonical] = readTs
+        changed = true
+      }
     }
   }
 
-  if (Object.keys(current).length !== Object.keys(next).length) changed = true
-  all[String(viewerId)] = next
-  return { all, next, changed }
+  if (changed) {
+    all[String(viewerId)] = next
+  }
+  return { all: changed ? all : allReadMap, next, changed }
 }
 
 /** @param {object[]} notifications */
