@@ -1,0 +1,7 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "node server/presence-server.js"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
