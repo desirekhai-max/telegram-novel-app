@@ -24,6 +24,7 @@ import {
   formatWordCountFooter,
   getDisplayWordCountWan,
   getMeatCategoryByWordCount,
+  getNovelCardListThemes,
 } from '../lib/novelDisplay.js'
 import { CommentMemberBadges } from '../components/CommentMemberBadges.jsx'
 import ReaderWatermarkOverlay from '../components/ReaderWatermarkOverlay.jsx'
@@ -1273,7 +1274,7 @@ export default function ReaderPage() {
             <p className="tg-reader-detail__line"><span>ស្ថានភាព:</span>{novel.status === 'completed' ? 'ចប់ហើយ' : 'កំពុងចេញ'}</p>
             <p className="tg-reader-detail__line"><span>ថ្មីបំផុត:</span>{latestChapter ? `ភាគទី${(novel.chapters ?? []).length}` : READER_NO_CHAPTER_YET_KM}{rel ? ` (${rel})` : ''}</p>
             <p className="tg-reader-detail__line"><span>អ្នកនិពន្ធ:</span>{novel.author}</p>
-            <p className="tg-reader-detail__line"><span>ប្រភេទ:</span>{(novel.listThemes ?? []).join(' · ') || READER_THEME_UNCATEGORIZED_KM}</p>
+            <p className="tg-reader-detail__line"><span>ប្រភេទ:</span>{getNovelCardListThemes(novel).join(' · ') || READER_THEME_UNCATEGORIZED_KM}</p>
             <p className="tg-reader-detail__line"><span>ប្រភព:</span>{novel.source === 'original' ? 'ស្នាដៃដើម' : 'ស្នាដៃសមាជិក'}</p>
             <p className="tg-reader-detail__line tg-reader-detail__rating">
               <span>ពិន្ទុ:</span>

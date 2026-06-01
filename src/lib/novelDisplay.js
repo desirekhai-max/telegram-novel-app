@@ -201,3 +201,31 @@ export function commentPointsToStars(points) {
 export function commentPointsToFilledStars(points) {
   return commentPointsToStars(points)
 }
+
+const FILTER_GENRE_IDS = new Set([
+  'urban',
+  'campus',
+  'taboo',
+  'xuanhuan',
+  'system',
+  'transmigration',
+  'wuxia',
+  'fantasy',
+  'rural',
+  'history',
+  'celebrity',
+  'superpower',
+  'scifi',
+  'fanfic',
+])
+
+/** 卡片/详情「题材」展示：优先 listThemes；后台若把文案写在 genreId 则兜底 */
+export function getNovelCardListThemes(novel) {
+  const fromList = Array.isArray(novel?.listThemes)
+    ? novel.listThemes.map((t) => String(t).trim()).filter(Boolean)
+    : []
+  if (fromList.length) return fromList
+  const gid = String(novel?.genreId || '').trim()
+  if (gid && !FILTER_GENRE_IDS.has(gid.toLowerCase())) return [gid]
+  return []
+}

@@ -8,6 +8,7 @@ import {
   getDisplayWordCountWan,
   getMeatCategoryByWordCount,
   commentPointsToStars,
+  getNovelCardListThemes,
 } from '../lib/novelDisplay.js'
 
 function StarRow({ commentPoints }) {
@@ -68,7 +69,7 @@ export default function HomeNovelCard({
   )
   const latestTitle = chapterTotal > 0 ? `ភាគទី${chapterTotal}` : READER_NO_CHAPTER_YET_KM
   const latestRel = formatLatestChapterRelativeLabel(n)
-  const themes = Array.isArray(n.listThemes) ? n.listThemes : []
+  const themes = getNovelCardListThemes(n)
   const tags = n.tags ?? []
   const views = Number.isFinite(Number(n.cardViewCount)) ? Math.max(0, Number(n.cardViewCount)) : 0
   const likes = Number.isFinite(Number(n.cardLikeCount)) ? Math.max(0, Number(n.cardLikeCount)) : 0

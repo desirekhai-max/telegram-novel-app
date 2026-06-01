@@ -73,12 +73,53 @@ function computeNovelWordCountWan(chapters) {
   return Math.round((total / 10000) * 100) / 100
 }
 
+/** 与首页筛选 `genreId` 对齐；非此类 id 时后台常把「题材」文案写入 genreId */
+const FILTER_GENRE_IDS = new Set([
+  'urban',
+  'campus',
+  'taboo',
+  'xuanhuan',
+  'system',
+  'transmigration',
+  'wuxia',
+  'fantasy',
+  'rural',
+  'history',
+  'celebrity',
+  'superpower',
+  'scifi',
+  'fanfic',
+])
+
+function normalizeListThemes(raw = {}) {
+  if (Array.isArray(raw.listThemes)) {
+    return raw.listThemes.map((t) => String(t).trim()).filter(Boolean).slice(0, 16)
+  }
+  if (Array.isArray(raw.themes)) {
+    return raw.themes.map((t) => String(t).trim()).filter(Boolean).slice(0, 16)
+  }
+  const themeText = raw.theme ?? raw.subject ?? raw['题材']
+  if (themeText != null && String(themeText).trim()) {
+    return normalizeTags(themeText)
+  }
+  return []
+}
+
+function deriveListThemesFromGenreId(genreId, listThemes) {
+  if (listThemes.length) return listThemes
+  const gid = String(genreId || '').trim()
+  if (!gid || FILTER_GENRE_IDS.has(gid.toLowerCase())) return []
+  return [gid]
+}
+
 function normalizeNovel(raw = {}, { preserveId } = {}) {
   const id = String(preserveId || raw.id || '').trim() || newId('novel')
   const createdAtMs = Number(raw.createdAtMs || 0) || now()
   const chaptersIn = Array.isArray(raw.chapters) ? raw.chapters : []
   const chapters = chaptersIn.map((ch, i) => normalizeChapter(ch, i))
   const updatedAtMs = Number(raw.updatedAtMs || 0) || chapters.reduce((m, ch) => Math.max(m, ch.updatedAtMs), createdAtMs)
+  const genreId = String(raw.genreId || raw.genre || '').trim().slice(0, 80)
+  const listThemes = deriveListThemesFromGenreId(genreId, normalizeListThemes(raw))
 
   return {
     id,
@@ -86,7 +127,8 @@ function normalizeNovel(raw = {}, { preserveId } = {}) {
     author: String(raw.author || '').trim().slice(0, 120),
     synopsis: String(raw.synopsis || raw.description || '').trim().slice(0, 20000),
     coverUrl: String(raw.coverUrl || raw.cover || '').trim().slice(0, 500),
-    genreId: String(raw.genreId || raw.genre || '').trim().slice(0, 80),
+    genreId,
+    listThemes,
     tags: normalizeTags(raw.tags),
     status: normalizeStatus(raw.status),
     source: normalizeSource(raw.source || raw.novelType),
@@ -122,6 +164,7 @@ function stripNovelForCatalog(novel) {
     synopsisPreview: preview,
     accent: novel.accent,
     genreId: novel.genreId,
+    listThemes: Array.isArray(novel.listThemes) ? novel.listThemes : [],
     status: novel.status,
     source: novel.source,
     wordCountWan: novel.wordCountWan,
