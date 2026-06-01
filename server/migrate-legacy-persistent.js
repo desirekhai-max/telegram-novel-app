@@ -61,19 +61,17 @@ function copyDirMerge(legacyDir, targetDir) {
  * 将旧容器路径数据迁移到 Volume（仅当目标不存在或封面目录需合并时执行）。
  */
 export function runAllLegacyMigrations() {
+  const targetNovels = path.join(PERSISTENT_DATA_DIR, 'novels-data.json')
+  const targetPresence = path.join(PERSISTENT_DATA_DIR, 'presence-data.json')
+  const targetCovers = path.join(PERSISTENT_DATA_DIR, 'uploads', 'novel-covers')
+
   const results = {
-    novels: copyFileIfNeeded(
-      path.join(__dirname, 'novels-data.json'),
-      path.join(PERSISTENT_DATA_DIR, 'novels-data.json'),
-    ),
-    presence: copyFileIfNeeded(
-      path.join(__dirname, 'presence-data.json'),
-      path.join(PERSISTENT_DATA_DIR, 'presence-data.json'),
-    ),
-    covers: copyDirMerge(
-      path.join(__dirname, 'uploads', 'novel-covers'),
-      path.join(PERSISTENT_DATA_DIR, 'uploads', 'novel-covers'),
-    ),
+    novels: copyFileIfNeeded(path.join(__dirname, 'novels-data.json'), targetNovels),
+    novelsFromDataDir: copyFileIfNeeded(path.join(__dirname, 'data', 'novels-data.json'), targetNovels),
+    presence: copyFileIfNeeded(path.join(__dirname, 'presence-data.json'), targetPresence),
+    presenceFromDataDir: copyFileIfNeeded(path.join(__dirname, 'data', 'presence-data.json'), targetPresence),
+    covers: copyDirMerge(path.join(__dirname, 'uploads', 'novel-covers'), targetCovers),
+    coversFromDataDir: copyDirMerge(path.join(__dirname, 'data', 'uploads', 'novel-covers'), targetCovers),
   }
   lastMigrationResults = results
   for (const [key, r] of Object.entries(results)) {
@@ -89,6 +87,8 @@ export function getLastMigrationResults() {
 }
 
 export function isVolumeConfigured() {
+  if (PERSISTENT_DATA_DIR !== '/data') return false
   const configured = String(process.env.PERSISTENT_DATA_DIR || '').trim()
-  return configured === '/data' && PERSISTENT_DATA_DIR === '/data'
+  const mount = String(process.env.RAILWAY_VOLUME_MOUNT_PATH || '').trim()
+  return configured === '/data' || mount === '/data'
 }

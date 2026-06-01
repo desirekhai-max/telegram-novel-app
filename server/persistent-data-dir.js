@@ -11,8 +11,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 function resolvePersistentDataDir() {
   const candidates = [
     process.env.PERSISTENT_DATA_DIR,
-    process.env.NOVELS_DATA_DIR,
     process.env.RAILWAY_VOLUME_MOUNT_PATH,
+    process.env.NOVELS_DATA_DIR,
     process.env.DATA_DIR,
   ]
     .map((v) => String(v || '').trim())
