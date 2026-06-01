@@ -278,18 +278,18 @@ export default function HomePage() {
         const snap = detailStatsSnap[id]
         const fromDetail = snap && typeof snap === 'object'
         const localViewFloor = getLocalViewMax(id)
+        const mergedView = mergeDisplayedViewCount(getSeedViewCount(n), apiView)
+        const mergedLike = mergeDisplayedInteractionCount(getSeedLikeCount(n), apiLike)
+        const mergedFav = mergeDisplayedInteractionCount(getSeedFavoriteCount(n), apiFav)
         return {
           ...n,
           cardViewCount: Math.max(
-            fromDetail ? snap.viewCount : mergeDisplayedViewCount(getSeedViewCount(n), apiView),
+            mergedView,
+            fromDetail ? Number(snap.viewCount) || 0 : 0,
             localViewFloor,
           ),
-          cardLikeCount: fromDetail
-            ? snap.likeCount
-            : mergeDisplayedInteractionCount(getSeedLikeCount(n), apiLike),
-          cardFavoriteCount: fromDetail
-            ? snap.favoriteCount
-            : mergeDisplayedInteractionCount(getSeedFavoriteCount(n), apiFav),
+          cardLikeCount: Math.max(mergedLike, fromDetail ? Number(snap.likeCount) || 0 : 0),
+          cardFavoriteCount: Math.max(mergedFav, fromDetail ? Number(snap.favoriteCount) || 0 : 0),
           cardRatingPoints: Number(s?.ratingPoints) >= 0 ? Number(s.ratingPoints) : 0,
           cardUpdatedAtMs: Number(s?.lastUpdateAtMs) > 0 ? Number(s.lastUpdateAtMs) : 0,
         }

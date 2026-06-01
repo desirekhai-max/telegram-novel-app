@@ -6,10 +6,21 @@ let catalogPromise = null
 const fullNovelCache = new Map()
 
 function mapCatalogToHomeNovel(entry) {
+  const bundled = getBundledNovelById(entry?.id)
   return {
+    ...(bundled && typeof bundled === 'object' ? bundled : {}),
     ...entry,
-    synopsis: entry.synopsisPreview || entry.synopsis || '',
+    synopsis: entry.synopsisPreview || entry.synopsis || bundled?.synopsis || '',
     chapters: [],
+    viewsWan: entry.viewsWan ?? bundled?.viewsWan,
+    favoritesK: entry.favoritesK ?? bundled?.favoritesK,
+    likeCount: entry.likeCount ?? bundled?.likeCount,
+    viewCount: entry.viewCount ?? bundled?.viewCount,
+    favoriteCount: entry.favoriteCount ?? bundled?.favoriteCount,
+    listThemes: entry.listThemes ?? bundled?.listThemes,
+    lastChapterMinutesAgo: entry.lastChapterMinutesAgo ?? bundled?.lastChapterMinutesAgo,
+    updatedAtMs: entry.updatedAtMs ?? bundled?.updatedAtMs,
+    wordCountWan: entry.wordCountWan ?? bundled?.wordCountWan,
   }
 }
 

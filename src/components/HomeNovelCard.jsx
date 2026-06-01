@@ -60,8 +60,13 @@ export default function HomeNovelCard({
 }) {
   const statusLabel = n.status === 'completed' ? 'ចប់ហើយ' : 'កំពុងចេញ'
   const showOriginal = n.source === 'original'
-  const chapters = n.chapters ?? []
-  const latestTitle = chapters.length ? `ភាគទី${chapters.length}` : READER_NO_CHAPTER_YET_KM
+  const chapterTotal = Math.max(
+    (n.chapters ?? []).length,
+    Number.isFinite(Number(n.chapterCount)) && Number(n.chapterCount) > 0
+      ? Math.floor(Number(n.chapterCount))
+      : 0,
+  )
+  const latestTitle = chapterTotal > 0 ? `ភាគទី${chapterTotal}` : READER_NO_CHAPTER_YET_KM
   const latestRel = formatLatestChapterRelativeLabel(n)
   const themes = Array.isArray(n.listThemes) ? n.listThemes : []
   const tags = n.tags ?? []
