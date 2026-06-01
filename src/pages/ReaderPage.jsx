@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { getNovelById } from '../data/novels.js'
 import { fetchNovelFull, chapterRequiresVip } from '../lib/novelsRuntime.js'
 import { formatTelegramDisplayName, useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
@@ -275,7 +276,6 @@ export default function ReaderPage() {
   const { viewerProfile } = useViewerProfile()
   const unreadNotificationCount = useUnreadNotificationCount(tgUser)
   const [novel, setNovel] = useState(null)
-  const [novelLoadState, setNovelLoadState] = useState('loading')
   const [introExpanded, setIntroExpanded] = useState(false)
   const [catalogDesc, setCatalogDesc] = useState(false)
   const [commentSort, setCommentSort] = useState('latest')
@@ -306,20 +306,6 @@ export default function ReaderPage() {
    * - 普通会员 / 作者会员均不可读
    */
   const isVipReader = Boolean(viewerProfile.vipActive)
-
-  useEffect(() => {
-    let cancelled = false
-    setNovelLoadState('loading')
-    void fetchNovelFull(id).then((loaded) => {
-      if (cancelled) return
-      setNovel(loaded || null)
-      setNovelLoadState(loaded ? 'ready' : 'missing')
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [id])
-
   const [reviewItems, setReviewItems] = useState([])
   const [startReadPageOpen, setStartReadPageOpen] = useState(false)
   const [chapterVipGateOpen, setChapterVipGateOpen] = useState(false)
@@ -341,6 +327,32 @@ export default function ReaderPage() {
   const [highlightTargetId, setHighlightTargetId] = useState('')
   const [expandedReplyMap, setExpandedReplyMap] = useState({})
   const isMiniAppLoggedIn = Boolean(tgUser)
+
+  useEffect(() => {
+    let cancelled = false
+    const bundled = getNovelById(id)
+    if (bundled) {
+      setNovel(bundled)
+    } else {
+      setNovel(null)
+    }
+    void fetchNovelFull(id)
+      .then((loaded) => {
+        if (cancelled) return
+        if (loaded) {
+          setNovel(loaded)
+          return
+        }
+        if (!bundled) setNovel(null)
+      })
+      .catch(() => {
+        if (cancelled) return
+        if (!bundled) setNovel(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id])
 
   const ensureMiniAppLoggedIn = () => {
     if (isMiniAppLoggedIn) return true
@@ -1098,28 +1110,10 @@ export default function ReaderPage() {
     setStartReadPageOpen(true)
   }
 
-  if (novelLoadState === 'loading') {
-    return (
-      <div className="tg-app tg-app--reader">
-        <header className="tg-toolbar tg-toolbar--reader">
-          <Link to="/" className="tg-back" aria-label="ត្រឡប់">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M14 6L8 12l6 6"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </Link>
-          <span className="tg-toolbar__title tg-toolbar__title--muted" lang="km">
-            …
-          </span>
-        </header>
-      </div>
-    )
-  }
+  const isReadingChapter = Boolean(
+    novel && Number.isInteger(readingChapterIndex) && readingChapterIndex >= 0,
+  )
+  useReadingContentProtection(articleLayerRef, isReadingChapter)
 
   if (!novel) {
     return (
@@ -1150,7 +1144,6 @@ export default function ReaderPage() {
     )
   }
 
-  const isReadingChapter = Number.isInteger(readingChapterIndex) && readingChapterIndex >= 0
   const readingChapter = isReadingChapter ? (novel.chapters ?? [])[readingChapterIndex] : null
   const readingTitle = isReadingChapter
     ? readingChapter?.title && String(readingChapter.title).trim()
@@ -1174,7 +1167,6 @@ export default function ReaderPage() {
   const latestChapter = (novel.chapters ?? [])[Math.max(0, (novel.chapters ?? []).length - 1)]
   const readingChapterCount = (novel.chapters ?? []).length
   const readerSwipeHandlers = isReadingChapter ? {} : edgeSwipeHandlers
-  useReadingContentProtection(articleLayerRef, isReadingChapter)
   const onReturnToBookCatalog = () => {
     applyArticleLayerTransform(0, false)
     setReadingChapterIndex(null)

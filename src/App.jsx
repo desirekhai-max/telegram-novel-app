@@ -83,7 +83,7 @@ function isBottomNavHiddenByPath(pathname) {
 
 function AppShell() {
   const location = useLocation()
-  const { swipe } = useSwipeBack()
+  const { swipe, setSwipe } = useSwipeBack()
   const { searchExploreOpen, filterPanelOpen, homeSearchInputFocused } = useAppChrome()
 
   const isReader = location.pathname.startsWith('/read/')
@@ -101,6 +101,11 @@ function AppShell() {
     previousLocationRef.current = currentLocationRef.current
     currentLocationRef.current = location
   }, [location])
+
+  /** 路由切换时清零边缘返回位移，避免整页仍被 translate 到屏外（表现为点卡片后全白） */
+  useEffect(() => {
+    setSwipe({ active: false, dx: 0, animating: false })
+  }, [location.pathname, setSwipe])
 
   useEffect(() => {
     const adminOnline = location.pathname === '/admin' && isAdminAuthed()
