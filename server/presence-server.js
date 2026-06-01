@@ -28,6 +28,13 @@ import {
   deleteChapter,
   listNovelTitles,
 } from './novels-store.js'
+import {
+  initNovelCoverUpload,
+  saveCoverImage,
+  deleteManagedCoverFile,
+  serveNovelCoverFile,
+  readJsonBody as readCoverJsonBody,
+} from './novel-cover-upload.js'
 
 const HOST = process.env.HOST || '0.0.0.0'
 const PORT = Number(process.env.PORT || 8787)
@@ -1392,7 +1399,7 @@ function sendJson(res, code, payload) {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   })
   res.end(JSON.stringify(payload))
@@ -1471,6 +1478,12 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return sendJson(res, 204, {})
 
   /** 首页筛选面板配置：放置 `server/home-filter-panel-config.json`，后台任意改标题/分组/选项即生效（重启可选：当前每次 GET 读盘） */
+  const coverStaticMatch = url.pathname.match(/^\/uploads\/novel-covers\/([^/]+)$/)
+  if (req.method === 'GET' && coverStaticMatch) {
+    serveNovelCoverFile(res, decodeURIComponent(coverStaticMatch[1]))
+    return
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/home-filter-panel-config') {
     try {
       const configPath = path.join(__dirname, 'home-filter-panel-config.json')
@@ -1707,6 +1720,37 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/admin-legacy/novel-titles') {
     if (!requireLegacyAdmin(req, res)) return
     return sendJson(res, 200, { ok: true, items: listNovelTitles() })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/admin-legacy/novels/cover-upload') {
+    if (!requireLegacyAdmin(req, res)) return
+    try {
+      const body = await readCoverJsonBody(req)
+      const result = saveCoverImage(req, {
+        dataUrl: body.dataUrl,
+        mimeType: body.mimeType,
+        base64: body.base64,
+        previousCoverUrl: body.previousCoverUrl,
+      })
+      return sendJson(res, 200, { ok: true, ...result })
+    } catch (err) {
+      const msg = String(err?.message || err)
+      const code = msg.includes('1MB') || msg.includes('支持') ? 400 : 500
+      return sendJson(res, code, { ok: false, error: msg })
+    }
+  }
+
+  if (req.method === 'DELETE' && url.pathname === '/api/admin-legacy/novels/cover-upload') {
+    if (!requireLegacyAdmin(req, res)) return
+    try {
+      const body = await readCoverJsonBody(req)
+      const coverUrl = String(body.coverUrl || url.searchParams.get('coverUrl') || '').trim()
+      if (!coverUrl) return sendJson(res, 400, { ok: false, error: 'coverUrl required' })
+      const deleted = deleteManagedCoverFile(coverUrl)
+      return sendJson(res, 200, { ok: true, deleted })
+    } catch (err) {
+      return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
+    }
   }
 
   if (req.method === 'GET' && url.pathname === '/api/admin-legacy/novels') {
@@ -2362,6 +2406,7 @@ const server = http.createServer(async (req, res) => {
 })
 
 loadPersistedMembers()
+initNovelCoverUpload()
 initNovelsStore()
   .then(() => {
     server.listen(PORT, HOST, () => {

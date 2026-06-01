@@ -14,6 +14,7 @@ dist-ssr
 
 # Runtime novel CMS data (seeded from src/data/novels.js on first boot)
 server/novels-data.json
+server/uploads/
 
 # Editor directories and files
 .vscode/*
