@@ -14,8 +14,12 @@ import {
 } from './payway.js'
 import { buildPayWayCustomFields, getNeutralVipOrderProductLabel } from './paywayNeutralCopy.js'
 import { filterCheckoutFormFieldsForClient, stripSensitivePaymentFields } from './payway-security.js'
+import { PERSISTENT_DATA_DIR } from './persistent-data-dir.js'
+import { runAllLegacyMigrations, getLastMigrationResults, isVolumeConfigured } from './migrate-legacy-persistent.js'
 import {
   initNovelsStore,
+  getNovelsDataFilePath,
+  getNovelsCount,
   getNovelsCatalogPayload,
   getNovelById as getStoredNovelById,
   listNovelsAdmin,
@@ -30,6 +34,7 @@ import {
 } from './novels-store.js'
 import {
   initNovelCoverUpload,
+  COVERS_DIR,
   saveCoverImage,
   deleteManagedCoverFile,
   serveNovelCoverFile,
@@ -292,7 +297,7 @@ function pruneExpiredReadRecords(nowMs = now()) {
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const DATA_FILE = path.join(__dirname, 'presence-data.json')
+const DATA_FILE = path.join(PERSISTENT_DATA_DIR, 'presence-data.json')
 
 function normalizeTelegramUserId(raw) {
   const n = Number(raw)
@@ -1477,6 +1482,40 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
   if (req.method === 'OPTIONS') return sendJson(res, 204, {})
 
+  if (req.method === 'GET' && url.pathname === '/api/health/persistence') {
+    const novelsPath = getNovelsDataFilePath()
+    const legacyNovelsPath = path.join(__dirname, 'novels-data.json')
+    let volumeWritable = false
+    try {
+      const probe = path.join(PERSISTENT_DATA_DIR, '.health-probe')
+      fs.writeFileSync(probe, String(Date.now()), 'utf8')
+      fs.unlinkSync(probe)
+      volumeWritable = true
+    } catch {
+      volumeWritable = false
+    }
+    return sendJson(res, 200, {
+      ok: true,
+      volumeConfigured: isVolumeConfigured(),
+      persistentDataDir: PERSISTENT_DATA_DIR,
+      envPersistentDataDir: process.env.PERSISTENT_DATA_DIR || null,
+      railwayVolumeMountPath: process.env.RAILWAY_VOLUME_MOUNT_PATH || null,
+      volumeWritable,
+      paths: {
+        novelsData: novelsPath,
+        presenceData: DATA_FILE,
+        coversDir: COVERS_DIR,
+      },
+      novelsCount: getNovelsCount(),
+      files: {
+        novelsDataExists: fs.existsSync(novelsPath),
+        presenceDataExists: fs.existsSync(DATA_FILE),
+        legacyNovelsExists: fs.existsSync(legacyNovelsPath),
+      },
+      lastMigration: getLastMigrationResults(),
+    })
+  }
+
   /** 首页筛选面板配置：放置 `server/home-filter-panel-config.json`，后台任意改标题/分组/选项即生效（重启可选：当前每次 GET 读盘） */
   const coverStaticMatch = url.pathname.match(/^\/uploads\/novel-covers\/([^/]+)$/)
   if (req.method === 'GET' && coverStaticMatch) {
@@ -2405,6 +2444,7 @@ const server = http.createServer(async (req, res) => {
   return sendJson(res, 404, { ok: false, error: 'not found' })
 })
 
+const migrationResults = runAllLegacyMigrations()
 loadPersistedMembers()
 initNovelCoverUpload()
 initNovelsStore()
@@ -2412,6 +2452,10 @@ initNovelsStore()
     server.listen(PORT, HOST, () => {
       // eslint-disable-next-line no-console
       console.log(`[presence] listening at http://${HOST}:${PORT}`)
+      console.log(`[data] persistent dir: ${PERSISTENT_DATA_DIR}`)
+      console.log(`[novels-store] data file: ${getNovelsDataFilePath()}`)
+      console.log(`[novels-store] count: ${getNovelsCount()}`)
+      console.log('[migrate] results:', JSON.stringify(migrationResults))
     })
   })
   .catch((err) => {

@@ -2,9 +2,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+import { PERSISTENT_DATA_DIR } from './persistent-data-dir.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-export const COVERS_DIR = path.join(__dirname, 'uploads', 'novel-covers')
+export const COVERS_DIR = path.join(PERSISTENT_DATA_DIR, 'uploads', 'novel-covers')
 export const COVERS_URL_PREFIX = '/uploads/novel-covers/'
 export const MAX_COVER_BYTES = 1024 * 1024
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])

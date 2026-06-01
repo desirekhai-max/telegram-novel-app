@@ -2,9 +2,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { PERSISTENT_DATA_DIR } from './persistent-data-dir.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DATA_FILE = path.join(__dirname, 'novels-data.json')
+const DATA_FILE = path.join(PERSISTENT_DATA_DIR, 'novels-data.json')
+
+export function getNovelsDataFilePath() {
+  return DATA_FILE
+}
 const BUNDLED_NOVELS_PATH = path.join(__dirname, '..', 'src', 'data', 'novels.js')
 const SYNOPSIS_PREVIEW_MAX = 320
 
@@ -204,23 +208,40 @@ async function seedFromBundledIfEmpty() {
   }
 }
 
+export function getNovelsCount() {
+  return novelsById.size
+}
+
 export async function initNovelsStore() {
   if (loaded) return
   loaded = true
-  try {
-    if (fs.existsSync(DATA_FILE)) {
+
+  const fileExists = fs.existsSync(DATA_FILE)
+  if (fileExists) {
+    try {
       const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'))
       const list = Array.isArray(parsed?.novels) ? parsed.novels : []
       list.forEach((raw) => {
         const novel = normalizeNovel(raw, { preserveId: raw.id })
         if (novel.id && novel.title) novelsById.set(novel.id, novel)
       })
+      console.log(
+        `[novels-store] loaded ${novelsById.size} novel(s) from ${DATA_FILE} (dir=${PERSISTENT_DATA_DIR})`,
+      )
+      return
+    } catch (err) {
+      console.error(
+        '[novels-store] load failed — file kept on disk, will NOT re-seed or auto-delete:',
+        err?.message || err,
+      )
+      return
     }
-  } catch (err) {
-    console.warn('[novels-store] load failed', err?.message || err)
-    novelsById = new Map()
   }
+
   await seedFromBundledIfEmpty()
+  if (novelsById.size > 0) {
+    console.log(`[novels-store] seeded ${novelsById.size} novel(s) into ${DATA_FILE}`)
+  }
 }
 
 export function getNovelsCatalogPayload() {
