@@ -8,7 +8,8 @@ import {
   DEFAULT_HOME_FILTER_PANEL_CONFIG,
   fetchHomeFilterPanelConfig,
 } from '../lib/homeFilterPanelConfig.js'
-import { novels } from '../data/novels.js'
+import { novels as bundledNovels } from '../data/novels.js'
+import { loadCatalogNovels } from '../lib/novelsRuntime.js'
 import { useAppChrome } from '../contexts/useAppChrome.js'
 import {
   applyThemeLabelToCriteria,
@@ -85,6 +86,7 @@ export default function HomePage() {
   const location = useLocation()
   const navigate = useNavigate()
   const tgUser = useTelegramUser()
+  const [novelList, setNovelList] = useState(bundledNovels)
   const unreadNotificationCount = useUnreadNotificationCount(tgUser)
   /** 顶栏搜索框文案（可随时编辑） */
   const [searchDraft, setSearchDraft] = useState('')
@@ -138,6 +140,16 @@ export default function HomePage() {
       if (cfg) setFilterPanelConfig(cfg)
     })
     return () => ac.abort()
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void loadCatalogNovels().then((list) => {
+      if (!cancelled && Array.isArray(list) && list.length) setNovelList(list)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const effectiveMaxTags = useMemo(
@@ -198,7 +210,7 @@ export default function HomePage() {
     let cancelled = false
     const pullFavoriteCounts = async () => {
       const pairs = await Promise.all(
-        novels.map(async (n) => {
+        novelList.map(async (n) => {
           const novelId = String(n?.id || '').trim()
           if (!novelId) return null
           const state = await fetchNovelFavoriteState(novelId, '', getSeedFavoriteCount(n))
@@ -219,12 +231,12 @@ export default function HomePage() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [])
+  }, [novelList])
   useEffect(() => {
     let cancelled = false
     const pullLikeCounts = async () => {
       const pairs = await Promise.all(
-        novels.map(async (n) => {
+        novelList.map(async (n) => {
           const novelId = String(n?.id || '').trim()
           if (!novelId) return null
           const state = await fetchNovelLikeState(novelId, '', getSeedLikeCount(n))
@@ -245,12 +257,12 @@ export default function HomePage() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [])
+  }, [novelList])
 
   /** 仅关键词命中（未套首页筛选），用于空态区分「无命中」与「有命中但被筛选掉」 */
   const searchKeywordHits = useMemo(() => {
     if (!isSearchMode) return null
-    return novels.filter((n) => novelMatchesInlineSearch(n, searchTrim))
+    return novelList.filter((n) => novelMatchesInlineSearch(n, searchTrim))
   }, [isSearchMode, searchTrim])
 
   const displayedNovels = useMemo(() => {
@@ -287,7 +299,7 @@ export default function HomePage() {
       const filtered = filterNovelsByHomeCriteria(hit, appliedCriteria)
       return buildHomeOrderedNovels(withStats(filtered), sortKey, sortDesc)
     }
-    const pool = authorShelfFilter ? novels.filter((n) => n.author === authorShelfFilter) : novels
+    const pool = authorShelfFilter ? novelList.filter((n) => n.author === authorShelfFilter) : novelList
     const filtered = filterNovelsByHomeCriteria(pool, appliedCriteria)
     return buildHomeOrderedNovels(withStats(filtered), sortKey, sortDesc)
   }, [
@@ -298,6 +310,7 @@ export default function HomePage() {
     homeLikeCounts,
     homeStats,
     isSearchMode,
+    novelList,
     reviewRatingTick,
     searchKeywordHits,
     sortDesc,

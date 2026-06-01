@@ -14,6 +14,20 @@ import {
 } from './payway.js'
 import { buildPayWayCustomFields, getNeutralVipOrderProductLabel } from './paywayNeutralCopy.js'
 import { filterCheckoutFormFieldsForClient, stripSensitivePaymentFields } from './payway-security.js'
+import {
+  initNovelsStore,
+  getNovelsCatalogPayload,
+  getNovelById as getStoredNovelById,
+  listNovelsAdmin,
+  createNovel,
+  updateNovel,
+  deleteNovel as deleteStoredNovel,
+  listChaptersAdmin,
+  createChapter,
+  updateChapter,
+  deleteChapter,
+  listNovelTitles,
+} from './novels-store.js'
 
 const HOST = process.env.HOST || '0.0.0.0'
 const PORT = Number(process.env.PORT || 8787)
@@ -1074,6 +1088,27 @@ function resolveNovelReports(novelId) {
   return Array.isArray(row?.items) ? row.items : []
 }
 
+function cascadeDeleteNovelRelations(novelId, novelTitle) {
+  const id = String(novelId || '').trim()
+  const title = String(novelTitle || '').trim()
+  readRecords = readRecords.filter((it) => {
+    const rid = String(it?.novelId || '').trim()
+    if (rid && rid === id) return false
+    const shelf = String(it?.shelfTitle || '').trim()
+    if (title && shelf === title) return false
+    return true
+  })
+  novelReports.delete(id)
+  novelReviews.delete(id)
+  novelReplies.delete(id)
+  novelLikes.delete(id)
+  novelFavorites.delete(id)
+  novelViews.delete(id)
+  novelReviewVotes.delete(id)
+  novelReviewVoteProfiles.delete(id)
+  persistMembers()
+}
+
 function buildAdminReports() {
   const out = []
   for (const [novelId, row] of novelReports.entries()) {
@@ -1642,35 +1677,143 @@ const server = http.createServer(async (req, res) => {
     })
   }
 
-  /** 首页书籍卡片目录（无章节正文）；运行 `npm run export:novels-catalog` 生成 `server/novels-catalog.json` */
   if (req.method === 'GET' && url.pathname === '/api/novels-catalog') {
-    try {
-      const configPath = path.join(__dirname, 'novels-catalog.json')
-      if (!fs.existsSync(configPath)) {
-        sendJson(res, 404, { ok: false, error: 'novels-catalog.json missing; run npm run export:novels-catalog' })
-        return
-      }
-      const body = fs.readFileSync(configPath, 'utf8')
-      res.writeHead(200, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store',
-      })
-      res.end(body)
-      return
-    } catch {
-      sendJson(res, 500, { ok: false, error: 'novels-catalog read failed' })
-      return
-    }
+    const payload = getNovelsCatalogPayload()
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+    })
+    res.end(JSON.stringify(payload))
+    return
+  }
+
+  const novelDetailMatch = url.pathname.match(/^\/api\/novels\/([^/]+)$/)
+  if (req.method === 'GET' && novelDetailMatch) {
+    const novel = getStoredNovelById(decodeURIComponent(novelDetailMatch[1]))
+    if (!novel) return sendJson(res, 404, { ok: false, error: 'novel not found' })
+    return sendJson(res, 200, { ok: true, novel })
   }
 
   if (req.method === 'PUT' && url.pathname === '/api/admin/novels-catalog') {
     if (!requireLegacyAdmin(req, res)) return
-    sendJson(res, 501, {
+    sendJson(res, 410, {
       ok: false,
-      error:
-        'PUT /api/admin/novels-catalog not implemented; edit novels via CMS or export script',
+      error: 'Use /api/admin-legacy/novels CRUD instead of bulk catalog PUT',
     })
     return
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin-legacy/novel-titles') {
+    if (!requireLegacyAdmin(req, res)) return
+    return sendJson(res, 200, { ok: true, items: listNovelTitles() })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin-legacy/novels') {
+    if (!requireLegacyAdmin(req, res)) return
+    const result = listNovelsAdmin({
+      page: url.searchParams.get('page'),
+      pageSize: url.searchParams.get('pageSize'),
+      title: url.searchParams.get('title'),
+      author: url.searchParams.get('author'),
+      genreId: url.searchParams.get('genreId') || url.searchParams.get('genre'),
+      status: url.searchParams.get('status'),
+    })
+    return sendJson(res, 200, { ok: true, ...result })
+  }
+
+  const adminNovelMatch = url.pathname.match(/^\/api\/admin-legacy\/novels\/([^/]+)$/)
+  if (adminNovelMatch && req.method === 'GET') {
+    if (!requireLegacyAdmin(req, res)) return
+    const novel = getStoredNovelById(decodeURIComponent(adminNovelMatch[1]))
+    if (!novel) return sendJson(res, 404, { ok: false, error: 'novel not found' })
+    return sendJson(res, 200, { ok: true, novel })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/admin-legacy/novels') {
+    if (!requireLegacyAdmin(req, res)) return
+    try {
+      const body = await parseJsonBody(req)
+      const novel = createNovel(body)
+      return sendJson(res, 200, { ok: true, novel })
+    } catch (err) {
+      return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
+    }
+  }
+
+  if (adminNovelMatch && req.method === 'PUT') {
+    if (!requireLegacyAdmin(req, res)) return
+    try {
+      const body = await parseJsonBody(req)
+      const novel = updateNovel(decodeURIComponent(adminNovelMatch[1]), body)
+      return sendJson(res, 200, { ok: true, novel })
+    } catch (err) {
+      const code = String(err?.message || '').includes('not found') ? 404 : 400
+      return sendJson(res, code, { ok: false, error: String(err?.message || err) })
+    }
+  }
+
+  if (adminNovelMatch && req.method === 'DELETE') {
+    if (!requireLegacyAdmin(req, res)) return
+    try {
+      const removed = deleteStoredNovel(decodeURIComponent(adminNovelMatch[1]))
+      cascadeDeleteNovelRelations(removed.id, removed.title)
+      return sendJson(res, 200, { ok: true, ...removed })
+    } catch (err) {
+      return sendJson(res, 404, { ok: false, error: String(err?.message || err) })
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin-legacy/chapters') {
+    if (!requireLegacyAdmin(req, res)) return
+    const result = listChaptersAdmin({
+      page: url.searchParams.get('page'),
+      pageSize: url.searchParams.get('pageSize'),
+      novelId: url.searchParams.get('novelId'),
+      search: url.searchParams.get('search'),
+    })
+    return sendJson(res, 200, { ok: true, ...result })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/admin-legacy/chapters') {
+    if (!requireLegacyAdmin(req, res)) return
+    try {
+      const body = await parseJsonBody(req)
+      const result = createChapter(body.novelId, body)
+      return sendJson(res, 200, { ok: true, ...result })
+    } catch (err) {
+      return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
+    }
+  }
+
+  const adminChapterMatch = url.pathname.match(/^\/api\/admin-legacy\/chapters\/([^/]+)\/(\d+)$/)
+  if (adminChapterMatch && req.method === 'PUT') {
+    if (!requireLegacyAdmin(req, res)) return
+    try {
+      const body = await parseJsonBody(req)
+      const result = updateChapter(
+        decodeURIComponent(adminChapterMatch[1]),
+        Number(adminChapterMatch[2]),
+        body,
+      )
+      return sendJson(res, 200, { ok: true, ...result })
+    } catch (err) {
+      const code = String(err?.message || '').includes('not found') ? 404 : 400
+      return sendJson(res, code, { ok: false, error: String(err?.message || err) })
+    }
+  }
+
+  if (adminChapterMatch && req.method === 'DELETE') {
+    if (!requireLegacyAdmin(req, res)) return
+    try {
+      const result = deleteChapter(
+        decodeURIComponent(adminChapterMatch[1]),
+        Number(adminChapterMatch[2]),
+      )
+      return sendJson(res, 200, { ok: true, ...result })
+    } catch (err) {
+      return sendJson(res, 404, { ok: false, error: String(err?.message || err) })
+    }
   }
 
   if (req.method === 'POST' && url.pathname === '/api/admin/login') {
@@ -2219,7 +2362,14 @@ const server = http.createServer(async (req, res) => {
 })
 
 loadPersistedMembers()
-server.listen(PORT, HOST, () => {
-  // eslint-disable-next-line no-console
-  console.log(`[presence] listening at http://${HOST}:${PORT}`)
-})
+initNovelsStore()
+  .then(() => {
+    server.listen(PORT, HOST, () => {
+      // eslint-disable-next-line no-console
+      console.log(`[presence] listening at http://${HOST}:${PORT}`)
+    })
+  })
+  .catch((err) => {
+    console.error('[novels-store] init failed', err)
+    process.exit(1)
+  })

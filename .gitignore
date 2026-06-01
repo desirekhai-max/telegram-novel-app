@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Runtime novel CMS data (seeded from src/data/novels.js on first boot)
+server/novels-data.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
