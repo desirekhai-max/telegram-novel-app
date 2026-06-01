@@ -4,6 +4,7 @@ import crypto from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { PERSISTENT_DATA_DIR } from './persistent-data-dir.js'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_FILE = path.join(PERSISTENT_DATA_DIR, 'novels-data.json')
 
 export function getNovelsDataFilePath() {
