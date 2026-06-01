@@ -345,18 +345,19 @@ a {
     0 0 40px rgba(168, 85, 247, 0.12);
 }
 
-/* 个人资料卡：用户名 + VIP/作者徽标同一行；长名省略，徽标不被挤出 */
+/* 个人资料卡：短名时 VIP 紧贴名字；长名 … 省略且徽标始终同一行不换行 */
 .tg-account-profile-card__name-row {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  min-width: 0;
+  width: max-content;
   max-width: 100%;
+  min-width: 0;
   flex-wrap: nowrap;
   gap: 0.375rem;
+  vertical-align: top;
 }
 
 .tg-account-profile-card__name {
-  flex: 1 1 0%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -364,6 +365,7 @@ a {
 }
 
 .tg-account-profile-card__name-row .tg-member-badges {
+  flex: 0 0 auto;
   flex-shrink: 0;
   flex-wrap: nowrap;
 }
