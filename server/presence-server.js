@@ -40,6 +40,12 @@ import {
   serveNovelCoverFile,
   readJsonBody as readCoverJsonBody,
 } from './novel-cover-upload.js'
+import {
+  initAppFiltersStore,
+  getAdminAppFiltersPayload,
+  saveAppFilterSection,
+  buildPublicAppFilters,
+} from './app-filters-store.js'
 
 const HOST = process.env.HOST || '0.0.0.0'
 const PORT = Number(process.env.PORT || 8787)
@@ -1524,24 +1530,29 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/home-filter-panel-config') {
+    return sendJson(res, 200, buildPublicAppFilters().panel)
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/app-filters') {
+    return sendJson(res, 200, buildPublicAppFilters())
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin-legacy/app-filters') {
+    if (!requireLegacyAdmin(req, res)) return
+    return sendJson(res, 200, getAdminAppFiltersPayload())
+  }
+
+  const adminFilterSectionMatch = url.pathname.match(
+    /^\/api\/admin-legacy\/app-filters\/(genres|tags|status|wordRanges|sort)$/,
+  )
+
+  if (adminFilterSectionMatch && req.method === 'PUT') {
+    if (!requireLegacyAdmin(req, res)) return
     try {
-      const configPath = path.join(__dirname, 'home-filter-panel-config.json')
-      if (!fs.existsSync(configPath)) {
-        res.writeHead(404)
-        res.end()
-        return
-      }
-      const body = fs.readFileSync(configPath, 'utf8')
-      res.writeHead(200, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store',
-      })
-      res.end(body)
-      return
-    } catch {
-      res.writeHead(500)
-      res.end()
-      return
+      const body = await parseJsonBody(req)
+      return sendJson(res, 200, saveAppFilterSection(adminFilterSectionMatch[1], body?.items))
+    } catch (err) {
+      return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
     }
   }
 
@@ -2445,6 +2456,7 @@ const server = http.createServer(async (req, res) => {
 })
 
 const migrationResults = runAllLegacyMigrations()
+initAppFiltersStore()
 loadPersistedMembers()
 initNovelCoverUpload()
 initNovelsStore()
