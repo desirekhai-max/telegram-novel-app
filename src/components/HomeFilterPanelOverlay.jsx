@@ -1,27 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_HOME_FILTER_PANEL_CONFIG } from '../lib/homeFilterPanelConfig.js'
 
-/**
- * 临时开关：合作方验收期间隐藏筛选里的具体题材/标签（如「都市」「1v1」等）。
- * 仅保留「全部题材 / 全部标签」入口，便于后续快速恢复展示。
- */
-const HIDE_SPECIFIC_GENRE_AND_TAG_FILTERS = true
-
-function applyHideSpecificFilters(panelConfig) {
-  if (!HIDE_SPECIFIC_GENRE_AND_TAG_FILTERS) return panelConfig
-  return {
-    ...panelConfig,
-    groups: panelConfig.groups.map((g) => {
-      if (g.key === 'genre') {
-        return { ...g, options: g.options.filter((o) => o.value === 'all') }
-      }
-      if (g.key === 'tags') {
-        return { ...g, options: [] }
-      }
-      return g
-    }),
-  }
-}
 
 /**
  * 受控筛选层：每次点击题材/状态/篇幅/来源/标签都会同步到首页。
@@ -29,10 +8,7 @@ function applyHideSpecificFilters(panelConfig) {
  */
 export default function HomeFilterPanelOverlay({ criteria, onCriteriaChange, onClose, panelConfig }) {
   const resolvedConfig = panelConfig ?? DEFAULT_HOME_FILTER_PANEL_CONFIG
-  const effectiveConfig = useMemo(
-    () => applyHideSpecificFilters(resolvedConfig),
-    [resolvedConfig],
-  )
+  const effectiveConfig = useMemo(() => resolvedConfig, [resolvedConfig])
   const maxSelectedTags = effectiveConfig.maxSelectedTags ?? 3
 
   const panelRef = useRef(null)
@@ -169,8 +145,7 @@ export default function HomeFilterPanelOverlay({ criteria, onCriteriaChange, onC
           {effectiveConfig.groups.map((group) => {
             const sid = `filter-${group.key}`
             if (group.type === 'single') {
-              const cur =
-                group.key === 'genre' && HIDE_SPECIFIC_GENRE_AND_TAG_FILTERS ? 'all' : criteriaSingleValue(group.key)
+              const cur = criteriaSingleValue(group.key)
               return (
                 <section
                   key={group.key}
