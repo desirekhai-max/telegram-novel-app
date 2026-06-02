@@ -7,7 +7,7 @@ import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { fetchFavoritedNovelsByUser, getPresenceMemberId } from '../lib/miniAppPresence.js'
-import { getNovelGenreLabel } from '../lib/novelDisplay.js'
+import { getNovelGenreLabel, getNovelCardTags } from '../lib/novelDisplay.js'
 
 const DETAIL_INTERACTIONS_STORAGE_KEY = 'tg_novel_detail_interactions_v1'
 const serverFavoritesMemoryCache = new Map()
@@ -107,9 +107,7 @@ export default function SavedPage() {
               const favoritedAtLabel =
                 favoritedAtMs > 0 ? formatReadingRecordInstant(favoritedAtMs) : ''
               const genreLabel = getNovelGenreLabel(novel)
-              const tagPreview = Array.isArray(novel.tags)
-                ? novel.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 2)
-                : []
+              const tagPreview = getNovelCardTags(novel).slice(0, 2)
               const cardMeta = [genreLabel, ...tagPreview].filter(Boolean).join(' · ')
               return (
                 <Link

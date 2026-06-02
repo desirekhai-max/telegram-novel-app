@@ -6511,15 +6511,6 @@ body.tg-desktop-admin #root {
   opacity: 0.85;
 }
 
-.tg-novel-card__chip--genre {
-  padding: 2px 8px;
-  border-radius: 999px;
-  color: rgba(250, 252, 255, 0.96);
-  font-weight: 600;
-  background: linear-gradient(135deg, rgba(122, 97, 255, 0.34), rgba(76, 187, 255, 0.28));
-  border: 1px solid rgba(146, 176, 255, 0.34);
-}
-
 .tg-novel-card__title {
   margin: 0;
   font-size: 16px;

@@ -9,7 +9,7 @@ import {
   getDisplayWordCountWan,
   getMeatCategoryByWordCount,
   commentPointsToStars,
-  getNovelCardListThemes,
+  getNovelCardTags,
   getNovelGenreLabel,
 } from '../lib/novelDisplay.js'
 
@@ -71,9 +71,8 @@ export default function HomeNovelCard({
   )
   const latestTitle = chapterTotal > 0 ? `ភាគទី${chapterTotal}` : READER_NO_CHAPTER_YET_KM
   const latestRel = formatLatestChapterRelativeLabel(n)
-  const themes = getNovelCardListThemes(n)
-  const tags = n.tags ?? []
   const genreLabel = getNovelGenreLabel(n)
+  const tags = getNovelCardTags(n)
   const views = Number.isFinite(Number(n.cardViewCount)) ? Math.max(0, Number(n.cardViewCount)) : 0
   const likes = Number.isFinite(Number(n.cardLikeCount)) ? Math.max(0, Number(n.cardLikeCount)) : 0
   const favs = Number.isFinite(Number(n.cardFavoriteCount)) ? Math.max(0, Number(n.cardFavoriteCount)) : 0
@@ -158,41 +157,31 @@ export default function HomeNovelCard({
             )}
           </p>
           <StarRow commentPoints={commentPoints} />
-          {themes.length > 0 ? (
+          {genreLabel ? (
             <p className="tg-novel-card__line tg-novel-card__row tg-novel-card__chip-row-wrap">
               <span className="tg-novel-card__label">ប្រភេទ：</span>
               <span className="tg-novel-card__chip-row">
-                {themes.map((t) =>
-                  onPickTheme ? (
-                    <button
-                      key={t}
-                      type="button"
-                      className="tg-novel-card__chip tg-novel-card__hit tg-novel-card__chip--theme"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        onPickTheme(t)
-                      }}
-                    >
-                      {t}
-                    </button>
-                  ) : (
-                    <span key={t} className="tg-novel-card__chip tg-novel-card__chip--theme">
-                      {t}
-                    </span>
-                  ),
+                {onPickTheme ? (
+                  <button
+                    type="button"
+                    className="tg-novel-card__chip tg-novel-card__hit tg-novel-card__chip--theme"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      onPickTheme(genreLabel)
+                    }}
+                  >
+                    {genreLabel}
+                  </button>
+                ) : (
+                  <span className="tg-novel-card__chip tg-novel-card__chip--theme">{genreLabel}</span>
                 )}
               </span>
             </p>
           ) : null}
-          {genreLabel || tags.length > 0 ? (
+          {tags.length > 0 ? (
             <p className="tg-novel-card__line tg-novel-card__row tg-novel-card__chip-row-wrap">
               <span className="tg-novel-card__label">ស្លាក：</span>
               <span className="tg-novel-card__chip-row tg-novel-card__chip-row--tags">
-                {genreLabel ? (
-                  <span className="tg-novel-card__chip tg-novel-card__chip--genre">
-                    {genreLabel}
-                  </span>
-                ) : null}
                 {tags.map((t) =>
                   onPickTag ? (
                     <button

@@ -1,5 +1,3 @@
-import { GENRE_OPTIONS } from '../data/homeFilters.js'
-
 /** 由「距今秒数」得到 X秒前 / X分钟前 / … / X年前（不含括号） */
 function formatSecondsAgo(secTotal) {
   const s = Math.floor(Number(secTotal))
@@ -204,34 +202,33 @@ export function commentPointsToFilledStars(points) {
   return commentPointsToStars(points)
 }
 
-const FILTER_GENRE_IDS = new Set([
-  'urban',
-  'campus',
-  'taboo',
-  'xuanhuan',
-  'system',
-  'transmigration',
-  'wuxia',
-  'fantasy',
-  'rural',
-  'history',
-  'celebrity',
-  'superpower',
-  'scifi',
-  'fanfic',
-])
+const GENRE_LABEL_BY_ID = new Map()
 
-const GENRE_LABEL_BY_ID = new Map(GENRE_OPTIONS.map((it) => [String(it.id).trim(), String(it.label).trim()]))
+function normalizeToken(v) {
+  return String(v || '').trim().toLowerCase()
+}
+
+/**
+ * 由首页筛选配置动态注入题材映射（支持中文/高棉语/英文及未来新增）
+ * @param {{id?: string, value?: string, label?: string}[]} options
+ */
+export function setNovelGenreOptions(options) {
+  GENRE_LABEL_BY_ID.clear()
+  if (!Array.isArray(options)) return
+  options.forEach((it) => {
+    const id = String(it?.id ?? it?.value ?? '').trim()
+    const label = String(it?.label ?? '').trim()
+    if (!id || !label) return
+    GENRE_LABEL_BY_ID.set(id, label)
+  })
+}
 
 /** 卡片/详情「题材」展示：优先 listThemes；后台若把文案写在 genreId 则兜底 */
 export function getNovelCardListThemes(novel) {
   const fromList = Array.isArray(novel?.listThemes)
     ? novel.listThemes.map((t) => String(t).trim()).filter(Boolean)
     : []
-  if (fromList.length) return fromList
-  const gid = String(novel?.genreId || '').trim()
-  if (gid && !FILTER_GENRE_IDS.has(gid.toLowerCase())) return [gid]
-  return []
+  return fromList
 }
 
 /** 统一取卡片「题材」显示文案：listThemes > 配置映射 > genreId 原值 */
@@ -241,4 +238,20 @@ export function getNovelGenreLabel(novel) {
   const gid = String(novel?.genreId || '').trim()
   if (!gid) return ''
   return GENRE_LABEL_BY_ID.get(gid) || gid
+}
+
+/**
+ * 标签去重：若标签与当前题材文案相同，则自动过滤
+ * @param {object} novel
+ * @returns {string[]}
+ */
+export function getNovelCardTags(novel) {
+  const list = Array.isArray(novel?.tags)
+    ? novel.tags.map((t) => String(t).trim()).filter(Boolean)
+    : []
+  if (!list.length) return []
+  const genreLabel = getNovelGenreLabel(novel)
+  if (!genreLabel) return list
+  const genreToken = normalizeToken(genreLabel)
+  return list.filter((tag) => normalizeToken(tag) !== genreToken)
 }

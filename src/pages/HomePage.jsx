@@ -36,6 +36,7 @@ import { novelMatchesInlineSearch } from '../lib/novelInlineSearch.js'
 import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount.js'
+import { setNovelGenreOptions } from '../lib/novelDisplay.js'
 
 const SORT_OPTIONS = [
   { id: 'update', label: '​ថ្មីៗ'},
@@ -137,7 +138,16 @@ export default function HomePage() {
   useEffect(() => {
     const ac = new AbortController()
     void fetchHomeFilterPanelConfig(ac.signal).then((cfg) => {
-      if (cfg) setFilterPanelConfig(cfg)
+      if (cfg) {
+        setFilterPanelConfig(cfg)
+        const genreGroup = Array.isArray(cfg.groups)
+          ? cfg.groups.find((g) => String(g?.key || '').trim() === 'genre')
+          : null
+        const genreOptions = Array.isArray(genreGroup?.options)
+          ? genreGroup.options.map((it) => ({ id: it?.value, label: it?.label }))
+          : []
+        setNovelGenreOptions(genreOptions)
+      }
     })
     return () => ac.abort()
   }, [])

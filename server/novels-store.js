@@ -78,24 +78,6 @@ function computeNovelWordCountWan(chapters) {
   return Math.round((total / 10000) * 100) / 100
 }
 
-/** 与首页筛选 `genreId` 对齐；非此类 id 时后台常把「题材」文案写入 genreId */
-const FILTER_GENRE_IDS = new Set([
-  'urban',
-  'campus',
-  'taboo',
-  'xuanhuan',
-  'system',
-  'transmigration',
-  'wuxia',
-  'fantasy',
-  'rural',
-  'history',
-  'celebrity',
-  'superpower',
-  'scifi',
-  'fanfic',
-])
-
 function normalizeListThemes(raw = {}) {
   if (Array.isArray(raw.listThemes)) {
     return raw.listThemes.map((t) => String(t).trim()).filter(Boolean).slice(0, 16)
@@ -112,9 +94,7 @@ function normalizeListThemes(raw = {}) {
 
 function deriveListThemesFromGenreId(genreId, listThemes) {
   if (listThemes.length) return listThemes
-  const gid = String(genreId || '').trim()
-  if (!gid || FILTER_GENRE_IDS.has(gid.toLowerCase())) return []
-  return [gid]
+  return []
 }
 
 function normalizeNovel(raw = {}, { preserveId } = {}) {
