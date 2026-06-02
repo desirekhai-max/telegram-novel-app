@@ -1,5 +1,6 @@
 import { Eye, Heart } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { bindNovelNavPrefetchHandlers, prefetchNovelNav } from '../lib/prefetchNovelOnNav.js'
 import { READER_NO_CHAPTER_YET_KM } from '../lib/errorMessagesKm.js'
 import {
   formatLatestChapterRelativeLabel,
@@ -83,10 +84,14 @@ export default function HomeNovelCard({
         to={`/read/${n.id}`}
         className="tg-novel-card__backdrop"
         aria-label={`阅读《${n.title}》`}
+        {...bindNovelNavPrefetchHandlers(n.id)}
         onClick={(e) => {
-          if (canOpenRead) return
-          e.preventDefault()
-          onRequireLogin?.()
+          if (!canOpenRead) {
+            e.preventDefault()
+            onRequireLogin?.()
+            return
+          }
+          prefetchNovelNav(n.id)
         }}
       />
       <div className="tg-novel-card__content">

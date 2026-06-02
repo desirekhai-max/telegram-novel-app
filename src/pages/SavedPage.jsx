@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { bindNovelNavPrefetchHandlers } from '../lib/prefetchNovelOnNav.js'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import { novels } from '../data/novels.js'
 import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
@@ -110,6 +111,7 @@ export default function SavedPage() {
                   to={`/read/${novel.id}`}
                   state={{ from: 'saved' }}
                   className="tg-saved-card"
+                  {...bindNovelNavPrefetchHandlers(novel.id)}
                 >
                   <div className={`tg-saved-card__cover-wrap tg-saved-card__cover-wrap--${accent}`}>
                     {novel.coverUrl ? (

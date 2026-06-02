@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { bindNovelNavPrefetchHandlers } from '../lib/prefetchNovelOnNav.js'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
@@ -107,6 +108,7 @@ export default function ReadingHistoryPage() {
                   to={navTarget.pathname}
                   state={navTarget.state}
                   className={cardClass}
+                  {...bindNovelNavPrefetchHandlers(it.novelId || navTarget.pathname.replace(/^\/read\//, ''))}
                 >
                   {cardBody}
                 </Link>

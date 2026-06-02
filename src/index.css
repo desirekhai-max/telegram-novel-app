@@ -1630,6 +1630,132 @@ a {
   color: var(--tg-text-body);
 }
 
+@keyframes tg-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.tg-skeleton {
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.14) 45%,
+    rgba(255, 255, 255, 0.06) 90%
+  );
+  background-size: 200% 100%;
+  animation: tg-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-skeleton {
+    animation: none;
+    background: rgba(255, 255, 255, 0.1);
+  }
+}
+
+.tg-skeleton--cover {
+  width: 100%;
+  height: 100%;
+  min-height: 168px;
+  border-radius: 10px;
+}
+
+.tg-skeleton--title {
+  height: 22px;
+  width: 78%;
+  margin-bottom: 8px;
+}
+
+.tg-skeleton--line {
+  height: 14px;
+  margin: 5px 0;
+}
+
+.tg-skeleton--w80 { width: 80%; }
+.tg-skeleton--w75 { width: 75%; }
+.tg-skeleton--w70 { width: 70%; }
+.tg-skeleton--w65 { width: 65%; }
+.tg-skeleton--w55 { width: 55%; }
+.tg-skeleton--w90 { width: 90%; }
+
+.tg-skeleton--read-btn {
+  height: 44px;
+  width: 100%;
+  margin: 14px 0 10px;
+  border-radius: 12px;
+}
+
+.tg-skeleton--intro {
+  height: 14px;
+  width: 100%;
+  margin: 4px 0;
+}
+
+.tg-skeleton--tags {
+  height: 14px;
+  width: 62%;
+  margin: 10px 0;
+}
+
+.tg-skeleton--chip {
+  display: inline-block;
+  width: 56px;
+  height: 22px;
+  border-radius: 999px;
+}
+
+.tg-reader-detail__stats--skeleton {
+  gap: 10px;
+}
+
+.tg-reader-detail__chapter-item--skeleton {
+  pointer-events: none;
+}
+
+.tg-skeleton--catalog-title {
+  height: 18px;
+  width: 42%;
+}
+
+.tg-skeleton--chapter {
+  display: block;
+  height: 16px;
+  width: 88%;
+}
+
+.tg-skeleton--article-title {
+  height: 24px;
+  width: 72%;
+  margin-bottom: 12px;
+}
+
+.tg-skeleton--article-subtitle {
+  height: 16px;
+  width: 48%;
+  margin-bottom: 8px;
+}
+
+.tg-skeleton--article-meta {
+  height: 13px;
+  width: 86%;
+  margin-bottom: 18px;
+}
+
+.tg-skeleton--paragraph {
+  height: 14px;
+  width: 100%;
+  margin: 10px 0;
+}
+
+.tg-reader-article__body--skeleton {
+  padding-top: 4px;
+}
+
+.tg-reader-detail--skeleton {
+  pointer-events: none;
+}
+
 .tg-reader-detail__head {
   display: flex;
   gap: 10px;

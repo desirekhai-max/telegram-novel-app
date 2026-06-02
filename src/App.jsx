@@ -8,6 +8,7 @@ import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.js
 import { useAppChrome } from './contexts/useAppChrome.js'
 import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
 import { registerPresencePing } from './lib/miniAppPresence.js'
+import { loadCatalogNovels } from './lib/novelsRuntime.js'
 import PageTransitionLayout from './layouts/PageTransitionLayout.jsx'
 import AboutPage from './pages/AboutPage.jsx'
 import AccountPage from './pages/AccountPage.jsx'
@@ -96,6 +97,10 @@ function AppShell() {
     document.body.classList.toggle('tg-desktop-admin', isAdminRoute)
     return () => document.body.classList.remove('tg-desktop-admin')
   }, [isAdminRoute])
+
+  useEffect(() => {
+    void loadCatalogNovels()
+  }, [])
 
   useEffect(() => {
     previousLocationRef.current = currentLocationRef.current

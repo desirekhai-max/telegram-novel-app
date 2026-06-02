@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bell, Heart, MessageCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { bindNovelNavPrefetchHandlers, prefetchNovelNav } from '../lib/prefetchNovelOnNav.js'
 import { novels } from '../data/novels.js'
 import { formatTelegramDisplayName, useTelegramUser } from '../hooks/useTelegramUser.js'
 import { fetchNovelReplies, fetchNovelReviews } from '../lib/miniAppPresence.js'
@@ -326,7 +327,11 @@ export default function NotificationsPage() {
                   state={{ from: 'notifications', focusCommentId: it.commentId, focusReplyId: it.replyId || '' }}
                   className={cardClass}
                   lang="km"
-                  onClick={() => markAsRead(it)}
+                  {...bindNovelNavPrefetchHandlers(it.novelId)}
+                  onClick={() => {
+                    markAsRead(it)
+                    prefetchNovelNav(it.novelId)
+                  }}
                 >
                   {body}
                 </Link>

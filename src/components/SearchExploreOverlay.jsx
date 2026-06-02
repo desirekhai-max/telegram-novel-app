@@ -1,6 +1,7 @@
 import { ArrowLeft, Flame, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { bindNovelNavPrefetchHandlers } from '../lib/prefetchNovelOnNav.js'
 import { novels } from '../data/novels'
 import { SEARCH_NO_RESULTS_KM } from '../lib/errorMessagesKm.js'
 
@@ -137,7 +138,7 @@ export default function SearchExploreOverlay({ onClose, query, setQuery }) {
           <ol className="tg-trend-list">
             {filtered.map((n, idx) => (
               <li key={n.id} className="tg-trend-list__item">
-                <Link to={`/read/${n.id}`} className="tg-trend-row">
+                <Link to={`/read/${n.id}`} className="tg-trend-row" {...bindNovelNavPrefetchHandlers(n.id)}>
                   <span
                     className={`tg-trend-row__rank tg-trend-row__rank--${idx < 3 ? 'top' : 'rest'}`}
                   >

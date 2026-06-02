@@ -15,7 +15,19 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getNovelById } from '../data/novels.js'
-import { fetchNovelFull, chapterRequiresVip } from '../lib/novelsRuntime.js'
+import {
+  fetchNovelFull,
+  chapterRequiresVip,
+  novelHasFullContent,
+  resolveInitialNovel,
+} from '../lib/novelsRuntime.js'
+import ReaderDetailSkeleton from '../components/ReaderDetailSkeleton.jsx'
+import ReaderArticleSkeleton from '../components/ReaderArticleSkeleton.jsx'
+import {
+  logDetailPageReady,
+  logPageFirstRender,
+  logReaderPageReady,
+} from '../lib/novelLoadPerf.js'
 import { formatTelegramDisplayName, useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
 import {
@@ -276,7 +288,11 @@ export default function ReaderPage() {
   const tgUser = useTelegramUser()
   const { viewerProfile } = useViewerProfile()
   const unreadNotificationCount = useUnreadNotificationCount(tgUser)
-  const [novel, setNovel] = useState(null)
+  const [novel, setNovel] = useState(() => resolveInitialNovel(id).novel)
+  const [loadStatus, setLoadStatus] = useState(() => resolveInitialNovel(id).loadStatus)
+  const pageMountAtRef = useRef(0)
+  const detailReadyLoggedRef = useRef(false)
+  const readerReadyLoggedRef = useRef('')
   const [introExpanded, setIntroExpanded] = useState(false)
   const [catalogDesc, setCatalogDesc] = useState(false)
   const [commentSort, setCommentSort] = useState('latest')
@@ -330,25 +346,50 @@ export default function ReaderPage() {
   const isMiniAppLoggedIn = Boolean(tgUser)
 
   useEffect(() => {
+    const t0 = performance.now()
+    pageMountAtRef.current = t0
+    requestAnimationFrame(() => {
+      logPageFirstRender('Detail', performance.now() - t0)
+    })
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
-    const bundled = getNovelById(id)
-    if (bundled) {
-      setNovel(bundled)
-    } else {
-      setNovel(null)
+    pageMountAtRef.current = performance.now()
+    const initial = resolveInitialNovel(id)
+    setNovel(initial.novel)
+    setLoadStatus(initial.loadStatus)
+    detailReadyLoggedRef.current = false
+    readerReadyLoggedRef.current = ''
+    pageMountAtRef.current = performance.now()
+
+    if (initial.loadStatus === 'ready') {
+      detailReadyLoggedRef.current = true
+      logDetailPageReady(performance.now() - pageMountAtRef.current, id)
     }
+
+    const bundled = getNovelById(id)
     void fetchNovelFull(id)
       .then((loaded) => {
         if (cancelled) return
         if (loaded) {
           setNovel(loaded)
+          setLoadStatus('ready')
+          if (!detailReadyLoggedRef.current) {
+            detailReadyLoggedRef.current = true
+            logDetailPageReady(performance.now() - pageMountAtRef.current, id)
+          }
           return
         }
-        if (!bundled) setNovel(null)
+        if (!bundled && !initial.novel) {
+          setLoadStatus('notFound')
+        }
       })
       .catch(() => {
         if (cancelled) return
-        if (!bundled) setNovel(null)
+        if (!bundled && !initial.novel) {
+          setLoadStatus('notFound')
+        }
       })
     return () => {
       cancelled = true
@@ -443,9 +484,9 @@ export default function ReaderPage() {
   }, [])
 
   useEffect(() => {
-    if (!novel) return
+    if (!novel || loadStatus !== 'ready') return
     saveLastRead({ id: novel.id, title: novel.title })
-  }, [novel, tgUser?.id])
+  }, [novel, loadStatus, tgUser?.id])
 
   useEffect(() => {
     const focusCommentId = String(location.state?.focusCommentId || '').trim()
@@ -1116,7 +1157,15 @@ export default function ReaderPage() {
   )
   useReadingContentProtection(articleLayerRef, isReadingChapter)
 
-  if (!novel) {
+  useEffect(() => {
+    if (!isReadingChapter || !novel) return
+    const token = `${novel.id}:${readingChapterIndex}`
+    if (readerReadyLoggedRef.current === token) return
+    readerReadyLoggedRef.current = token
+    logReaderPageReady(performance.now() - pageMountAtRef.current, novel.id, readingChapterIndex)
+  }, [isReadingChapter, novel, readingChapterIndex])
+
+  if (loadStatus === 'notFound') {
     return (
       <div className="tg-app tg-app--reader">
         <header className="tg-toolbar tg-toolbar--reader">
@@ -1145,6 +1194,93 @@ export default function ReaderPage() {
     )
   }
 
+  const isDetailLoading = loadStatus !== 'ready' || !novelHasFullContent(novel)
+
+  const readerHomeHeader = !isReadingChapter ? (
+    <header className="tg-toolbar tg-toolbar--large tg-toolbar--home tg-toolbar--reader-home-fixed">
+      <button
+        type="button"
+        className="tg-toolbar__logo m-0 shrink-0 cursor-pointer leading-none"
+        aria-label="ធ្វើទំព័រឡើងវិញ"
+        onClick={() => refreshAppFromLogo()}
+      >
+        <img
+          src="/logo.png"
+          alt=""
+          className="tg-toolbar__logo-img tg-toolbar__logo-img--tab"
+          width="120"
+          height="32"
+          decoding="async"
+          fetchPriority="high"
+          loading="eager"
+        />
+      </button>
+      <div className="tg-toolbar__search-slot min-w-0" role="search">
+        <div className="tg-search-field">
+          <span className="tg-search-field__icon" aria-hidden="true">
+            <Search size={17} strokeWidth={2} />
+          </span>
+          <input
+            className="tg-search-field__input"
+            type="search"
+            enterKeyHint="search"
+            inputMode="search"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="ស្វែងរកសៀវភៅ ឬអ្នកនិពន្ធ..."
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return
+              e.preventDefault()
+              const nextQuery = searchDraft.trim()
+              if (!nextQuery) return
+              navigate('/', { state: { homeSearchQuery: nextQuery } })
+            }}
+            aria-label="ស្វែងរកសៀវភៅ អ្នកនិពន្ធ ឬស្លាក"
+          />
+          {searchDraft.length > 0 ? (
+            <button
+              type="button"
+              className="tg-search-field__clear"
+              aria-label="សម្អាតការស្វែងរក"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setSearchDraft('')}
+            >
+              <X size={15} strokeWidth={2.25} aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <NavLink
+        to="/notifications"
+        className={({ isActive }) =>
+          ['tg-toolbar-notify', isActive ? 'tg-toolbar-notify--active' : ''].filter(Boolean).join(' ')
+        }
+        aria-label="ការជូនដំណឹង"
+      >
+        <Bell size={20} strokeWidth={2} aria-hidden />
+        {unreadNotificationCount > 0 ? (
+          <span className="tg-toolbar-notify__badge" aria-label={`មិនទាន់អាន ${unreadNotificationCount}`}>
+            {unreadNotificationCount > 99 ? '99+' : String(unreadNotificationCount)}
+          </span>
+        ) : null}
+      </NavLink>
+    </header>
+  ) : null
+
+  if (!novel) {
+    return (
+      <div className="tg-app tg-app--reader" {...edgeSwipeHandlers}>
+        <div className="tg-reader-swipe-sheet">
+          {readerHomeHeader}
+          <ReaderDetailSkeleton />
+        </div>
+      </div>
+    )
+  }
+
   const readingChapter = isReadingChapter ? (novel.chapters ?? [])[readingChapterIndex] : null
   const readingTitle = isReadingChapter
     ? readingChapter?.title && String(readingChapter.title).trim()
@@ -1167,6 +1303,7 @@ export default function ReaderPage() {
   const rel = formatLatestChapterRelativeLabel(novel)
   const latestChapter = (novel.chapters ?? [])[Math.max(0, (novel.chapters ?? []).length - 1)]
   const readingChapterCount = (novel.chapters ?? []).length
+  const readingContentLoading = isReadingChapter && readingBody.length === 0 && isDetailLoading
   const readerSwipeHandlers = isReadingChapter ? {} : edgeSwipeHandlers
   const onReturnToBookCatalog = () => {
     applyArticleLayerTransform(0, false)
@@ -1187,79 +1324,10 @@ export default function ReaderPage() {
           .filter(Boolean)
           .join(' ')}
       >
-      {!isReadingChapter ? (
-        <header className="tg-toolbar tg-toolbar--large tg-toolbar--home tg-toolbar--reader-home-fixed">
-          <button
-            type="button"
-            className="tg-toolbar__logo m-0 shrink-0 cursor-pointer leading-none"
-            aria-label="ធ្វើទំព័រឡើងវិញ"
-            onClick={() => refreshAppFromLogo()}
-          >
-            <img
-              src="/logo.png"
-              alt=""
-              className="tg-toolbar__logo-img tg-toolbar__logo-img--tab"
-              width="120"
-              height="32"
-              decoding="async"
-              fetchPriority="high"
-              loading="eager"
-            />
-          </button>
-          <div className="tg-toolbar__search-slot min-w-0" role="search">
-            <div className="tg-search-field">
-              <span className="tg-search-field__icon" aria-hidden="true">
-                <Search size={17} strokeWidth={2} />
-              </span>
-              <input
-                className="tg-search-field__input"
-                type="search"
-                enterKeyHint="search"
-                inputMode="search"
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-                placeholder="ស្វែងរកសៀវភៅ ឬអ្នកនិពន្ធ..."
-                value={searchDraft}
-                onChange={(e) => setSearchDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter') return
-                  e.preventDefault()
-                  const nextQuery = searchDraft.trim()
-                  if (!nextQuery) return
-                  navigate('/', { state: { homeSearchQuery: nextQuery } })
-                }}
-                aria-label="ស្វែងរកសៀវភៅ អ្នកនិពន្ធ ឬស្លាក"
-              />
-              {searchDraft.length > 0 ? (
-                <button
-                  type="button"
-                  className="tg-search-field__clear"
-                  aria-label="សម្អាតការស្វែងរក"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setSearchDraft('')}
-                >
-                  <X size={15} strokeWidth={2.25} aria-hidden />
-                </button>
-              ) : null}
-            </div>
-          </div>
-          <NavLink
-            to="/notifications"
-            className={({ isActive }) =>
-              ['tg-toolbar-notify', isActive ? 'tg-toolbar-notify--active' : ''].filter(Boolean).join(' ')
-            }
-            aria-label="ការជូនដំណឹង"
-          >
-            <Bell size={20} strokeWidth={2} aria-hidden />
-            {unreadNotificationCount > 0 ? (
-              <span className="tg-toolbar-notify__badge" aria-label={`មិនទាន់អាន ${unreadNotificationCount}`}>
-                {unreadNotificationCount > 99 ? '99+' : String(unreadNotificationCount)}
-              </span>
-            ) : null}
-          </NavLink>
-        </header>
-      ) : null}
+      {readerHomeHeader}
+      {isDetailLoading && !isReadingChapter ? (
+        <ReaderDetailSkeleton partialNovel={novel} />
+      ) : (
       <main ref={readerDetailScrollRef} className="tg-reader-detail" lang="km">
         <section className="tg-reader-detail__head">
           <div className={`tg-reader-detail__cover-wrap tg-reader-detail__cover-wrap--${novel.accent}`}>
@@ -1652,6 +1720,7 @@ export default function ReaderPage() {
           </div>
         </section>
       </main>
+      )}
       {isReadingChapter ? (
         <div
           ref={articleOverlayRef}
@@ -1771,20 +1840,26 @@ export default function ReaderPage() {
                 setArticleHeaderCompact(top > 96)
               }}
             >
-              <h1 className="tg-reader-article__title">{novel.title}</h1>
-              <p className="tg-reader-article__chapter-line">{readingChapterSubtitle}</p>
-              <p className="tg-reader-article__meta-line">{readingMetaLine}</p>
-              <section className="tg-reader-article__body">
-                {readingBody.length > 0 ? (
-                  readingBody.map((p, idx) => (
-                    <p key={`${readingChapterIndex}-${idx}`} className="tg-reader-article__p">
-                      {p}
-                    </p>
-                  ))
-                ) : (
-                  <p className="tg-reader-article__p" lang="km">{READER_NO_BODY_KM}</p>
-                )}
-              </section>
+              {readingContentLoading ? (
+                <ReaderArticleSkeleton />
+              ) : (
+                <>
+                  <h1 className="tg-reader-article__title">{novel.title}</h1>
+                  <p className="tg-reader-article__chapter-line">{readingChapterSubtitle}</p>
+                  <p className="tg-reader-article__meta-line">{readingMetaLine}</p>
+                  <section className="tg-reader-article__body">
+                    {readingBody.length > 0 ? (
+                      readingBody.map((p, idx) => (
+                        <p key={`${readingChapterIndex}-${idx}`} className="tg-reader-article__p">
+                          {p}
+                        </p>
+                      ))
+                    ) : (
+                      <p className="tg-reader-article__p" lang="km">{READER_NO_BODY_KM}</p>
+                    )}
+                  </section>
+                </>
+              )}
             </div>
             <nav className="tg-reader-article__chapter-nav" aria-label="រុករកភាគ">
               <div className="tg-reader-article__chapter-nav-cell tg-reader-article__chapter-nav-cell--left">
