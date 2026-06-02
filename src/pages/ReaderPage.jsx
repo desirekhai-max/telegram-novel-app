@@ -1294,7 +1294,7 @@ export default function ReaderPage() {
   const readingChapterSubtitle = isReadingChapter ? `${readingChapterNoLabel} ${readingChapterName}` : ''
   const readingBody = isReadingChapter
     ? Array.isArray(readingChapter?.body)
-      ? readingChapter.body.filter((p) => String(p ?? '').trim().length > 0)
+      ? readingChapter.body.map((p) => String(p ?? ''))
       : []
     : []
   const readingChapterWordCount = readingBody.reduce((sum, p) => sum + [...String(p)].length, 0)

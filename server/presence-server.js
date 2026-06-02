@@ -1389,13 +1389,17 @@ function makeCounts(rangeStartMs, rangeEndMs) {
 
 function parseJsonBody(req) {
   return new Promise((resolve) => {
-    let raw = ''
+    const chunks = []
+    let total = 0
     req.on('data', (c) => {
-      raw += c
-      if (raw.length > 1024 * 64) req.destroy()
+      const chunk = Buffer.isBuffer(c) ? c : Buffer.from(c)
+      chunks.push(chunk)
+      total += chunk.length
+      if (total > 1024 * 64) req.destroy()
     })
     req.on('end', () => {
       try {
+        const raw = chunks.length ? Buffer.concat(chunks).toString('utf8') : ''
         resolve(raw ? JSON.parse(raw) : {})
       } catch {
         resolve({})

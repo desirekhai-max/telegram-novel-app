@@ -37,10 +37,13 @@ function normalizeTags(raw) {
 }
 
 function normalizeBody(raw) {
-  if (Array.isArray(raw)) return raw.map((p) => String(p ?? '').trim()).filter(Boolean)
-  const text = String(raw ?? '').trim()
+  if (Array.isArray(raw)) {
+    return raw.map((p) => String(p ?? '').replace(/\r/g, ''))
+  }
+  const text = String(raw ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   if (!text) return []
-  return text.split(/\n+/).map((p) => p.trim()).filter(Boolean)
+  // 保留作者输入的段首空格、TAB、空行顺序，不做 trim/filter。
+  return text.split('\n')
 }
 
 function countChapterWords(body) {
