@@ -1,3 +1,5 @@
+import { GENRE_OPTIONS } from '../data/homeFilters.js'
+
 /** 由「距今秒数」得到 X秒前 / X分钟前 / … / X年前（不含括号） */
 function formatSecondsAgo(secTotal) {
   const s = Math.floor(Number(secTotal))
@@ -219,6 +221,8 @@ const FILTER_GENRE_IDS = new Set([
   'fanfic',
 ])
 
+const GENRE_LABEL_BY_ID = new Map(GENRE_OPTIONS.map((it) => [String(it.id).trim(), String(it.label).trim()]))
+
 /** 卡片/详情「题材」展示：优先 listThemes；后台若把文案写在 genreId 则兜底 */
 export function getNovelCardListThemes(novel) {
   const fromList = Array.isArray(novel?.listThemes)
@@ -228,4 +232,13 @@ export function getNovelCardListThemes(novel) {
   const gid = String(novel?.genreId || '').trim()
   if (gid && !FILTER_GENRE_IDS.has(gid.toLowerCase())) return [gid]
   return []
+}
+
+/** 统一取卡片「题材」显示文案：listThemes > 配置映射 > genreId 原值 */
+export function getNovelGenreLabel(novel) {
+  const themes = getNovelCardListThemes(novel)
+  if (themes.length > 0) return themes[0]
+  const gid = String(novel?.genreId || '').trim()
+  if (!gid) return ''
+  return GENRE_LABEL_BY_ID.get(gid) || gid
 }

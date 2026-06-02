@@ -7,6 +7,7 @@ import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { fetchFavoritedNovelsByUser, getPresenceMemberId } from '../lib/miniAppPresence.js'
+import { getNovelGenreLabel } from '../lib/novelDisplay.js'
 
 const DETAIL_INTERACTIONS_STORAGE_KEY = 'tg_novel_detail_interactions_v1'
 const serverFavoritesMemoryCache = new Map()
@@ -105,6 +106,11 @@ export default function SavedPage() {
               const accent = novel.accent === 'teal' || novel.accent === 'rose' ? novel.accent : 'violet'
               const favoritedAtLabel =
                 favoritedAtMs > 0 ? formatReadingRecordInstant(favoritedAtMs) : ''
+              const genreLabel = getNovelGenreLabel(novel)
+              const tagPreview = Array.isArray(novel.tags)
+                ? novel.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 2)
+                : []
+              const cardMeta = [genreLabel, ...tagPreview].filter(Boolean).join(' · ')
               return (
                 <Link
                   key={novel.id}
@@ -127,6 +133,9 @@ export default function SavedPage() {
                     <p className="tg-saved-card__meta truncate">
                       អ្នកនិពន្ធ៖ {novel.author}
                     </p>
+                    {cardMeta ? (
+                      <p className="tg-saved-card__meta tg-saved-card__meta--chips truncate">{cardMeta}</p>
+                    ) : null}
                     {favoritedAtLabel ? (
                       <p className="tg-saved-card__time truncate tabular-nums" lang="km">
                         {favoritedAtLabel}

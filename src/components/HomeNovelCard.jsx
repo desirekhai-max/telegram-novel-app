@@ -10,6 +10,7 @@ import {
   getMeatCategoryByWordCount,
   commentPointsToStars,
   getNovelCardListThemes,
+  getNovelGenreLabel,
 } from '../lib/novelDisplay.js'
 
 function StarRow({ commentPoints }) {
@@ -72,6 +73,7 @@ export default function HomeNovelCard({
   const latestRel = formatLatestChapterRelativeLabel(n)
   const themes = getNovelCardListThemes(n)
   const tags = n.tags ?? []
+  const genreLabel = getNovelGenreLabel(n)
   const views = Number.isFinite(Number(n.cardViewCount)) ? Math.max(0, Number(n.cardViewCount)) : 0
   const likes = Number.isFinite(Number(n.cardLikeCount)) ? Math.max(0, Number(n.cardLikeCount)) : 0
   const favs = Number.isFinite(Number(n.cardFavoriteCount)) ? Math.max(0, Number(n.cardFavoriteCount)) : 0
@@ -182,10 +184,15 @@ export default function HomeNovelCard({
               </span>
             </p>
           ) : null}
-          {tags.length > 0 ? (
+          {genreLabel || tags.length > 0 ? (
             <p className="tg-novel-card__line tg-novel-card__row tg-novel-card__chip-row-wrap">
               <span className="tg-novel-card__label">ស្លាក：</span>
               <span className="tg-novel-card__chip-row tg-novel-card__chip-row--tags">
+                {genreLabel ? (
+                  <span className="tg-novel-card__chip tg-novel-card__chip--genre">
+                    {genreLabel}
+                  </span>
+                ) : null}
                 {tags.map((t) =>
                   onPickTag ? (
                     <button

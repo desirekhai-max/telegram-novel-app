@@ -864,6 +864,10 @@ a {
   color: rgba(186, 195, 212, 0.82);
 }
 
+.tg-saved-card__meta--chips {
+  color: rgba(226, 236, 252, 0.86);
+}
+
 .tg-saved-card__time {
   margin: 0;
   font-size: 11px;
@@ -6505,6 +6509,15 @@ body.tg-desktop-admin #root {
 
 .tg-novel-card__chip--tag.tg-novel-card__hit:active {
   opacity: 0.85;
+}
+
+.tg-novel-card__chip--genre {
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: rgba(250, 252, 255, 0.96);
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(122, 97, 255, 0.34), rgba(76, 187, 255, 0.28));
+  border: 1px solid rgba(146, 176, 255, 0.34);
 }
 
 .tg-novel-card__title {
