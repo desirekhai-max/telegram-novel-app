@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import AbaKhqrPaymentScreen from '../components/AbaKhqrPaymentScreen.jsx'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
-import { openAbaMobileDeeplink, shouldTryAbaMobileDeeplinkFirst } from '../lib/abaMobile.js'
 import { buildAbaKhqrUiMockSession, isUiMockAbaKhqrSession } from '../lib/abaKhqrUiMock.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 import { clearVipAbaKhqrSession, loadVipAbaKhqrSession, saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
@@ -13,7 +12,6 @@ export default function VipAbaKhqrPage() {
   const [searchParams] = useSearchParams()
   const { viewerProfile } = useViewerProfile()
   const uiMockQuery = searchParams.get('ui_mock') === '1'
-  const payMode = String(searchParams.get('pay_mode') || '').trim().toLowerCase()
   const planIdParam = String(searchParams.get('plan_id') || '').trim()
   const tranIdParam = String(searchParams.get('tran_id') || '').trim()
 
@@ -31,9 +29,7 @@ export default function VipAbaKhqrPage() {
   const planId = String(session?.planId || planIdParam || '').trim()
 
   const [statusNote, setStatusNote] = useState('')
-  const [deeplinkTried, setDeeplinkTried] = useState(false)
   const pollRef = useRef(0)
-  const deeplinkOnceRef = useRef(false)
 
   const goSuccess = useCallback(() => {
     clearVipAbaKhqrSession()
@@ -73,22 +69,6 @@ export default function VipAbaKhqrPage() {
       return undefined
     }
 
-    const skipAutoDeeplink = payMode === 'khqr' || payMode === 'aba'
-    if (
-      !skipAutoDeeplink &&
-      shouldTryAbaMobileDeeplinkFirst() &&
-      session.abapayDeeplink &&
-      !deeplinkOnceRef.current
-    ) {
-      deeplinkOnceRef.current = true
-      const opened = openAbaMobileDeeplink(session.abapayDeeplink, {
-        playStore: session.playStore,
-        appStore: session.appStore,
-      })
-      setDeeplinkTried(opened)
-      if (opened) setStatusNote('Opening ABA Mobile…')
-    }
-
     void pollPayment()
     pollRef.current = window.setInterval(() => {
       void pollPayment()
@@ -103,22 +83,7 @@ export default function VipAbaKhqrPage() {
       if (pollRef.current) window.clearInterval(pollRef.current)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [isUiMock, navigate, payMode, planId, pollPayment, session, tranId])
-
-  const onOpenAbaMobile = () => {
-    if (isUiMock) {
-      setStatusNote('ABA Mobile deeplink (UI demo — app not opened)')
-      setDeeplinkTried(true)
-      return
-    }
-    if (!session?.abapayDeeplink) return
-    const opened = openAbaMobileDeeplink(session.abapayDeeplink, {
-      playStore: session.playStore,
-      appStore: session.appStore,
-    })
-    setDeeplinkTried(opened)
-    setStatusNote(opened ? 'Opening ABA Mobile…' : 'Could not open ABA Mobile')
-  }
+  }, [isUiMock, navigate, planId, pollPayment, session, tranId])
 
   if (!session || !tranId) {
     return null
@@ -127,24 +92,13 @@ export default function VipAbaKhqrPage() {
   return (
     <div className="tg-app tg-app--account tg-aba-khqr-page">
       <BrandTabToolbar title="ការទូទាត់តាម ABA KHQR" titleLang="km" titleClassName="text-[16px]" />
-      <main className="tg-list-wrap tg-account-scroll flex flex-1 flex-col px-3 py-5">
-        <section className="mx-auto flex w-full max-w-[420px] flex-col gap-4">
+      <main className="tg-list-wrap tg-account-scroll flex flex-1 flex-col px-3 py-3">
+        <section className="mx-auto flex w-full max-w-[420px] flex-col gap-3">
           <AbaKhqrPaymentScreen
             session={session}
             showDemoActions={isUiMock}
-            onOpenAbaMobileDemo={onOpenAbaMobile}
             onSimulatePaid={goSuccess}
           />
-
-          {!isUiMock && session.abapayDeeplink ? (
-            <button
-              type="button"
-              className="tg-aba-khqr-page__deeplink-btn"
-              onClick={onOpenAbaMobile}
-            >
-              {deeplinkTried ? 'Open ABA Mobile again' : 'Pay with ABA Mobile'}
-            </button>
-          ) : null}
 
           {statusNote ? (
             <p className="text-center text-[11px] text-slate-500" lang="en">

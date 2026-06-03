@@ -10,12 +10,11 @@ function formatDisplayAmount(session) {
 
 /**
  * Figma Payment Screen — template3_color style KHQR card.
- * @param {{ session: { merchantLabel?: string, amountLabel?: string, amount?: number, qrImage?: string }, onSimulatePaid?: () => void, onOpenAbaMobileDemo?: () => void, showDemoActions?: boolean }} props
+ * @param {{ session: { merchantLabel?: string, amountLabel?: string, amount?: number, qrImage?: string }, onSimulatePaid?: () => void, showDemoActions?: boolean }} props
  */
 export default function AbaKhqrPaymentScreen({
   session,
   onSimulatePaid,
-  onOpenAbaMobileDemo,
   showDemoActions = false,
 }) {
   const qrSrc =
@@ -47,9 +46,6 @@ export default function AbaKhqrPaymentScreen({
 
       {showDemoActions ? (
         <div className="tg-aba-khqr-page__demo-actions">
-          <button type="button" className="tg-aba-khqr-page__deeplink-btn" onClick={onOpenAbaMobileDemo}>
-            Pay with ABA Mobile
-          </button>
           <button type="button" className="tg-aba-khqr-page__simulate-btn" onClick={onSimulatePaid}>
             Simulate payment success
           </button>
