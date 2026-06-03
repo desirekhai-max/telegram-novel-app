@@ -1692,13 +1692,12 @@ a {
 }
 
 .tg-aba-khqr-page {
-  min-height: 100dvh;
-  background: #f3f4f6;
   touch-action: pan-y;
 }
 
-.tg-aba-khqr-page .tg-brand-tab-toolbar {
-  background: #f3f4f6;
+.tg-aba-khqr-page.tg-app,
+.tg-aba-khqr-page .tg-list-wrap {
+  background: var(--tg-app-surface);
 }
 
 .tg-aba-khqr-page__main {
@@ -1881,14 +1880,14 @@ a {
 }
 
 .tg-aba-khqr-page__action-btn--cancel {
-  border: 1px solid #cbd5e1;
-  color: #64748b;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
 
 .tg-aba-khqr-page__action-btn--cancel:active {
-  background: #f8fafc;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .tg-aba-khqr-page__demo-actions {
@@ -1938,7 +1937,7 @@ a {
   text-align: center;
   font-size: 10px;
   line-height: 1.35;
-  color: #94a3b8;
+  color: rgba(255, 255, 255, 0.42);
 }
 
 .tg-aba-success-page {
