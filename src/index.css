@@ -1821,20 +1821,24 @@ a {
   color: rgba(255, 255, 255, 0.65);
 }
 
-/* VIP 条款介绍卡：避免 backdrop-filter（Telegram Android WebView 易出上半区空白） */
+/* VIP 条款介绍卡：纯色底 + 单层高光（避免多层 gradient / backdrop 在 Telegram WebView 撑出上半区空白） */
 .tg-vip-consent {
   position: relative;
   z-index: 1;
 }
 
 .tg-vip-consent__terms {
+  display: block;
+  overflow: hidden;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   padding: 14px;
-  background:
-    linear-gradient(152deg, rgba(51, 144, 236, 0.1) 0%, transparent 46%),
-    linear-gradient(218deg, rgba(168, 85, 247, 0.08) 0%, transparent 52%),
-    linear-gradient(185deg, rgba(255, 255, 255, 0.07) 0%, rgba(10, 14, 34, 0.92) 72%);
+  background-color: rgba(10, 14, 34, 0.94);
+  background-image: linear-gradient(
+    165deg,
+    rgba(51, 144, 236, 0.12) 0%,
+    rgba(10, 14, 34, 0.94) 42%
+  );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 8px 24px rgba(0, 0, 0, 0.22);
@@ -1880,10 +1884,9 @@ a {
 .tg-vip-consent__label-text {
   min-width: 0;
   font-size: 11px;
-  line-height: 1.75;
+  line-height: 1.6;
   font-family: var(--tg-font);
   overflow: visible;
-  text-wrap: pretty;
 }
 
 .tg-vip-consent__item-text {
