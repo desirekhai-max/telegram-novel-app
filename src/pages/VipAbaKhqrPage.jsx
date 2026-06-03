@@ -109,8 +109,9 @@ export default function VipAbaKhqrPage() {
           <Link
             to="/vip"
             className="tg-aba-khqr-page__cancel text-center text-[11px] text-slate-400 underline-offset-2 hover:underline"
+            lang="km"
           >
-            Cancel
+            បោះបង់
           </Link>
         </div>
       </main>

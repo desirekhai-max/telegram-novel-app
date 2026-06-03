@@ -52,19 +52,19 @@ export default function AbaKhqrPaymentScreen({
           <div className="tg-aba-khqr-card__qr-wrap">
             <img src={qrSrc} alt="KHQR" className="tg-aba-khqr-card__qr" decoding="async" draggable={false} />
           </div>
-          <p className="tg-aba-khqr-card__hint" lang="en">
-            Scan with ABA Mobile or any KHQR supported banking app
+          <p className="tg-aba-khqr-card__hint" lang="km">
+            ស្កេនដោយ ABA Mobile ឬកម្មវិធីធនាគារដែលគាំទ្រ KHQR
           </p>
         </div>
       </article>
 
       {showDemoActions ? (
         <div className="tg-aba-khqr-page__demo-actions">
-          <button type="button" className="tg-aba-khqr-page__simulate-btn" onClick={onSimulatePaid}>
-            Simulate payment success
+          <button type="button" className="tg-aba-khqr-page__simulate-btn" lang="km" onClick={onSimulatePaid}>
+            សាកល្បងការទូទាត់ជោគជ័យ
           </button>
-          <p className="tg-aba-khqr-page__demo-note" lang="en">
-            UI demo only — for ABA Figma review recording
+          <p className="tg-aba-khqr-page__demo-note" lang="km">
+            សម្រាប់ការសាកល្បង UI ប៉ុណ្ណោះ
           </p>
         </div>
       ) : null}
