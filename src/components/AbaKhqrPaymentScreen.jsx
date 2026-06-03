@@ -21,7 +21,7 @@ export default function AbaKhqrPaymentScreen({
     String(session?.qrImage || '').trim() || ABA_KHQR_MOCK_QR_DATA_URL
 
   return (
-    <>
+    <div className="tg-aba-khqr-page__panel">
       <header className="tg-aba-khqr-page__brand-row" lang="en" aria-label="ABA PAY">
         <span className="tg-aba-khqr-page__brand-aba">ABA</span>
         <span className="tg-aba-khqr-page__brand-pay">&apos; PAY</span>
@@ -54,6 +54,6 @@ export default function AbaKhqrPaymentScreen({
           </p>
         </div>
       ) : null}
-    </>
+    </div>
   )
 }

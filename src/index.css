@@ -1699,6 +1699,22 @@ a {
   background: #f3f4f6;
 }
 
+.tg-aba-khqr-page__main {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.tg-aba-khqr-page__content {
+  max-width: 420px;
+}
+
+.tg-aba-khqr-page__panel {
+  width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
 .tg-aba-khqr-page__brand-row {
   margin: 0 0 4px;
   text-align: center;
@@ -1717,6 +1733,9 @@ a {
 }
 
 .tg-aba-khqr-card {
+  width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
   overflow: hidden;
   border-radius: 14px;
   background: #fff;
@@ -1742,7 +1761,7 @@ a {
 }
 
 .tg-aba-khqr-card__body {
-  padding: 10px 14px 8px;
+  padding: 8px 12px 6px;
   text-align: center;
 }
 
@@ -1755,8 +1774,8 @@ a {
 }
 
 .tg-aba-khqr-card__amount {
-  margin: 4px 0 6px;
-  font-size: 22px;
+  margin: 3px 0 4px;
+  font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.1;
@@ -1765,7 +1784,7 @@ a {
 
 .tg-aba-khqr-card__divider {
   height: 0;
-  margin: 0 4px 6px;
+  margin: 0 2px 4px;
   border: none;
   border-top: 1.5px dashed #cbd5e1;
 }
@@ -1775,19 +1794,19 @@ a {
   align-items: center;
   justify-content: center;
   width: fit-content;
-  max-width: 100%;
+  max-width: calc(100% - 8px);
   margin: 0 auto;
-  padding: 4px;
-  border-radius: 10px;
+  padding: 3px;
+  border-radius: 8px;
   background: #f8fafc;
 }
 
 .tg-aba-khqr-card__qr {
   display: block;
-  width: 200px;
-  height: 200px;
-  max-width: min(100%, 220px);
-  max-height: min(64vw, 220px);
+  width: 180px;
+  height: 180px;
+  max-width: min(100%, 200px);
+  max-height: min(52vw, 200px);
   object-fit: contain;
   border-radius: 6px;
 }
@@ -1800,8 +1819,8 @@ a {
 }
 
 .tg-aba-khqr-card__hint {
-  margin: 6px 0 0;
-  padding: 0 4px;
+  margin: 4px 0 0;
+  padding: 0 2px;
   font-size: 10px;
   line-height: 1.35;
   color: #64748b;
@@ -1811,7 +1830,9 @@ a {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 2px;
+  width: 100%;
+  max-width: 340px;
+  margin: 2px auto 0;
 }
 
 .tg-aba-khqr-page__simulate-btn {
