@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ShieldCheck } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import AbaKhqrEntryRow from '../components/AbaKhqrEntryRow.jsx'
@@ -29,6 +29,7 @@ export default function VipPage() {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [purchaseNotice, setPurchaseNotice] = useState('')
   const [purchaseError, setPurchaseError] = useState('')
+  const paymentSectionRef = useRef(null)
   const plans = useMemo(
     () => [...getVipPlansCatalogForRole(viewerProfile.role)].sort((a, b) => a.sortOrder - b.sortOrder),
     [viewerProfile.role],
@@ -157,6 +158,24 @@ export default function VipPage() {
     void runAbaPaymentStart('aba')
   }, [runAbaPaymentStart])
 
+  const selectPlan = useCallback(
+    (planId) => {
+      if (!canSelectPlan) return
+      const id = String(planId || '').trim()
+      if (!id) return
+      setSelectedPlanId(id)
+    },
+    [canSelectPlan],
+  )
+
+  useEffect(() => {
+    if (!selectedPlanId || !termsAccepted || !tgUser?.id) return undefined
+    const t = window.setTimeout(() => {
+      paymentSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+    return () => window.clearTimeout(t)
+  }, [selectedPlanId, termsAccepted, tgUser?.id])
+
   return (
     <div className="tg-app tg-app--account">
       <BrandTabToolbar title="សមាជិកVIP" titleLang="km" titleClassName="text-[16px]" />
@@ -223,9 +242,7 @@ export default function VipPage() {
                               ? 'សូមចូលគណនី Telegram'
                               : ''
                         }
-                        onClick={() => {
-                          if (!selectDisabled) setSelectedPlanId(plan.planId)
-                        }}
+                        onClick={() => selectPlan(plan.planId)}
                         className={[
                           'inline-flex items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold backdrop-blur-sm transition',
                           selectDisabled
@@ -263,7 +280,11 @@ export default function VipPage() {
           })}
 
           {selectedPlanId && termsAccepted && tgUser?.id ? (
-            <section className="tg-vip-payment-section" aria-labelledby="tg-vip-payment-heading">
+            <section
+              ref={paymentSectionRef}
+              className="tg-vip-payment-section"
+              aria-labelledby="tg-vip-payment-heading"
+            >
               <header className="tg-vip-payment-section__intro">
                 <h2 id="tg-vip-payment-heading" className="tg-vip-payment-section__title" lang="km">
                   ជ្រើសរើសវិធីបង់ប្រាក់
