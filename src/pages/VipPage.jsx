@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, ShieldCheck } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import AbaKhqrEntryRow from '../components/AbaKhqrEntryRow.jsx'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
@@ -314,6 +314,7 @@ export default function VipPage() {
               to="/refund-policy"
               className="inline-flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 text-[11px] font-medium leading-snug text-white/65 underline-offset-2 transition active:scale-[0.98] hover:border-white/22 hover:bg-white/[0.09] hover:text-white/85"
             >
+              <ShieldCheck size={15} className="shrink-0 text-white/65" strokeWidth={2} aria-hidden />
               <span lang="km">គោលការណ៍សងប្រាក់វិញ</span>
               <span className="text-white/35" aria-hidden>
                 ·

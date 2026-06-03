@@ -1653,6 +1653,22 @@ a {
   font-family: var(--tg-font);
 }
 
+.tg-aba-khqr-entry--aba-mobile .tg-aba-khqr-entry__text {
+  max-width: 74%;
+  padding-right: 2px;
+}
+
+.tg-aba-khqr-entry--aba-mobile .tg-aba-khqr-entry__subtitle {
+  font-size: 10px;
+  line-height: 1.38;
+  letter-spacing: 0.01em;
+}
+
+.tg-aba-khqr-entry--aba-mobile .tg-aba-khqr-entry__decor {
+  right: 30px;
+  opacity: 0.11;
+}
+
 .tg-aba-khqr-entry__decor {
   position: absolute;
   right: 38px;
