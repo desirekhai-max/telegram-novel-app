@@ -92,8 +92,8 @@ export default function VipAbaKhqrPage() {
   return (
     <div className="tg-app tg-app--account tg-aba-khqr-page">
       <BrandTabToolbar title="ការទូទាត់តាម ABA KHQR" titleLang="km" titleClassName="text-[16px]" />
-      <main className="tg-list-wrap tg-account-scroll flex flex-1 flex-col px-3 py-3">
-        <section className="mx-auto flex w-full max-w-[420px] flex-col gap-3">
+      <main className="tg-list-wrap tg-account-scroll flex flex-1 flex-col px-3 py-2">
+        <section className="mx-auto flex w-full max-w-[420px] flex-col gap-2">
           <AbaKhqrPaymentScreen
             session={session}
             showDemoActions={isUiMock}

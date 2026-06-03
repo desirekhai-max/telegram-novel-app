@@ -1700,12 +1700,12 @@ a {
 }
 
 .tg-aba-khqr-page__brand-row {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   text-align: center;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: 0.02em;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .tg-aba-khqr-page__brand-aba {
@@ -1718,9 +1718,9 @@ a {
 
 .tg-aba-khqr-card {
   overflow: hidden;
-  border-radius: 18px;
+  border-radius: 14px;
   background: #fff;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
 }
 
 .tg-aba-khqr-card__header {
@@ -1728,43 +1728,46 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px 16px 14px;
+  padding: 7px 12px 9px;
   background: #e31837;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 28px) 100%, 0 100%);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 18px) 100%, 0 100%);
 }
 
 .tg-aba-khqr-card__khqr-logo {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 900;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
+  line-height: 1;
   color: #fff;
 }
 
 .tg-aba-khqr-card__body {
-  padding: 14px 16px 12px;
+  padding: 10px 14px 8px;
   text-align: center;
 }
 
 .tg-aba-khqr-card__merchant {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1.25;
   color: #334155;
 }
 
 .tg-aba-khqr-card__amount {
-  margin: 6px 0 8px;
-  font-size: 26px;
+  margin: 4px 0 6px;
+  font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.02em;
+  line-height: 1.1;
   color: #0f172a;
 }
 
 .tg-aba-khqr-card__divider {
   height: 0;
-  margin: 0 8px 10px;
+  margin: 0 4px 6px;
   border: none;
-  border-top: 2px dashed #cbd5e1;
+  border-top: 1.5px dashed #cbd5e1;
 }
 
 .tg-aba-khqr-card__qr-wrap {
@@ -1774,19 +1777,19 @@ a {
   width: fit-content;
   max-width: 100%;
   margin: 0 auto;
-  padding: 6px;
-  border-radius: 12px;
+  padding: 4px;
+  border-radius: 10px;
   background: #f8fafc;
 }
 
 .tg-aba-khqr-card__qr {
   display: block;
-  width: 240px;
-  height: 240px;
-  max-width: min(100%, 260px);
-  max-height: min(72vw, 260px);
+  width: 200px;
+  height: 200px;
+  max-width: min(100%, 220px);
+  max-height: min(64vw, 220px);
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .tg-aba-khqr-card__qr-fallback {
@@ -1797,10 +1800,30 @@ a {
 }
 
 .tg-aba-khqr-card__hint {
-  margin: 10px 0 0;
-  font-size: 11px;
-  line-height: 1.4;
+  margin: 6px 0 0;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1.35;
   color: #64748b;
+}
+
+.tg-aba-khqr-page__demo-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.tg-aba-khqr-page__simulate-btn {
+  width: 100%;
+  padding: 11px 14px;
+  border: 2px solid #e31837;
+  border-radius: 12px;
+  background: #fff;
+  color: #e31837;
+  font-size: 13px;
+  font-weight: 700;
+  transition: transform 0.15s ease, background 0.15s ease;
 }
 
 .tg-aba-khqr-page__deeplink-btn {
@@ -1818,24 +1841,6 @@ a {
 
 .tg-aba-khqr-page__deeplink-btn:active {
   transform: scale(0.98);
-}
-
-.tg-aba-khqr-page__demo-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.tg-aba-khqr-page__simulate-btn {
-  width: 100%;
-  padding: 14px 16px;
-  border: 2px solid #e31837;
-  border-radius: 14px;
-  background: #fff;
-  color: #e31837;
-  font-size: 14px;
-  font-weight: 700;
-  transition: transform 0.15s ease, background 0.15s ease;
 }
 
 .tg-aba-khqr-page__simulate-btn:active {
