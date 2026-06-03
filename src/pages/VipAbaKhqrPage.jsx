@@ -9,6 +9,7 @@ import { readVipPaymentFulfillmentHint } from '../lib/vipPaymentResultState.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 import { clearVipAbaKhqrSession, loadVipAbaKhqrSession, saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
+import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 
 function resolvePlanDurationHours(planId, role) {
   const hours = Number(getVipPlanForPurchase(planId, role)?.durationHours)
@@ -40,6 +41,8 @@ export default function VipAbaKhqrPage() {
   const [statusNote, setStatusNote] = useState('')
   const [resultModal, setResultModal] = useState(null)
   const pollRef = useRef(0)
+  const edgeSwipeHandlers = useEdgeSwipeBack()
+  const pageSwipeHandlers = resultModal ? {} : edgeSwipeHandlers
 
   const durationHours = useMemo(
     () => resolvePlanDurationHours(planId, viewerProfile.role),
@@ -116,7 +119,7 @@ export default function VipAbaKhqrPage() {
   }
 
   return (
-    <div className="tg-app tg-app--account tg-aba-khqr-page">
+    <div className="tg-app tg-app--account tg-aba-khqr-page" {...pageSwipeHandlers}>
       <BrandTabToolbar title="ការទូទាត់តាម ABA KHQR" titleLang="km" titleClassName="text-[16px]" />
       <main className="tg-list-wrap tg-account-scroll tg-aba-khqr-page__main flex flex-1 flex-col">
         <div className="tg-aba-khqr-page__shell">

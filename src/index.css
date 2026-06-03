@@ -1692,7 +1692,9 @@ a {
 }
 
 .tg-aba-khqr-page {
+  min-height: 100dvh;
   background: #f3f4f6;
+  touch-action: pan-y;
 }
 
 .tg-aba-khqr-page .tg-brand-tab-toolbar {
