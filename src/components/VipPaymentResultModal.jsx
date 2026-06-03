@@ -1,60 +1,65 @@
-import { X } from 'lucide-react'
+import { CheckCircle2, X, XCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 /** @typedef {'auto_success' | 'manual_success' | 'rejected'} VipPaymentResultView */
 
+/** A — ABA API / Webhook 自动确认成功 */
 function VipAutoPaymentSuccessBody({ durationHours }) {
   return (
-    <div className="tg-aba-success-card tg-aba-success-card--modal">
-      <span className="tg-aba-success-card__icon" aria-hidden>
-        ✅
-      </span>
-      <h2 className="tg-aba-success-card__title" lang="km">
+    <div className="tg-vip-result-modal__content">
+      <div className="tg-vip-result-modal__icon-wrap tg-vip-result-modal__icon-wrap--success" aria-hidden>
+        <CheckCircle2 size={28} strokeWidth={2.25} />
+      </div>
+      <h2 className="tg-vip-result-modal__title" lang="km">
         បើកសមាជិក VIP បានជោគជ័យ
       </h2>
-      <p className="tg-aba-success-card__subtitle" lang="km">
+      <p className="tg-vip-result-modal__subtitle" lang="km">
         សមាជិក VIP របស់អ្នកត្រូវបានបើកដោយជោគជ័យ
       </p>
       {durationHours > 0 ? (
-        <p className="tg-aba-success-card__subtitle tg-aba-success-card__subtitle--validity" lang="km">
-          សុពលភាព {durationHours} ម៉ោង
+        <p className="tg-vip-result-modal__validity" lang="km">
+          <span className="tg-vip-result-modal__validity-label">សុពលភាព</span>
+          <span className="tg-vip-result-modal__validity-value">{durationHours} ម៉ោង</span>
         </p>
       ) : null}
     </div>
   )
 }
 
+/** B — 后台人工审核确认成功 */
 function VipManualPaymentSuccessBody({ durationHours }) {
   return (
-    <div className="tg-aba-success-card tg-aba-success-card--modal">
-      <span className="tg-aba-success-card__icon" aria-hidden>
-        ✅
-      </span>
-      <h2 className="tg-aba-success-card__title" lang="km">
+    <div className="tg-vip-result-modal__content">
+      <div className="tg-vip-result-modal__icon-wrap tg-vip-result-modal__icon-wrap--success" aria-hidden>
+        <CheckCircle2 size={28} strokeWidth={2.25} />
+      </div>
+      <h2 className="tg-vip-result-modal__title" lang="km">
         បើកសមាជិក VIP បានជោគជ័យ
       </h2>
-      <p className="tg-aba-success-card__subtitle" lang="km">
+      <p className="tg-vip-result-modal__subtitle" lang="km">
         សមាជិក VIP របស់អ្នកត្រូវបានបើកដោយជោគជ័យ
       </p>
       {durationHours > 0 ? (
-        <p className="tg-aba-success-card__subtitle tg-aba-success-card__subtitle--validity" lang="km">
-          សុពលភាព {durationHours} ម៉ោង
+        <p className="tg-vip-result-modal__validity" lang="km">
+          <span className="tg-vip-result-modal__validity-label">សុពលភាព</span>
+          <span className="tg-vip-result-modal__validity-value">{durationHours} ម៉ោង</span>
         </p>
       ) : null}
     </div>
   )
 }
 
+/** C — 人工审核拒绝 / 审核失败 */
 function VipPaymentRejectedBody() {
   return (
-    <div className="tg-aba-success-card tg-aba-success-card--modal">
-      <span className="tg-aba-success-card__icon tg-aba-success-card__icon--fail" aria-hidden>
-        ❌
-      </span>
-      <h2 className="tg-aba-success-card__title" lang="km">
+    <div className="tg-vip-result-modal__content">
+      <div className="tg-vip-result-modal__icon-wrap tg-vip-result-modal__icon-wrap--fail" aria-hidden>
+        <XCircle size={28} strokeWidth={2.25} />
+      </div>
+      <h2 className="tg-vip-result-modal__title" lang="km">
         ការទូទាត់មិនបានជោគជ័យ
       </h2>
-      <p className="tg-aba-success-card__subtitle" lang="km">
+      <p className="tg-vip-result-modal__subtitle" lang="km">
         សូមព្យាយាមម្ដងទៀត ឬជ្រើសរើសវិធីបង់ប្រាក់ផ្សេង
       </p>
     </div>
@@ -76,21 +81,29 @@ export default function VipPaymentResultModal({ open, viewState, durationHours =
   const isRejected = viewState === 'rejected'
 
   return (
-    <div className="tg-vip-payment-result-modal" role="dialog" aria-modal="true" lang="km">
+    <div className="tg-vip-result-modal" role="dialog" aria-modal="true" lang="km">
       <button
         type="button"
-        className="tg-vip-payment-result-modal__backdrop"
+        className="tg-vip-result-modal__backdrop"
         onClick={onClose}
         aria-label="បិទ"
       />
-      <div className="tg-vip-payment-result-modal__panel">
+      <div
+        className={[
+          'tg-vip-result-modal__sheet',
+          isSuccess ? 'tg-vip-result-modal__sheet--success' : '',
+          isRejected ? 'tg-vip-result-modal__sheet--fail' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
         <button
           type="button"
-          className="tg-vip-payment-result-modal__close"
+          className="tg-vip-result-modal__close"
           onClick={onClose}
           aria-label="បិទ"
         >
-          <X size={18} strokeWidth={2.25} aria-hidden />
+          <X size={17} strokeWidth={2.25} aria-hidden />
         </button>
 
         {viewState === 'auto_success' ? (
@@ -101,12 +114,12 @@ export default function VipPaymentResultModal({ open, viewState, durationHours =
         ) : null}
         {isRejected ? <VipPaymentRejectedBody /> : null}
 
-        <div className="tg-aba-success-page__actions">
+        <div className="tg-vip-result-modal__actions">
           {isSuccess ? (
             <>
               <Link
                 to="/"
-                className="tg-aba-success-page__btn tg-aba-success-page__btn--primary"
+                className="tg-vip-result-modal__btn tg-vip-result-modal__btn--primary"
                 lang="km"
                 onClick={onClose}
               >
@@ -114,7 +127,7 @@ export default function VipPaymentResultModal({ open, viewState, durationHours =
               </Link>
               <Link
                 to="/"
-                className="tg-aba-success-page__btn tg-aba-success-page__btn--secondary"
+                className="tg-vip-result-modal__btn tg-vip-result-modal__btn--ghost"
                 lang="km"
                 onClick={onClose}
               >
@@ -126,7 +139,7 @@ export default function VipPaymentResultModal({ open, viewState, durationHours =
             <>
               <Link
                 to="/vip"
-                className="tg-aba-success-page__btn tg-aba-success-page__btn--primary"
+                className="tg-vip-result-modal__btn tg-vip-result-modal__btn--primary"
                 lang="km"
                 onClick={onClose}
               >
@@ -134,7 +147,7 @@ export default function VipPaymentResultModal({ open, viewState, durationHours =
               </Link>
               <Link
                 to="/vip"
-                className="tg-aba-success-page__btn tg-aba-success-page__btn--secondary"
+                className="tg-vip-result-modal__btn tg-vip-result-modal__btn--ghost"
                 lang="km"
                 onClick={onClose}
               >

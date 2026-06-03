@@ -115,7 +115,7 @@ export default function PaymentReturnPage() {
             {viewState === 'loading' ? 'កំពុងផ្ទៀងផ្ទាត់…' : statusMessage}
           </p>
           {viewState === 'pending' || viewState === 'error' ? (
-            <Link to="/vip" className="tg-aba-success-page__btn tg-aba-success-page__btn--secondary" lang="km">
+            <Link to="/vip" className="tg-vip-result-modal__btn tg-vip-result-modal__btn--ghost" lang="km">
               ត្រឡប់ទៅសមាជិក VIP
             </Link>
           ) : null}
