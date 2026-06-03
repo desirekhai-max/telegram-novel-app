@@ -61,23 +61,23 @@ export default function AbaKhqrPaymentScreen({
 
       <div className="tg-aba-khqr-page__action-stack">
         {showDemoActions ? (
-          <>
-            <button
-              type="button"
-              className="tg-aba-khqr-page__action-btn tg-aba-khqr-page__action-btn--simulate"
-              lang="km"
-              onClick={onSimulatePaid}
-            >
-              សាកល្បងការទូទាត់ជោគជ័យ
-            </button>
-            <p className="tg-aba-khqr-page__demo-note" lang="km">
-              សម្រាប់ការសាកល្បង UI ប៉ុណ្ណោះ
-            </p>
-          </>
+          <button
+            type="button"
+            className="tg-aba-khqr-page__action-btn tg-aba-khqr-page__action-btn--simulate"
+            lang="km"
+            onClick={onSimulatePaid}
+          >
+            សាកល្បងការទូទាត់ជោគជ័យ
+          </button>
         ) : null}
         <Link to="/vip" className="tg-aba-khqr-page__action-btn tg-aba-khqr-page__action-btn--cancel" lang="km">
           បោះបង់
         </Link>
+        {showDemoActions ? (
+          <p className="tg-aba-khqr-page__demo-note" lang="km">
+            សម្រាប់ការសាកល្បង UI ប៉ុណ្ណោះ
+          </p>
+        ) : null}
       </div>
     </div>
   )
