@@ -92,8 +92,8 @@ export default function VipAbaKhqrPage() {
   return (
     <div className="tg-app tg-app--account tg-aba-khqr-page">
       <BrandTabToolbar title="ការទូទាត់តាម ABA KHQR" titleLang="km" titleClassName="text-[16px]" />
-      <main className="tg-list-wrap tg-account-scroll tg-aba-khqr-page__main flex flex-1 flex-col py-2">
-        <section className="tg-aba-khqr-page__content mx-auto flex w-full flex-col gap-2">
+      <main className="tg-list-wrap tg-account-scroll tg-aba-khqr-page__main flex flex-1 flex-col">
+        <div className="tg-aba-khqr-page__shell">
           <AbaKhqrPaymentScreen
             session={session}
             showDemoActions={isUiMock}
@@ -101,18 +101,18 @@ export default function VipAbaKhqrPage() {
           />
 
           {statusNote ? (
-            <p className="text-center text-[11px] text-slate-500" lang="en">
+            <p className="tg-aba-khqr-page__status text-center text-[11px] text-slate-500" lang="en">
               {statusNote}
             </p>
           ) : null}
 
           <Link
             to="/vip"
-            className="text-center text-[11px] text-slate-400 underline-offset-2 hover:underline"
+            className="tg-aba-khqr-page__cancel text-center text-[11px] text-slate-400 underline-offset-2 hover:underline"
           >
             Cancel
           </Link>
-        </section>
+        </div>
       </main>
     </div>
   )
