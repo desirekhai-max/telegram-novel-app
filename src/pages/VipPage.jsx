@@ -204,7 +204,11 @@ export default function VipPage() {
                           : '',
                       ].join(' ')}
                     >
-                      {isSelected ? 'បានជ្រើស' : plan.buyButtonKm}
+                      {isSelected
+                        ? 'បានជ្រើស'
+                        : termsAccepted
+                          ? 'ជ្រើសរើសកញ្ចប់'
+                          : 'ទិញប្រើឥឡូវនេះ'}
                     </button>
                   </div>
                   <div className="mt-3 flex items-end gap-2">
