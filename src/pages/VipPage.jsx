@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { Check } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import AbaKhqrEntryRow from '../components/AbaKhqrEntryRow.jsx'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
@@ -204,43 +205,43 @@ export default function VipPage() {
                       </p>
                       <p className="mt-0.5 text-[11px] text-white/65">{plan.flagKm}</p>
                     </div>
-                    <button
-                      type="button"
-                      lang="km"
-                      disabled={selectDisabled}
-                      aria-disabled={selectDisabled}
-                      title={
-                        !termsAccepted
-                          ? 'សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ'
-                          : !tgUser?.id
-                            ? 'សូមចូលគណនី Telegram'
-                            : ''
-                      }
-                      onClick={() => {
-                        if (!selectDisabled) setSelectedPlanId(plan.planId)
-                      }}
-                      className={[
-                        'inline-flex items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold backdrop-blur-sm transition',
-                        selectDisabled
-                          ? 'cursor-not-allowed border-white/12 bg-white/10 text-white/35 shadow-none'
-                          : 'active:scale-95',
-                        !selectDisabled && isSelected
-                          ? 'border-emerald-200/50 bg-emerald-400/25 text-emerald-50'
-                          : '',
-                        !selectDisabled && !isSelected && plan.featured
-                          ? 'border-amber-100 bg-amber-300 text-slate-900 shadow-[0_4px_14px_rgba(250,204,21,0.45)]'
-                          : '',
-                        !selectDisabled && !isSelected && !plan.featured
-                          ? 'border-white/40 bg-white/20 text-white shadow-[0_4px_12px_rgba(0,0,0,0.25)]'
-                          : '',
-                      ].join(' ')}
-                    >
-                      {isSelected
-                        ? 'បានជ្រើស'
-                        : termsAccepted
-                          ? 'ជ្រើសរើសកញ្ចប់'
-                          : 'ទិញប្រើឥឡូវនេះ'}
-                    </button>
+                    {isSelected ? (
+                      <span className="tg-vip-plan-selected-badge" lang="km" aria-label="បានជ្រើស">
+                        <Check size={13} strokeWidth={2.5} className="tg-vip-plan-selected-badge__icon" aria-hidden />
+                        <span>បានជ្រើស</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        lang="km"
+                        disabled={selectDisabled}
+                        aria-disabled={selectDisabled}
+                        title={
+                          !termsAccepted
+                            ? 'សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ'
+                            : !tgUser?.id
+                              ? 'សូមចូលគណនី Telegram'
+                              : ''
+                        }
+                        onClick={() => {
+                          if (!selectDisabled) setSelectedPlanId(plan.planId)
+                        }}
+                        className={[
+                          'inline-flex items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold backdrop-blur-sm transition',
+                          selectDisabled
+                            ? 'cursor-not-allowed border-white/12 bg-white/10 text-white/35 shadow-none'
+                            : 'active:scale-95',
+                          !selectDisabled && plan.featured
+                            ? 'border-amber-100 bg-amber-300 text-slate-900 shadow-[0_4px_14px_rgba(250,204,21,0.45)]'
+                            : '',
+                          !selectDisabled && !plan.featured
+                            ? 'border-white/40 bg-white/20 text-white shadow-[0_4px_12px_rgba(0,0,0,0.25)]'
+                            : '',
+                        ].join(' ')}
+                      >
+                        {termsAccepted ? 'ជ្រើសរើសកញ្ចប់' : 'ទិញប្រើឥឡូវនេះ'}
+                      </button>
+                    )}
                   </div>
                   <div className="mt-3 flex items-end gap-2">
                     <p className="text-[24px] font-black leading-none tracking-tight text-amber-200">
