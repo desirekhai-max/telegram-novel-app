@@ -2,18 +2,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import AbaKhqrPaymentScreen from '../components/AbaKhqrPaymentScreen.jsx'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
+import VipPaymentResultModal from '../components/VipPaymentResultModal.jsx'
+import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
 import { buildAbaKhqrUiMockSession, isUiMockAbaKhqrSession } from '../lib/abaKhqrUiMock.js'
+import { readVipPaymentFulfillmentHint } from '../lib/vipPaymentResultState.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 import { clearVipAbaKhqrSession, loadVipAbaKhqrSession, saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
 
+function resolvePlanDurationHours(planId, role) {
+  const hours = Number(getVipPlanForPurchase(planId, role)?.durationHours)
+  return Number.isFinite(hours) && hours > 0 ? hours : 0
+}
+
 export default function VipAbaKhqrPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { viewerProfile } = useViewerProfile()
+  const { viewerProfile, refreshViewerProfile } = useViewerProfile()
   const uiMockQuery = searchParams.get('ui_mock') === '1'
   const planIdParam = String(searchParams.get('plan_id') || '').trim()
   const tranIdParam = String(searchParams.get('tran_id') || '').trim()
+  const fulfillmentHint = readVipPaymentFulfillmentHint(searchParams)
 
   const sessionFromStorage = useMemo(() => loadVipAbaKhqrSession(), [])
   const session = useMemo(() => {
@@ -29,34 +38,43 @@ export default function VipAbaKhqrPage() {
   const planId = String(session?.planId || planIdParam || '').trim()
 
   const [statusNote, setStatusNote] = useState('')
+  const [resultModal, setResultModal] = useState(null)
   const pollRef = useRef(0)
 
-  const goSuccess = useCallback(() => {
-    clearVipAbaKhqrSession()
-    if (isUiMock) {
-      navigate(
-        `/vip/payment-return?ui_mock=1&fulfillment=auto&tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`,
-        { replace: true },
-      )
-      return
+  const durationHours = useMemo(
+    () => resolvePlanDurationHours(planId, viewerProfile.role),
+    [planId, viewerProfile.role],
+  )
+
+  const openSuccessModal = useCallback(() => {
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current)
+      pollRef.current = 0
     }
-    navigate(
-      `/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}&paid=1&fulfillment=auto`,
-      { replace: true },
-    )
-  }, [isUiMock, navigate, planId, tranId])
+    clearVipAbaKhqrSession()
+    setResultModal(fulfillmentHint === 'manual' ? 'manual_success' : 'auto_success')
+  }, [fulfillmentHint])
+
+  const closeResultModal = useCallback(() => {
+    setResultModal(null)
+  }, [])
+
+  const goSuccess = useCallback(() => {
+    openSuccessModal()
+  }, [openSuccessModal])
 
   const pollPayment = useCallback(async () => {
     if (!tranId || isUiMock) return
     const result = await confirmViewerVipPayment({ tranId, planId })
     if (result.ok && result.profile?.vipActive) {
-      goSuccess()
+      await refreshViewerProfile()
+      openSuccessModal()
       return
     }
     if (result.error === 'payment_not_confirmed') {
-      setStatusNote('Waiting for payment confirmation…')
+      setStatusNote('កំពុងរង់ចាំការបញ្ជាក់ការទូទាត់…')
     }
-  }, [goSuccess, isUiMock, planId, tranId])
+  }, [isUiMock, openSuccessModal, planId, refreshViewerProfile, tranId])
 
   useEffect(() => {
     if (!session || !tranId) {
@@ -66,6 +84,14 @@ export default function VipAbaKhqrPage() {
 
     if (isUiMock) {
       saveVipAbaKhqrSession(session)
+      if (fulfillmentHint === 'rejected') {
+        setResultModal('rejected')
+      }
+      return undefined
+    }
+
+    if (fulfillmentHint === 'rejected') {
+      setResultModal('rejected')
       return undefined
     }
 
@@ -83,7 +109,7 @@ export default function VipAbaKhqrPage() {
       if (pollRef.current) window.clearInterval(pollRef.current)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [isUiMock, navigate, planId, pollPayment, session, tranId])
+  }, [fulfillmentHint, isUiMock, navigate, planId, pollPayment, session, tranId])
 
   if (!session || !tranId) {
     return null
@@ -101,7 +127,7 @@ export default function VipAbaKhqrPage() {
           />
 
           {statusNote ? (
-            <p className="tg-aba-khqr-page__status text-center text-[11px] text-slate-500" lang="en">
+            <p className="tg-aba-khqr-page__status text-center text-[11px] text-slate-500" lang="km">
               {statusNote}
             </p>
           ) : null}
@@ -115,6 +141,13 @@ export default function VipAbaKhqrPage() {
           </Link>
         </div>
       </main>
+
+      <VipPaymentResultModal
+        open={Boolean(resultModal)}
+        viewState={resultModal}
+        durationHours={durationHours}
+        onClose={closeResultModal}
+      />
     </div>
   )
 }
