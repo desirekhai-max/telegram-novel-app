@@ -1468,6 +1468,245 @@ a {
   opacity: 0.92;
 }
 
+.tg-vip-plan-card--selected {
+  border-color: rgba(52, 211, 153, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(52, 211, 153, 0.22),
+    0 8px 28px rgba(16, 185, 129, 0.18);
+}
+
+/* ABA KHQR — Figma template3_color style */
+.tg-aba-khqr-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.04) 100%);
+  color: #fff;
+  text-align: left;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.tg-aba-khqr-entry:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.tg-aba-khqr-entry--disabled,
+.tg-aba-khqr-entry--pending {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tg-aba-khqr-entry__icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+  line-height: 1;
+}
+
+.tg-aba-khqr-entry__aba-mark {
+  display: block;
+  width: 100%;
+  padding: 4px 0 2px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: #0057a8;
+}
+
+.tg-aba-khqr-entry__khqr-mark {
+  display: block;
+  width: 100%;
+  padding: 2px 0 4px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  color: #fff;
+  background: #e31837;
+}
+
+.tg-aba-khqr-entry__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tg-aba-khqr-entry__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.tg-aba-khqr-entry__subtitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.tg-aba-khqr-entry__chev {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.tg-aba-khqr-page {
+  background: #f3f4f6;
+}
+
+.tg-aba-khqr-page .tg-brand-tab-toolbar {
+  background: #f3f4f6;
+}
+
+.tg-aba-khqr-page__brand {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #0057a8;
+}
+
+.tg-aba-khqr-card {
+  overflow: hidden;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+}
+
+.tg-aba-khqr-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  background: #e31837;
+}
+
+.tg-aba-khqr-card__khqr-logo {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #fff;
+}
+
+.tg-aba-khqr-card__body {
+  padding: 20px 20px 18px;
+  text-align: center;
+}
+
+.tg-aba-khqr-card__merchant {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.tg-aba-khqr-card__amount {
+  margin: 8px 0 16px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.tg-aba-khqr-card__qr-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  padding: 8px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.tg-aba-khqr-card__qr {
+  display: block;
+  width: min(100%, 240px);
+  height: auto;
+  border-radius: 8px;
+}
+
+.tg-aba-khqr-card__qr-fallback {
+  margin: 0;
+  padding: 16px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.tg-aba-khqr-card__hint {
+  margin: 14px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.tg-aba-khqr-page__deeplink-btn {
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #0057a8 0%, #003d75 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 6px 20px rgba(0, 87, 168, 0.35);
+  transition: transform 0.15s ease;
+}
+
+.tg-aba-khqr-page__deeplink-btn:active {
+  transform: scale(0.98);
+}
+
+.tg-payment-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 28px 20px 24px;
+  border-radius: 20px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: linear-gradient(160deg, rgba(16, 185, 129, 0.18) 0%, rgba(16, 185, 129, 0.06) 100%);
+}
+
+.tg-payment-success__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.22);
+  color: #6ee7b7;
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.tg-payment-success__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.tg-payment-success__subtitle {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.65);
+}
+
 .tg-vip-consent__checkbox {
   appearance: none;
   -webkit-appearance: none;

@@ -73,6 +73,67 @@ export async function resolveViewerProfile(options = {}) {
   }
 }
 
+export async function startViewerVipAbaKhqr(planId) {
+  const { telegramUser, initDataRaw } = getTelegramAuthPayload()
+  if (!telegramUser?.id) {
+    return {
+      ok: false,
+      paywayConfigured: false,
+      error: 'telegram_user_required',
+      session: null,
+    }
+  }
+  try {
+    const res = await fetch(apiUrl('/api/vip-orders/aba-khqr'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegramUser,
+        initDataRaw,
+        planId: String(planId || ''),
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (res.status === 503 && data?.error === 'payway_not_configured') {
+      return { ok: false, paywayConfigured: false, error: 'payway_not_configured', session: null }
+    }
+    if (!res.ok || !data?.ok) {
+      return {
+        ok: false,
+        paywayConfigured: Boolean(data?.paywayConfigured !== false),
+        error: String(data?.error || `aba_khqr failed: ${res.status}`),
+        session: null,
+      }
+    }
+    return {
+      ok: true,
+      paywayConfigured: true,
+      error: '',
+      session: {
+        tranId: String(data.tranId || ''),
+        planId: String(data.planId || planId || ''),
+        amountLabel: String(data.amountLabel || ''),
+        amount: Number(data.amount || 0),
+        currency: String(data.currency || 'USD'),
+        merchantLabel: String(data.merchantLabel || 'VIP-Subscription'),
+        qrImage: String(data.qrImage || ''),
+        qrString: String(data.qrString || ''),
+        abapayDeeplink: String(data.abapayDeeplink || ''),
+        appStore: String(data.appStore || ''),
+        playStore: String(data.playStore || ''),
+        returnUrl: String(data.returnUrl || ''),
+      },
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      paywayConfigured: false,
+      error: err instanceof Error ? err.message : 'aba_khqr_network_error',
+      session: null,
+    }
+  }
+}
+
 export async function startViewerVipPayWayCheckout(planId) {
   const { telegramUser, initDataRaw } = getTelegramAuthPayload()
   if (!telegramUser?.id) {

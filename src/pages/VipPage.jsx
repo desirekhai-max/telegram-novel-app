@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import AbaKhqrEntryRow from '../components/AbaKhqrEntryRow.jsx'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import VipPurchaseConsent from '../components/VipPurchaseConsent.jsx'
 import { getVipPlansCatalogForRole, VIP_MEMBER_FOOTER_KM } from '../data/vipPlansCatalog.js'
@@ -9,13 +10,19 @@ import {
   savePayWayCheckoutSession,
   submitPayWayCheckoutForm,
 } from '../lib/paywayCheckout.js'
-import { purchaseViewerVipPlan, startViewerVipPayWayCheckout } from '../lib/viewerProfileApi.js'
+import { saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
+import {
+  purchaseViewerVipPlan,
+  startViewerVipAbaKhqr,
+  startViewerVipPayWayCheckout,
+} from '../lib/viewerProfileApi.js'
 
 export default function VipPage() {
   const navigate = useNavigate()
   const tgUser = useTelegramUser()
   const { viewerProfile, refreshViewerProfile } = useViewerProfile()
-  const [purchasePendingPlanId, setPurchasePendingPlanId] = useState('')
+  const [selectedPlanId, setSelectedPlanId] = useState('')
+  const [abaKhqrPending, setAbaKhqrPending] = useState(false)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [purchaseNotice, setPurchaseNotice] = useState('')
   const [purchaseError, setPurchaseError] = useState('')
@@ -24,64 +31,88 @@ export default function VipPage() {
     [viewerProfile.role],
   )
 
-  const canPurchase = Boolean(tgUser?.id) && termsAccepted && !purchasePendingPlanId
+  const canSelectPlan = Boolean(tgUser?.id) && termsAccepted && !abaKhqrPending
 
-  const onPurchase = useCallback(
+  const fallbackHostedCheckout = useCallback(
     async (planId) => {
-      if (!termsAccepted) {
-        setPurchaseError('សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ')
-        return
-      }
-      if (!tgUser?.id) {
-        setPurchaseError('សូមបើកក្នុង Telegram Mini App')
-        return
-      }
-      if (!planId || purchasePendingPlanId) return
-
-      setPurchaseError('')
-      setPurchaseNotice('')
-      setPurchasePendingPlanId(String(planId))
-
-      try {
-        const checkout = await startViewerVipPayWayCheckout(planId)
-
-        if (checkout?.ok && checkout.checkout?.checkoutUrl && checkout.checkout?.formFields) {
-          const direct = submitPayWayCheckoutForm(
-            checkout.checkout.checkoutUrl,
-            checkout.checkout.formFields,
-          )
-          if (direct.ok) return
-
-          const saved = savePayWayCheckoutSession({
-            checkoutUrl: checkout.checkout.checkoutUrl,
-            formFields: checkout.checkout.formFields,
-          })
-          if (saved) {
-            navigate('/vip/checkout-redirect')
-            return
-          }
+      const checkout = await startViewerVipPayWayCheckout(planId)
+      if (checkout?.ok && checkout.checkout?.checkoutUrl && checkout.checkout?.formFields) {
+        const direct = submitPayWayCheckoutForm(
+          checkout.checkout.checkoutUrl,
+          checkout.checkout.formFields,
+        )
+        if (direct.ok) return true
+        const saved = savePayWayCheckoutSession({
+          checkoutUrl: checkout.checkout.checkoutUrl,
+          formFields: checkout.checkout.formFields,
+        })
+        if (saved) {
+          navigate('/vip/checkout-redirect')
+          return true
         }
+      }
+      return false
+    },
+    [navigate],
+  )
 
+  const onAbaKhqrPay = useCallback(async () => {
+    if (!termsAccepted) {
+      setPurchaseError('សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ')
+      return
+    }
+    if (!tgUser?.id) {
+      setPurchaseError('សូមបើកក្នុង Telegram Mini App')
+      return
+    }
+    const planId = String(selectedPlanId || '').trim()
+    if (!planId || abaKhqrPending) return
+
+    setPurchaseError('')
+    setPurchaseNotice('')
+    setAbaKhqrPending(true)
+
+    try {
+      const aba = await startViewerVipAbaKhqr(planId)
+      if (aba?.ok && aba.session?.tranId) {
+        saveVipAbaKhqrSession(aba.session)
+        navigate(
+          `/vip/aba-khqr?tran_id=${encodeURIComponent(aba.session.tranId)}&plan_id=${encodeURIComponent(planId)}`,
+        )
+        return
+      }
+
+      const hostedOk = await fallbackHostedCheckout(planId)
+      if (hostedOk) return
+
+      if (aba?.error === 'payway_not_configured' || !aba?.paywayConfigured) {
         const demo = await purchaseViewerVipPlan(planId)
         if (demo?.ok) {
           await refreshViewerProfile()
           setPurchaseNotice('VIP បានបើករួចហើយ')
           return
         }
-
-        setPurchaseError(
-          checkout?.error
-            ? `មិនអាចបើកទំព័រទូទាត់: ${checkout.error}`
-            : 'មិនអាចទិញបាន សូមព្យាយាមម្តងទៀត',
-        )
-      } catch (err) {
-        setPurchaseError(err instanceof Error ? err.message : 'មិនអាចទិញបាន')
-      } finally {
-        setPurchasePendingPlanId('')
       }
-    },
-    [tgUser?.id, purchasePendingPlanId, termsAccepted, refreshViewerProfile, navigate],
-  )
+
+      setPurchaseError(
+        aba?.error
+          ? `មិនអាចបើក ABA KHQR: ${aba.error}`
+          : 'មិនអាចទិញបាន សូមព្យាយាមម្តងទៀត',
+      )
+    } catch (err) {
+      setPurchaseError(err instanceof Error ? err.message : 'មិនអាចទិញបាន')
+    } finally {
+      setAbaKhqrPending(false)
+    }
+  }, [
+    abaKhqrPending,
+    fallbackHostedCheckout,
+    navigate,
+    refreshViewerProfile,
+    selectedPlanId,
+    termsAccepted,
+    tgUser?.id,
+  ])
 
   return (
     <div className="tg-app tg-app--account">
@@ -109,8 +140,8 @@ export default function VipPage() {
           ) : null}
 
           {plans.map((plan) => {
-            const isPending = purchasePendingPlanId === plan.planId
-            const buyDisabled = !canPurchase || isPending
+            const isSelected = selectedPlanId === plan.planId
+            const selectDisabled = !canSelectPlan
             return (
               <article
                 key={plan.planId}
@@ -118,6 +149,7 @@ export default function VipPage() {
                   'tg-vip-plan-card shrink-0',
                   plan.featured ? 'tg-vip-plan-card--featured' : '',
                   !termsAccepted ? 'tg-vip-plan-card--locked' : '',
+                  isSelected ? 'tg-vip-plan-card--selected' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -133,8 +165,8 @@ export default function VipPage() {
                     <button
                       type="button"
                       lang="km"
-                      disabled={buyDisabled}
-                      aria-disabled={buyDisabled}
+                      disabled={selectDisabled}
+                      aria-disabled={selectDisabled}
                       title={
                         !termsAccepted
                           ? 'សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ'
@@ -143,22 +175,25 @@ export default function VipPage() {
                             : ''
                       }
                       onClick={() => {
-                        void onPurchase(plan.planId)
+                        if (!selectDisabled) setSelectedPlanId(plan.planId)
                       }}
                       className={[
                         'inline-flex items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold backdrop-blur-sm transition',
-                        buyDisabled
+                        selectDisabled
                           ? 'cursor-not-allowed border-white/12 bg-white/10 text-white/35 shadow-none'
                           : 'active:scale-95',
-                        !buyDisabled && plan.featured
+                        !selectDisabled && isSelected
+                          ? 'border-emerald-200/50 bg-emerald-400/25 text-emerald-50'
+                          : '',
+                        !selectDisabled && !isSelected && plan.featured
                           ? 'border-amber-100 bg-amber-300 text-slate-900 shadow-[0_4px_14px_rgba(250,204,21,0.45)]'
                           : '',
-                        !buyDisabled && !plan.featured
+                        !selectDisabled && !isSelected && !plan.featured
                           ? 'border-white/40 bg-white/20 text-white shadow-[0_4px_12px_rgba(0,0,0,0.25)]'
                           : '',
                       ].join(' ')}
                     >
-                      {isPending ? 'កំពុងដំណើរការ...' : plan.buyButtonKm}
+                      {isSelected ? 'បានជ្រើស' : plan.buyButtonKm}
                     </button>
                   </div>
                   <div className="mt-3 flex items-end gap-2">
@@ -180,6 +215,16 @@ export default function VipPage() {
             )
           })}
 
+          {selectedPlanId && termsAccepted && tgUser?.id ? (
+            <AbaKhqrEntryRow
+              pending={abaKhqrPending}
+              disabled={!selectedPlanId}
+              onSelect={() => {
+                void onAbaKhqrPay()
+              }}
+            />
+          ) : null}
+
           {!termsAccepted ? (
             <p className="px-1 text-center text-[10px] leading-snug text-white/45" lang="km">
               សូមអានលក្ខខណ្ឌ និងធីកយល់ព្រម មុនពេលទិញសមាជិក VIP
@@ -188,6 +233,11 @@ export default function VipPage() {
           {termsAccepted && !tgUser?.id ? (
             <p className="px-1 text-center text-[10px] leading-snug text-amber-200/80" lang="km">
               សូមបើកក្នុង Telegram Mini App ដើម្បីទិញ VIP
+            </p>
+          ) : null}
+          {termsAccepted && tgUser?.id && !selectedPlanId ? (
+            <p className="px-1 text-center text-[10px] leading-snug text-white/45" lang="km">
+              សូមជ្រើសគម្រោង VIP មួយ រួចចុច ABA KHQR
             </p>
           ) : null}
 

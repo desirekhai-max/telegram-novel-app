@@ -18,6 +18,17 @@ const PAYWAY_CHECK_URL = String(
     ? 'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/check'
     : 'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/check'),
 ).trim()
+const PAYWAY_QR_URL = String(
+  process.env.PAYWAY_QR_URL
+  || (process.env.PAYWAY_SANDBOX === '1' || process.env.PAYWAY_SANDBOX === 'true'
+    ? 'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/generate-qr'
+    : 'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/generate-qr'),
+).trim()
+const PAYWAY_QR_TEMPLATE = String(process.env.PAYWAY_QR_TEMPLATE || 'template3_color').trim()
+const PAYWAY_QR_LIFETIME_MIN = Math.min(
+  43200,
+  Math.max(3, Math.floor(Number(process.env.PAYWAY_QR_LIFETIME_MIN || 30) || 30)),
+)
 
 export function isPayWayConfigured() {
   return Boolean(PAYWAY_MERCHANT_ID && PAYWAY_API_KEY)
@@ -87,6 +98,137 @@ export function buildVipTranId(telegramUserId, atMs = Date.now()) {
   const uid = String(telegramUserId || '').replace(/\D/g, '').slice(-6) || '0'
   const tail = String(atMs).slice(-11)
   return `V${uid}${tail}`.slice(0, 20)
+}
+
+/** PayWay QR API: base64 JSON { ios_scheme, android_scheme } for return after ABA Mobile pay. */
+export function buildPayWayReturnDeeplink(returnUrl) {
+  const url = String(returnUrl || '').trim()
+  if (!url) return ''
+  const payload = { ios_scheme: url, android_scheme: url }
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
+}
+
+function buildGenerateQrHash(fields) {
+  const concat = [
+    fields.req_time,
+    fields.merchant_id,
+    fields.tran_id,
+    fields.amount,
+    fields.items,
+    fields.first_name,
+    fields.last_name,
+    fields.email,
+    fields.phone,
+    fields.purchase_type,
+    fields.payment_option,
+    fields.callback_url,
+    fields.return_deeplink,
+    fields.currency,
+    fields.custom_fields,
+    fields.return_params,
+    fields.payout,
+    fields.lifetime,
+    fields.qr_image_template,
+  ].join('')
+  return hmacSha512Base64(concat, PAYWAY_API_KEY)
+}
+
+/**
+ * ABA KHQR + abapay_deeplink (Figma Telegram Integration flow).
+ * @param {{
+ *   tranId: string,
+ *   amount: string,
+ *   planId?: string,
+ *   returnDeeplinkUrl: string,
+ *   callbackUrl?: string,
+ * }} input
+ */
+export async function generateAbaKhqrPayment(input) {
+  if (!isPayWayConfigured()) {
+    return { ok: false, error: 'payway_not_configured' }
+  }
+  const tran_id = String(input.tranId || '').trim().slice(0, 20)
+  if (!tran_id) return { ok: false, error: 'tran_id_required' }
+  const amountNum = Number(String(input.amount || '0'))
+  if (!Number.isFinite(amountNum) || amountNum <= 0) return { ok: false, error: 'invalid_amount' }
+
+  const req_time = formatPayWayReqTime()
+  const merchant_id = PAYWAY_MERCHANT_ID
+  const items = Buffer.from(getPayWayItemsLine(), 'utf8').toString('base64')
+  const custom_fields = buildPayWayCustomFields({ tranId: tran_id, planId: input.planId })
+  const return_deeplink = buildPayWayReturnDeeplink(input.returnDeeplinkUrl)
+  const callback_url = input.callbackUrl
+    ? Buffer.from(String(input.callbackUrl), 'utf8').toString('base64')
+    : ''
+
+  const base = {
+    req_time,
+    merchant_id,
+    tran_id,
+    first_name: 'VIP',
+    last_name: 'Member',
+    email: '',
+    phone: '',
+    amount: amountNum,
+    currency: 'USD',
+    purchase_type: 'purchase',
+    payment_option: 'abapay_khqr',
+    items,
+    callback_url,
+    return_deeplink,
+    custom_fields,
+    return_params: '',
+    payout: '',
+    lifetime: PAYWAY_QR_LIFETIME_MIN,
+    qr_image_template: PAYWAY_QR_TEMPLATE,
+  }
+  const hash = buildGenerateQrHash(base)
+  const body = { ...base, hash }
+
+  try {
+    const res = await fetch(PAYWAY_QR_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const text = await res.text()
+    let parsed = null
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      parsed = null
+    }
+    const statusCode = String(parsed?.status?.code ?? parsed?.status ?? '')
+    if (!res.ok || (statusCode && statusCode !== '0' && statusCode !== '00')) {
+      return {
+        ok: false,
+        error: String(parsed?.status?.message || parsed?.description || `qr_http_${res.status}`),
+      }
+    }
+    const qrImage = String(parsed?.qrImage || parsed?.qr_image || '').trim()
+    const qrString = String(parsed?.qrString || parsed?.qr_string || '').trim()
+    const abapayDeeplink = String(parsed?.abapay_deeplink || parsed?.abapayDeeplink || '').trim()
+    if (!qrImage && !qrString && !abapayDeeplink) {
+      return { ok: false, error: 'qr_payload_empty' }
+    }
+    return {
+      ok: true,
+      tranId: tran_id,
+      amount: amountNum,
+      currency: String(parsed?.currency || 'USD'),
+      qrImage,
+      qrString,
+      abapayDeeplink,
+      appStore: String(parsed?.app_store || parsed?.appStore || '').trim(),
+      playStore: String(parsed?.play_store || parsed?.playStore || '').trim(),
+      qrImageTemplate: PAYWAY_QR_TEMPLATE,
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'qr_request_failed',
+    }
+  }
 }
 
 export function buildPurchaseFormFields(input) {

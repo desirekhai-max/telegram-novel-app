@@ -8,6 +8,7 @@ import {
   buildPurchaseFormFields,
   buildVipTranId,
   checkPayWayTransaction,
+  generateAbaKhqrPayment,
   getPayWayCheckoutUrl,
   isPayWayConfigured,
   parseUsdAmountFromLabel,
@@ -1671,6 +1672,71 @@ const server = http.createServer(async (req, res) => {
       checkoutUrl: getPayWayCheckoutUrl(),
       formFields: filterCheckoutFormFieldsForClient(formFields),
       hostedCheckout: true,
+      profile: buildViewerProfileResponse(profile),
+    })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/vip-orders/aba-khqr') {
+    const body = await parseJsonBody(req)
+    const auth = resolveViewerAuth(body)
+    if (!auth.telegramUser?.telegramUserId) {
+      return sendJson(res, 401, { ok: false, error: 'telegram user required' })
+    }
+    if (TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
+      return sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
+    }
+    if (!isPayWayConfigured()) {
+      return sendJson(res, 503, { ok: false, paywayConfigured: false, error: 'payway_not_configured' })
+    }
+    const planId = String(body.planId || '').trim()
+    if (!planId) return sendJson(res, 400, { ok: false, error: 'planId required' })
+    const profile = upsertViewerProfile(auth.telegramUser, req, auth)
+    const plan = getVipPlanForRole(planId, profile.role)
+    if (!plan || plan.durationHours <= 0) {
+      return sendJson(res, 400, { ok: false, error: 'invalid vip plan' })
+    }
+    const atMs = now()
+    const tranId = buildVipTranId(profile.telegramUserId, atMs)
+    const amount = parseUsdAmountFromLabel(plan.priceUsdLabel)
+    const returnDeeplinkUrl = `${APP_PUBLIC_URL}/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
+    pendingVipOrdersByTranId.set(tranId, {
+      tranId,
+      planId: plan.planId,
+      telegramUserId: profile.telegramUserId,
+      memberId: profile.memberId,
+      amount,
+      status: 'pending',
+      createdAt: atMs,
+      paidAt: 0,
+      paymentChannel: 'aba_khqr',
+    })
+    const qr = await generateAbaKhqrPayment({
+      tranId,
+      amount,
+      planId: plan.planId,
+      returnDeeplinkUrl,
+    })
+    if (!qr.ok) {
+      pendingVipOrdersByTranId.delete(tranId)
+      return sendJson(res, 502, { ok: false, error: qr.error || 'qr_generation_failed' })
+    }
+    persistMembers()
+    return sendJson(res, 200, {
+      ok: true,
+      paywayConfigured: true,
+      tranId,
+      planId: plan.planId,
+      amountLabel: plan.priceUsdLabel,
+      amount: qr.amount,
+      currency: qr.currency,
+      merchantLabel: getNeutralVipOrderProductLabel(),
+      qrImage: qr.qrImage,
+      qrString: qr.qrString,
+      abapayDeeplink: qr.abapayDeeplink,
+      appStore: qr.appStore,
+      playStore: qr.playStore,
+      qrImageTemplate: qr.qrImageTemplate,
+      returnUrl: returnDeeplinkUrl,
       profile: buildViewerProfileResponse(profile),
     })
   }

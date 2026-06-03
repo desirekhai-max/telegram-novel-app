@@ -6,6 +6,7 @@ import { useViewerProfile } from '../hooks/useViewerProfile.js'
 import { formatVipExpireDateTimeKm } from '../lib/formatVipExpireKm.js'
 import { useVipExpireCountdown } from '../hooks/useVipExpireCountdown.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
+import { clearVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
 
 export default function PaymentReturnPage() {
   const [searchParams] = useSearchParams()
@@ -16,6 +17,7 @@ export default function PaymentReturnPage() {
 
   const tranId = String(searchParams.get('tran_id') || searchParams.get('tranId') || '').trim()
   const planId = String(searchParams.get('plan_id') || searchParams.get('planId') || '').trim()
+  const paidHint = searchParams.get('paid') === '1'
   const vipExpireAtMs = Number(viewerProfile?.vipExpireAtMs) || 0
   const vipCountdown = useVipExpireCountdown(viewerProfile?.vipActive ? vipExpireAtMs : 0)
   const vipExpireDateLabel =
@@ -23,6 +25,8 @@ export default function PaymentReturnPage() {
 
   useEffect(() => {
     let active = true
+    clearVipAbaKhqrSession()
+
     if (!tgUser?.id) {
       setStatus('need_login')
       setMessage('សូមបើកក្នុង Telegram Mini App')
@@ -33,6 +37,11 @@ export default function PaymentReturnPage() {
       setMessage('មិនឃើញលេខប្រតិបត្តិការ')
       return () => { active = false }
     }
+
+    if (paidHint) {
+      setMessage('កំពុងបើក VIP…')
+    }
+
     void (async () => {
       const result = await confirmViewerVipPayment({ tranId, planId })
       if (!active) return
@@ -51,50 +60,97 @@ export default function PaymentReturnPage() {
       setMessage(result.error || 'មិនអាចបើក VIP បាន')
     })()
     return () => { active = false }
-  }, [tgUser?.id, tranId, planId, refreshViewerProfile])
+  }, [tgUser?.id, tranId, planId, paidHint, refreshViewerProfile])
+
+  const isSuccess = status === 'success' || (viewerProfile?.vipActive && paidHint)
 
   return (
     <div className="tg-app tg-app--account">
       <BrandTabToolbar title="លទ្ធផលបង់ប្រាក់" titleLang="km" titleClassName="text-[16px]" />
       <main className="tg-list-wrap tg-account-scroll flex flex-1 px-3 py-8">
         <section className="mx-auto flex w-full max-w-[420px] flex-col gap-4 text-center">
-          <p className="text-[15px] font-semibold text-white/90" lang="km">
-            {status === 'loading' ? 'កំពុងផ្ទៀងផ្ទាត់...' : message}
-          </p>
-          {viewerProfile?.vipActive ? (
-            <div className="flex flex-col gap-1 text-xs text-emerald-300/90" lang="km">
-              <p>VIP សកម្ម · អាចអានជើង VIP បានហើយ</p>
-              {vipCountdown ? (
-                <p className="tg-account-vip-expire__countdown">
-                  <span className="tg-account-vip-expire__prefix">នៅសល់ ·</span>
-                  <span className="tg-account-vip-expire__value tg-account-vip-expire__value--remaining tabular-nums">
-                    {vipCountdown}
-                  </span>
-                </p>
-              ) : null}
-              {vipExpireDateLabel ? (
-                <p className="tg-account-vip-expire__date">
-                  <span className="tg-account-vip-expire__prefix">ផុតកំណត់ ·</span>
-                  <span className="tg-account-vip-expire__value tg-account-vip-expire__value--expire tabular-nums">
-                    {vipExpireDateLabel}
-                  </span>
-                </p>
+          {isSuccess ? (
+            <div className="tg-payment-success">
+              <span className="tg-payment-success__icon" aria-hidden>
+                ✓
+              </span>
+              <h2 className="tg-payment-success__title" lang="km">
+                បង់ប្រាក់ជោគជ័យ
+              </h2>
+              <p className="tg-payment-success__subtitle" lang="km">
+                VIP បានបើករួចហើយ · អាចអានជើង VIP បានហើយ
+              </p>
+              {viewerProfile?.vipActive ? (
+                <div className="flex w-full flex-col gap-1 text-xs text-emerald-300/90" lang="km">
+                  {vipCountdown ? (
+                    <p className="tg-account-vip-expire__countdown">
+                      <span className="tg-account-vip-expire__prefix">នៅសល់ ·</span>
+                      <span className="tg-account-vip-expire__value tg-account-vip-expire__value--remaining tabular-nums">
+                        {vipCountdown}
+                      </span>
+                    </p>
+                  ) : null}
+                  {vipExpireDateLabel ? (
+                    <p className="tg-account-vip-expire__date">
+                      <span className="tg-account-vip-expire__prefix">ផុតកំណត់ ·</span>
+                      <span className="tg-account-vip-expire__value tg-account-vip-expire__value--expire tabular-nums">
+                        {vipExpireDateLabel}
+                      </span>
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
             </div>
-          ) : null}
+          ) : (
+            <>
+              <p className="text-[15px] font-semibold text-white/90" lang="km">
+                {status === 'loading' ? 'កំពុងផ្ទៀងផ្ទាត់...' : message}
+              </p>
+              {viewerProfile?.vipActive ? (
+                <div className="flex flex-col gap-1 text-xs text-emerald-300/90" lang="km">
+                  <p>VIP សកម្ម · អាចអានជើង VIP បានហើយ</p>
+                  {vipCountdown ? (
+                    <p className="tg-account-vip-expire__countdown">
+                      <span className="tg-account-vip-expire__prefix">នៅសល់ ·</span>
+                      <span className="tg-account-vip-expire__value tg-account-vip-expire__value--remaining tabular-nums">
+                        {vipCountdown}
+                      </span>
+                    </p>
+                  ) : null}
+                  {vipExpireDateLabel ? (
+                    <p className="tg-account-vip-expire__date">
+                      <span className="tg-account-vip-expire__prefix">ផុតកំណត់ ·</span>
+                      <span className="tg-account-vip-expire__value tg-account-vip-expire__value--expire tabular-nums">
+                        {vipExpireDateLabel}
+                      </span>
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          )}
+
           <div className="flex flex-col gap-2">
             <Link
-              to="/account"
+              to="/"
               className="inline-flex items-center justify-center rounded-full border border-white/30 bg-white/15 px-4 py-2 text-sm font-semibold text-white"
+            >
+              រកសៀវភៅអាន
+            </Link>
+            <Link
+              to="/account"
+              className="inline-flex items-center justify-center rounded-full border border-emerald-200/40 bg-emerald-400/20 px-4 py-2 text-sm font-semibold text-emerald-50"
             >
               ទៅគណនី
             </Link>
-            <Link
-              to="/vip"
-              className="inline-flex items-center justify-center rounded-full border border-amber-200/40 bg-amber-300/20 px-4 py-2 text-sm font-semibold text-amber-100"
-            >
-              ត្រឡប់ទៅ VIP
-            </Link>
+            {!isSuccess ? (
+              <Link
+                to="/vip"
+                className="inline-flex items-center justify-center rounded-full border border-amber-200/40 bg-amber-300/20 px-4 py-2 text-sm font-semibold text-amber-100"
+              >
+                ត្រឡប់ទៅ VIP
+              </Link>
+            ) : null}
           </div>
         </section>
       </main>

@@ -25,6 +25,7 @@ import ReaderPage from './pages/ReaderPage.jsx'
 import SavedPage from './pages/SavedPage.jsx'
 import TermsOfServicePage from './pages/TermsOfServicePage.jsx'
 import PaymentReturnPage from './pages/PaymentReturnPage.jsx'
+import VipAbaKhqrPage from './pages/VipAbaKhqrPage.jsx'
 import VipCheckoutRedirectPage from './pages/VipCheckoutRedirectPage.jsx'
 import VipPage from './pages/VipPage.jsx'
 
@@ -64,6 +65,7 @@ function AppRoutes({ routeLocation }) {
         <Route path="/refund-policy" element={<RefundPolicyPage />} />
         <Route path="/contact-us" element={<ContactUsPage />} />
         <Route path="/vip" element={<VipPage />} />
+        <Route path="/vip/aba-khqr" element={<VipAbaKhqrPage />} />
         <Route path="/vip/checkout-redirect" element={<VipCheckoutRedirectPage />} />
         <Route path="/vip/payment-return" element={<PaymentReturnPage />} />
         <Route path="/admin" element={<AdminGuard />} />
