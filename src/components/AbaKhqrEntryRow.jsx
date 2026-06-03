@@ -3,10 +3,16 @@ import { ChevronRight } from 'lucide-react'
 const ABA_MOBILE_LOGO_SRC = `${import.meta.env.BASE_URL}aba-mobile-logo.png`
 
 /**
- * Figma: ABA KHQR selectable row — official ABA Mobile app icon + copy.
- * @param {{ disabled?: boolean, pending?: boolean, onSelect: () => void }} props
+ * VIP 支付入口行 — ABA Mobile 官方图标 + 自定义标题。
+ * @param {{ disabled?: boolean, pending?: boolean, onSelect: () => void, title: string, subtitle?: string }} props
  */
-export default function AbaKhqrEntryRow({ disabled = false, pending = false, onSelect }) {
+export default function AbaKhqrEntryRow({
+  disabled = false,
+  pending = false,
+  onSelect,
+  title,
+  subtitle,
+}) {
   return (
     <button
       type="button"
@@ -32,8 +38,14 @@ export default function AbaKhqrEntryRow({ disabled = false, pending = false, onS
         />
       </span>
       <span className="tg-aba-khqr-entry__text">
-        <span className="tg-aba-khqr-entry__title">ABA KHQR</span>
-        <span className="tg-aba-khqr-entry__subtitle">Scan to pay with any banking app</span>
+        <span className="tg-aba-khqr-entry__title" lang="km">
+          {title}
+        </span>
+        {subtitle ? (
+          <span className="tg-aba-khqr-entry__subtitle" lang="km">
+            {subtitle}
+          </span>
+        ) : null}
       </span>
       <ChevronRight size={20} className="tg-aba-khqr-entry__chev" aria-hidden />
     </button>

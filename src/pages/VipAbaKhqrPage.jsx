@@ -13,6 +13,7 @@ export default function VipAbaKhqrPage() {
   const [searchParams] = useSearchParams()
   const { viewerProfile } = useViewerProfile()
   const uiMockQuery = searchParams.get('ui_mock') === '1'
+  const payMode = String(searchParams.get('pay_mode') || '').trim().toLowerCase()
   const planIdParam = String(searchParams.get('plan_id') || '').trim()
   const tranIdParam = String(searchParams.get('tran_id') || '').trim()
 
@@ -72,7 +73,13 @@ export default function VipAbaKhqrPage() {
       return undefined
     }
 
-    if (shouldTryAbaMobileDeeplinkFirst() && session.abapayDeeplink && !deeplinkOnceRef.current) {
+    const skipAutoDeeplink = payMode === 'khqr' || payMode === 'aba'
+    if (
+      !skipAutoDeeplink &&
+      shouldTryAbaMobileDeeplinkFirst() &&
+      session.abapayDeeplink &&
+      !deeplinkOnceRef.current
+    ) {
       deeplinkOnceRef.current = true
       const opened = openAbaMobileDeeplink(session.abapayDeeplink, {
         playStore: session.playStore,
@@ -96,7 +103,7 @@ export default function VipAbaKhqrPage() {
       if (pollRef.current) window.clearInterval(pollRef.current)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [isUiMock, navigate, planId, pollPayment, session, tranId])
+  }, [isUiMock, navigate, payMode, planId, pollPayment, session, tranId])
 
   const onOpenAbaMobile = () => {
     if (isUiMock) {

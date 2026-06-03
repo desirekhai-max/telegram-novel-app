@@ -10,6 +10,7 @@ import {
   savePayWayCheckoutSession,
   submitPayWayCheckoutForm,
 } from '../lib/paywayCheckout.js'
+import { openAbaMobileDeeplink } from '../lib/abaMobile.js'
 import { buildAbaKhqrUiMockSession, isAbaKhqrUiMockFlowEnabled } from '../lib/abaKhqrUiMock.js'
 import { saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
 import {
@@ -57,73 +58,103 @@ export default function VipPage() {
     [navigate],
   )
 
-  const onAbaKhqrPay = useCallback(async () => {
-    if (!termsAccepted) {
-      setPurchaseError('សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ')
-      return
-    }
-    if (!tgUser?.id) {
-      setPurchaseError('សូមបើកក្នុង Telegram Mini App')
-      return
-    }
-    const planId = String(selectedPlanId || '').trim()
-    if (!planId || abaKhqrPending) return
+  const navigateToAbaKhqrPage = useCallback(
+    (session, planId, payMode) => {
+      const base = isAbaKhqrUiMockFlowEnabled() && session.uiMock
+        ? `/vip/aba-khqr?ui_mock=1&tran_id=${encodeURIComponent(session.tranId)}&plan_id=${encodeURIComponent(planId)}`
+        : `/vip/aba-khqr?tran_id=${encodeURIComponent(session.tranId)}&plan_id=${encodeURIComponent(planId)}`
+      const sep = base.includes('?') ? '&' : '?'
+      navigate(`${base}${sep}pay_mode=${encodeURIComponent(payMode)}`)
+    },
+    [navigate],
+  )
 
-    setPurchaseError('')
-    setPurchaseNotice('')
-    setAbaKhqrPending(true)
-
-    try {
-      if (isAbaKhqrUiMockFlowEnabled()) {
-        const mockSession = buildAbaKhqrUiMockSession(planId, viewerProfile.role)
-        saveVipAbaKhqrSession(mockSession)
-        navigate(
-          `/vip/aba-khqr?ui_mock=1&tran_id=${encodeURIComponent(mockSession.tranId)}&plan_id=${encodeURIComponent(planId)}`,
-        )
+  const runAbaPaymentStart = useCallback(
+    async (payMode) => {
+      if (!termsAccepted) {
+        setPurchaseError('សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ')
         return
       }
-
-      const aba = await startViewerVipAbaKhqr(planId)
-      if (aba?.ok && aba.session?.tranId) {
-        saveVipAbaKhqrSession(aba.session)
-        navigate(
-          `/vip/aba-khqr?tran_id=${encodeURIComponent(aba.session.tranId)}&plan_id=${encodeURIComponent(planId)}`,
-        )
+      if (!tgUser?.id) {
+        setPurchaseError('សូមបើកក្នុង Telegram Mini App')
         return
       }
+      const planId = String(selectedPlanId || '').trim()
+      if (!planId || abaKhqrPending) return
 
-      const hostedOk = await fallbackHostedCheckout(planId)
-      if (hostedOk) return
+      setPurchaseError('')
+      setPurchaseNotice('')
+      setAbaKhqrPending(true)
 
-      if (aba?.error === 'payway_not_configured' || !aba?.paywayConfigured) {
-        const demo = await purchaseViewerVipPlan(planId)
-        if (demo?.ok) {
-          await refreshViewerProfile()
-          setPurchaseNotice('VIP បានបើករួចហើយ')
+      try {
+        if (isAbaKhqrUiMockFlowEnabled()) {
+          const mockSession = buildAbaKhqrUiMockSession(planId, viewerProfile.role)
+          saveVipAbaKhqrSession(mockSession)
+          if (payMode === 'aba' && mockSession.abapayDeeplink) {
+            openAbaMobileDeeplink(mockSession.abapayDeeplink, {
+              playStore: mockSession.playStore,
+              appStore: mockSession.appStore,
+            })
+          }
+          navigateToAbaKhqrPage(mockSession, planId, payMode)
           return
         }
-      }
 
-      setPurchaseError(
-        aba?.error
-          ? `មិនអាចបើក ABA KHQR: ${aba.error}`
-          : 'មិនអាចទិញបាន សូមព្យាយាមម្តងទៀត',
-      )
-    } catch (err) {
-      setPurchaseError(err instanceof Error ? err.message : 'មិនអាចទិញបាន')
-    } finally {
-      setAbaKhqrPending(false)
-    }
-  }, [
-    abaKhqrPending,
-    fallbackHostedCheckout,
-    navigate,
-    refreshViewerProfile,
-    selectedPlanId,
-    termsAccepted,
-    tgUser?.id,
-    viewerProfile.role,
-  ])
+        const aba = await startViewerVipAbaKhqr(planId)
+        if (aba?.ok && aba.session?.tranId) {
+          saveVipAbaKhqrSession(aba.session)
+          if (payMode === 'aba' && aba.session.abapayDeeplink) {
+            openAbaMobileDeeplink(aba.session.abapayDeeplink, {
+              playStore: aba.session.playStore,
+              appStore: aba.session.appStore,
+            })
+          }
+          navigateToAbaKhqrPage(aba.session, planId, payMode)
+          return
+        }
+
+        const hostedOk = await fallbackHostedCheckout(planId)
+        if (hostedOk) return
+
+        if (aba?.error === 'payway_not_configured' || !aba?.paywayConfigured) {
+          const demo = await purchaseViewerVipPlan(planId)
+          if (demo?.ok) {
+            await refreshViewerProfile()
+            setPurchaseNotice('VIP បានបើករួចហើយ')
+            return
+          }
+        }
+
+        setPurchaseError(
+          aba?.error
+            ? `មិនអាចបើក ABA KHQR: ${aba.error}`
+            : 'មិនអាចទិញបាន សូមព្យាយាមម្តងទៀត',
+        )
+      } catch (err) {
+        setPurchaseError(err instanceof Error ? err.message : 'មិនអាចទិញបាន')
+      } finally {
+        setAbaKhqrPending(false)
+      }
+    },
+    [
+      abaKhqrPending,
+      fallbackHostedCheckout,
+      navigateToAbaKhqrPage,
+      refreshViewerProfile,
+      selectedPlanId,
+      termsAccepted,
+      tgUser?.id,
+      viewerProfile.role,
+    ],
+  )
+
+  const onKhqrScanPay = useCallback(() => {
+    void runAbaPaymentStart('khqr')
+  }, [runAbaPaymentStart])
+
+  const onAbaMobilePay = useCallback(() => {
+    void runAbaPaymentStart('aba')
+  }, [runAbaPaymentStart])
 
   return (
     <div className="tg-app tg-app--account">
@@ -231,13 +262,20 @@ export default function VipPage() {
           })}
 
           {selectedPlanId && termsAccepted && tgUser?.id ? (
-            <AbaKhqrEntryRow
-              pending={abaKhqrPending}
-              disabled={!selectedPlanId}
-              onSelect={() => {
-                void onAbaKhqrPay()
-              }}
-            />
+            <div className="flex flex-col gap-3">
+              <AbaKhqrEntryRow
+                title="ស្កេន KHQR"
+                pending={abaKhqrPending}
+                disabled={!selectedPlanId}
+                onSelect={onKhqrScanPay}
+              />
+              <AbaKhqrEntryRow
+                title="បង់ប្រាក់តាម ABA Mobile"
+                pending={abaKhqrPending}
+                disabled={!selectedPlanId}
+                onSelect={onAbaMobilePay}
+              />
+            </div>
           ) : null}
 
           {!termsAccepted ? (
