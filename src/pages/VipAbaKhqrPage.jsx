@@ -35,13 +35,13 @@ export default function VipAbaKhqrPage() {
     clearVipAbaKhqrSession()
     if (isUiMock) {
       navigate(
-        `/vip/payment-return?ui_mock=1&tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`,
+        `/vip/payment-return?ui_mock=1&fulfillment=auto&tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`,
         { replace: true },
       )
       return
     }
     navigate(
-      `/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}&paid=1`,
+      `/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}&paid=1&fulfillment=auto`,
       { replace: true },
     )
   }, [isUiMock, navigate, planId, tranId])

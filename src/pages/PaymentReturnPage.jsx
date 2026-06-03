@@ -1,200 +1,226 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
+import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
-import { formatVipExpireDateTimeKm } from '../lib/formatVipExpireKm.js'
-import { useVipExpireCountdown } from '../hooks/useVipExpireCountdown.js'
+import {
+  readVipPaymentFulfillmentHint,
+} from '../lib/vipPaymentResultState.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 import { clearVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
+
+function resolvePlanDurationHours(planId, role) {
+  const hours = Number(getVipPlanForPurchase(planId, role)?.durationHours)
+  return Number.isFinite(hours) && hours > 0 ? hours : 0
+}
+
+/** A — ABA API / Webhook 自动确认成功 */
+function VipAutoPaymentSuccessResult({ durationHours }) {
+  return (
+    <div className="tg-aba-success-card">
+      <span className="tg-aba-success-card__icon" aria-hidden>
+        ✅
+      </span>
+      <h2 className="tg-aba-success-card__title" lang="km">
+        បើកសមាជិក VIP បានជោគជ័យ
+      </h2>
+      <p className="tg-aba-success-card__subtitle" lang="km">
+        សមាជិក VIP របស់អ្នកត្រូវបានបើកដោយជោគជ័យ
+      </p>
+      {durationHours > 0 ? (
+        <p className="tg-aba-success-card__subtitle tg-aba-success-card__subtitle--validity" lang="km">
+          សុពលភាព {durationHours} ម៉ោង
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/** B — 后台人工审核确认成功 */
+function VipManualPaymentSuccessResult({ durationHours }) {
+  return (
+    <div className="tg-aba-success-card">
+      <span className="tg-aba-success-card__icon" aria-hidden>
+        ✅
+      </span>
+      <h2 className="tg-aba-success-card__title" lang="km">
+        បើកសមាជិក VIP បានជោគជ័យ
+      </h2>
+      <p className="tg-aba-success-card__subtitle" lang="km">
+        សមាជិក VIP របស់អ្នកត្រូវបានបើកដោយជោគជ័យ
+      </p>
+      {durationHours > 0 ? (
+        <p className="tg-aba-success-card__subtitle tg-aba-success-card__subtitle--validity" lang="km">
+          សុពលភាព {durationHours} ម៉ោង
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/** C — 人工审核拒绝 / 审核失败 */
+function VipPaymentRejectedResult() {
+  return (
+    <div className="tg-aba-success-card">
+      <span className="tg-aba-success-card__icon tg-aba-success-card__icon--fail" aria-hidden>
+        ❌
+      </span>
+      <h2 className="tg-aba-success-card__title" lang="km">
+        ការទូទាត់មិនបានជោគជ័យ
+      </h2>
+      <p className="tg-aba-success-card__subtitle" lang="km">
+        សូមព្យាយាមម្ដងទៀត ឬជ្រើសរើសវិធីបង់ប្រាក់ផ្សេង
+      </p>
+    </div>
+  )
+}
+
+function VipPaymentSuccessActions() {
+  return (
+    <>
+      <Link to="/" className="tg-aba-success-page__btn tg-aba-success-page__btn--primary" lang="km">
+        ចាប់ផ្ដើមអាន
+      </Link>
+      <Link to="/" className="tg-aba-success-page__btn tg-aba-success-page__btn--secondary" lang="km">
+        ត្រឡប់ទៅទំព័រដើម
+      </Link>
+    </>
+  )
+}
+
+function VipPaymentRejectedActions() {
+  return (
+    <>
+      <Link to="/vip" className="tg-aba-success-page__btn tg-aba-success-page__btn--primary" lang="km">
+        ព្យាយាមម្ដងទៀត
+      </Link>
+      <Link to="/vip" className="tg-aba-success-page__btn tg-aba-success-page__btn--secondary" lang="km">
+        ត្រឡប់ទៅសមាជិក VIP
+      </Link>
+    </>
+  )
+}
 
 export default function PaymentReturnPage() {
   const [searchParams] = useSearchParams()
   const tgUser = useTelegramUser()
   const { viewerProfile, refreshViewerProfile } = useViewerProfile()
-  const [status, setStatus] = useState('loading')
-  const [message, setMessage] = useState('')
+  const [viewState, setViewState] = useState('loading')
+  const [statusMessage, setStatusMessage] = useState('')
 
   const uiMock = searchParams.get('ui_mock') === '1'
   const tranId = String(searchParams.get('tran_id') || searchParams.get('tranId') || '').trim()
   const planId = String(searchParams.get('plan_id') || searchParams.get('planId') || '').trim()
-  const paidHint = searchParams.get('paid') === '1'
-  const vipExpireAtMs = Number(viewerProfile?.vipExpireAtMs) || 0
-  const vipCountdown = useVipExpireCountdown(viewerProfile?.vipActive ? vipExpireAtMs : 0)
-  const vipExpireDateLabel =
-    vipExpireAtMs > 0 ? formatVipExpireDateTimeKm(vipExpireAtMs) : ''
+  const fulfillmentHint = readVipPaymentFulfillmentHint(searchParams)
+
+  const durationHours = useMemo(
+    () => resolvePlanDurationHours(planId, viewerProfile.role),
+    [planId, viewerProfile.role],
+  )
 
   useEffect(() => {
     let active = true
     clearVipAbaKhqrSession()
 
+    if (fulfillmentHint === 'rejected') {
+      setViewState('rejected')
+      setStatusMessage('')
+      return () => {
+        active = false
+      }
+    }
+
     if (uiMock) {
-      setStatus('success')
-      setMessage('')
+      setViewState(fulfillmentHint === 'manual' ? 'manual_success' : 'auto_success')
+      setStatusMessage('')
       return () => {
         active = false
       }
     }
 
     if (!tgUser?.id) {
-      setStatus('need_login')
-      setMessage('សូមបើកក្នុង Telegram Mini App')
+      setViewState('need_login')
+      setStatusMessage('សូមបើកក្នុង Telegram Mini App')
       return () => {
         active = false
       }
     }
     if (!tranId) {
-      setStatus('missing_tran')
-      setMessage('មិនឃើញលេខប្រតិបត្តិការ')
+      setViewState('missing_tran')
+      setStatusMessage('មិនឃើញលេខប្រតិបត្តិការ')
       return () => {
         active = false
       }
     }
 
-    if (paidHint) {
-      setMessage('កំពុងបើក VIP…')
-    }
+    setViewState('loading')
+    setStatusMessage('កំពុងផ្ទៀងផ្ទាត់ការទូទាត់…')
 
     void (async () => {
       const result = await confirmViewerVipPayment({ tranId, planId })
       if (!active) return
+
       if (result.ok && result.profile?.vipActive) {
         await refreshViewerProfile()
-        setStatus('success')
-        setMessage('បង់ប្រាក់ជោគជ័យ · VIP បានបើករួចហើយ')
+        setViewState(fulfillmentHint === 'manual' ? 'manual_success' : 'auto_success')
+        setStatusMessage('')
         return
       }
       if (result.ok && !result.profile?.vipActive) {
-        setStatus('pending')
-        setMessage('កំពុងផ្ទៀងផ្ទាត់ការបង់ប្រាក់ សូមរង់ចាំ...')
+        setViewState('pending')
+        setStatusMessage('កំពុងផ្ទៀងផ្ទាត់ការបង់ប្រាក់ សូមរង់ចាំ…')
         return
       }
-      setStatus('failed')
-      setMessage(result.error || 'មិនអាចបើក VIP បាន')
+      if (String(result.error || '') === 'payment_not_confirmed') {
+        setViewState('pending')
+        setStatusMessage('កំពុងផ្ទៀងផ្ទាត់ការបង់ប្រាក់ សូមរង់ចាំ…')
+        return
+      }
+      setViewState('error')
+      setStatusMessage(result.error || 'មិនអាចបើក VIP បាន')
     })()
+
     return () => {
       active = false
     }
-  }, [tgUser?.id, tranId, planId, paidHint, refreshViewerProfile, uiMock])
+  }, [tgUser?.id, tranId, planId, refreshViewerProfile, uiMock, fulfillmentHint])
 
-  const isSuccess =
-    uiMock || status === 'success' || (viewerProfile?.vipActive && paidHint && !uiMock)
+  const showSuccessActions = viewState === 'auto_success' || viewState === 'manual_success'
+  const showRejectedActions = viewState === 'rejected'
 
   return (
-    <div
-      className={[
-        'tg-app tg-app--account',
-        uiMock ? 'tg-aba-success-page' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-    >
-      <BrandTabToolbar
-        title={uiMock ? 'Payment' : 'លទ្ធផលបង់ប្រាក់'}
-        titleLang={uiMock ? 'en' : 'km'}
-        titleClassName="text-[16px]"
-      />
+    <div className="tg-app tg-app--account tg-aba-success-page">
+      <BrandTabToolbar title="លទ្ធផលបង់ប្រាក់" titleLang="km" titleClassName="text-[16px]" />
       <main className="tg-list-wrap tg-account-scroll flex flex-1 px-3 py-8">
         <section className="mx-auto flex w-full max-w-[420px] flex-col gap-4 text-center">
-          {isSuccess ? (
-            <div className={uiMock ? 'tg-aba-success-card' : 'tg-payment-success'}>
-              <span
-                className={uiMock ? 'tg-aba-success-card__icon' : 'tg-payment-success__icon'}
-                aria-hidden
-              >
-                ✓
-              </span>
-              <h2
-                className={uiMock ? 'tg-aba-success-card__title' : 'tg-payment-success__title'}
-                lang={uiMock ? 'en' : 'km'}
-              >
-                {uiMock ? 'Payment Successful' : 'បង់ប្រាក់ជោគជ័យ'}
-              </h2>
-              <p
-                className={uiMock ? 'tg-aba-success-card__subtitle' : 'tg-payment-success__subtitle'}
-                lang={uiMock ? 'en' : 'km'}
-              >
-                {uiMock
-                  ? 'Thank you. Your VIP subscription payment was completed.'
-                  : 'VIP បានបើករួចហើយ · អាចអានជើង VIP បានហើយ'}
-              </p>
-              {!uiMock && viewerProfile?.vipActive ? (
-                <div className="flex w-full flex-col gap-1 text-xs text-emerald-300/90" lang="km">
-                  {vipCountdown ? (
-                    <p className="tg-account-vip-expire__countdown">
-                      <span className="tg-account-vip-expire__prefix">នៅសល់ ·</span>
-                      <span className="tg-account-vip-expire__value tg-account-vip-expire__value--remaining tabular-nums">
-                        {vipCountdown}
-                      </span>
-                    </p>
-                  ) : null}
-                  {vipExpireDateLabel ? (
-                    <p className="tg-account-vip-expire__date">
-                      <span className="tg-account-vip-expire__prefix">ផុតកំណត់ ·</span>
-                      <span className="tg-account-vip-expire__value tg-account-vip-expire__value--expire tabular-nums">
-                        {vipExpireDateLabel}
-                      </span>
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <>
-              <p className="text-[15px] font-semibold text-white/90" lang="km">
-                {status === 'loading' ? 'កំពុងផ្ទៀងផ្ទាត់...' : message}
-              </p>
-              {viewerProfile?.vipActive ? (
-                <div className="flex flex-col gap-1 text-xs text-emerald-300/90" lang="km">
-                  <p>VIP សកម្ម · អាចអានជើង VIP បានហើយ</p>
-                  {vipCountdown ? (
-                    <p className="tg-account-vip-expire__countdown">
-                      <span className="tg-account-vip-expire__prefix">នៅសល់ ·</span>
-                      <span className="tg-account-vip-expire__value tg-account-vip-expire__value--remaining tabular-nums">
-                        {vipCountdown}
-                      </span>
-                    </p>
-                  ) : null}
-                  {vipExpireDateLabel ? (
-                    <p className="tg-account-vip-expire__date">
-                      <span className="tg-account-vip-expire__prefix">ផុតកំណត់ ·</span>
-                      <span className="tg-account-vip-expire__value tg-account-vip-expire__value--expire tabular-nums">
-                        {vipExpireDateLabel}
-                      </span>
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-            </>
-          )}
+          {viewState === 'auto_success' ? (
+            <VipAutoPaymentSuccessResult durationHours={durationHours} />
+          ) : null}
+          {viewState === 'manual_success' ? (
+            <VipManualPaymentSuccessResult durationHours={durationHours} />
+          ) : null}
+          {viewState === 'rejected' ? <VipPaymentRejectedResult /> : null}
+          {viewState === 'loading' ||
+          viewState === 'pending' ||
+          viewState === 'need_login' ||
+          viewState === 'missing_tran' ||
+          viewState === 'error' ? (
+            <p className="text-[15px] font-semibold text-slate-700" lang="km">
+              {viewState === 'loading' ? 'កំពុងផ្ទៀងផ្ទាត់…' : statusMessage}
+            </p>
+          ) : null}
 
           <div className="flex flex-col gap-2">
-            <Link
-              to="/"
-              className={
-                uiMock
-                  ? 'tg-aba-success-page__btn tg-aba-success-page__btn--primary'
-                  : 'inline-flex items-center justify-center rounded-full border border-white/30 bg-white/15 px-4 py-2 text-sm font-semibold text-white'
-              }
-            >
-              {uiMock ? 'Back to home' : 'រកសៀវភៅអាន'}
-            </Link>
-            <Link
-              to={uiMock ? '/vip' : '/account'}
-              className={
-                uiMock
-                  ? 'tg-aba-success-page__btn tg-aba-success-page__btn--secondary'
-                  : 'inline-flex items-center justify-center rounded-full border border-emerald-200/40 bg-emerald-400/20 px-4 py-2 text-sm font-semibold text-emerald-50'
-              }
-            >
-              {uiMock ? 'Back to VIP' : 'ទៅគណនី'}
-            </Link>
-            {!isSuccess && !uiMock ? (
+            {showSuccessActions ? <VipPaymentSuccessActions /> : null}
+            {showRejectedActions ? <VipPaymentRejectedActions /> : null}
+            {viewState === 'pending' || viewState === 'error' ? (
               <Link
                 to="/vip"
-                className="inline-flex items-center justify-center rounded-full border border-amber-200/40 bg-amber-300/20 px-4 py-2 text-sm font-semibold text-amber-100"
+                className="tg-aba-success-page__btn tg-aba-success-page__btn--secondary"
+                lang="km"
               >
-                ត្រឡប់ទៅ VIP
+                ត្រឡប់ទៅសមាជិក VIP
               </Link>
             ) : null}
           </div>

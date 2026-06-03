@@ -1933,6 +1933,16 @@ a {
   color: #64748b;
 }
 
+.tg-aba-success-card__icon--fail {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.tg-aba-success-card__subtitle--validity {
+  font-weight: 700;
+  color: #0f172a;
+}
+
 .tg-aba-success-page__btn {
   display: inline-flex;
   align-items: center;
