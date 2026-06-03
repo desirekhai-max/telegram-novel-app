@@ -192,8 +192,8 @@ export default function PaymentReturnPage() {
   return (
     <div className="tg-app tg-app--account tg-aba-success-page">
       <BrandTabToolbar title="លទ្ធផលបង់ប្រាក់" titleLang="km" titleClassName="text-[16px]" />
-      <main className="tg-list-wrap tg-account-scroll flex flex-1 px-3 py-8">
-        <section className="mx-auto flex w-full max-w-[420px] flex-col gap-4 text-center">
+      <main className="tg-list-wrap tg-account-scroll tg-aba-success-page__main flex flex-1">
+        <section className="tg-aba-success-page__content">
           {viewState === 'auto_success' ? (
             <VipAutoPaymentSuccessResult durationHours={durationHours} />
           ) : null}
@@ -211,7 +211,7 @@ export default function PaymentReturnPage() {
             </p>
           ) : null}
 
-          <div className="flex flex-col gap-2">
+          <div className="tg-aba-success-page__actions">
             {showSuccessActions ? <VipPaymentSuccessActions /> : null}
             {showRejectedActions ? <VipPaymentRejectedActions /> : null}
             {viewState === 'pending' || viewState === 'error' ? (
