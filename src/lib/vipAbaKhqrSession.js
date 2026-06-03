@@ -14,6 +14,7 @@ export const VIP_ABA_KHQR_SESSION_KEY = 'tg_vip_aba_khqr_session_v1'
  *   appStore: string,
  *   playStore: string,
  *   returnUrl: string,
+ *   uiMock?: boolean,
  * }} VipAbaKhqrSession
  */
 
@@ -49,6 +50,7 @@ export function loadVipAbaKhqrSession() {
       appStore: String(parsed.appStore || '').trim(),
       playStore: String(parsed.playStore || '').trim(),
       returnUrl: String(parsed.returnUrl || '').trim(),
+      uiMock: parsed.uiMock === true,
     }
   } catch {
     return null

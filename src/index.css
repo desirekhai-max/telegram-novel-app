@@ -1560,13 +1560,21 @@ a {
   background: #f3f4f6;
 }
 
-.tg-aba-khqr-page__brand {
-  margin: 0;
+.tg-aba-khqr-page__brand-row {
+  margin: 4px 0 8px;
   text-align: center;
-  font-size: 13px;
+  font-size: 22px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.tg-aba-khqr-page__brand-aba {
   color: #0057a8;
+}
+
+.tg-aba-khqr-page__brand-pay {
+  color: #22d3ee;
 }
 
 .tg-aba-khqr-card {
@@ -1577,11 +1585,13 @@ a {
 }
 
 .tg-aba-khqr-card__header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 16px;
+  padding: 12px 16px 14px;
   background: #e31837;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 28px) 100%, 0 100%);
 }
 
 .tg-aba-khqr-card__khqr-logo {
@@ -1604,11 +1614,18 @@ a {
 }
 
 .tg-aba-khqr-card__amount {
-  margin: 8px 0 16px;
+  margin: 8px 0 12px;
   font-size: 28px;
   font-weight: 800;
   letter-spacing: -0.02em;
   color: #0f172a;
+}
+
+.tg-aba-khqr-card__divider {
+  height: 0;
+  margin: 0 8px 14px;
+  border: none;
+  border-top: 2px dashed #cbd5e1;
 }
 
 .tg-aba-khqr-card__qr-wrap {
@@ -1657,6 +1674,112 @@ a {
 
 .tg-aba-khqr-page__deeplink-btn:active {
   transform: scale(0.98);
+}
+
+.tg-aba-khqr-page__demo-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tg-aba-khqr-page__simulate-btn {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid #e31837;
+  border-radius: 14px;
+  background: #fff;
+  color: #e31837;
+  font-size: 14px;
+  font-weight: 700;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.tg-aba-khqr-page__simulate-btn:active {
+  transform: scale(0.98);
+  background: #fef2f2;
+}
+
+.tg-aba-khqr-page__demo-note {
+  margin: 0;
+  text-align: center;
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.tg-aba-success-page {
+  background: #f3f4f6;
+}
+
+.tg-aba-success-page .tg-brand-tab-toolbar {
+  background: #f3f4f6;
+}
+
+.tg-aba-success-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 24px 28px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.1);
+}
+
+.tg-aba-success-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #dcfce7;
+  color: #16a34a;
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.tg-aba-success-card__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.tg-aba-success-card__subtitle {
+  margin: 0;
+  max-width: 280px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.tg-aba-success-page__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  transition: transform 0.15s ease;
+}
+
+.tg-aba-success-page__btn:active {
+  transform: scale(0.98);
+}
+
+.tg-aba-success-page__btn--primary {
+  border: none;
+  background: linear-gradient(135deg, #0057a8 0%, #003d75 100%);
+  color: #fff;
+}
+
+.tg-aba-success-page__btn--secondary {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
 }
 
 .tg-payment-success {

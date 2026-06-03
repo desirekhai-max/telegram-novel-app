@@ -10,6 +10,7 @@ import {
   savePayWayCheckoutSession,
   submitPayWayCheckoutForm,
 } from '../lib/paywayCheckout.js'
+import { buildAbaKhqrUiMockSession, isAbaKhqrUiMockFlowEnabled } from '../lib/abaKhqrUiMock.js'
 import { saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
 import {
   purchaseViewerVipPlan,
@@ -73,6 +74,15 @@ export default function VipPage() {
     setAbaKhqrPending(true)
 
     try {
+      if (isAbaKhqrUiMockFlowEnabled()) {
+        const mockSession = buildAbaKhqrUiMockSession(planId, viewerProfile.role)
+        saveVipAbaKhqrSession(mockSession)
+        navigate(
+          `/vip/aba-khqr?ui_mock=1&tran_id=${encodeURIComponent(mockSession.tranId)}&plan_id=${encodeURIComponent(planId)}`,
+        )
+        return
+      }
+
       const aba = await startViewerVipAbaKhqr(planId)
       if (aba?.ok && aba.session?.tranId) {
         saveVipAbaKhqrSession(aba.session)
@@ -112,6 +122,7 @@ export default function VipPage() {
     selectedPlanId,
     termsAccepted,
     tgUser?.id,
+    viewerProfile.role,
   ])
 
   return (

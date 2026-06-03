@@ -1,24 +1,34 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import AbaKhqrPaymentScreen from '../components/AbaKhqrPaymentScreen.jsx'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import { openAbaMobileDeeplink, shouldTryAbaMobileDeeplinkFirst } from '../lib/abaMobile.js'
+import { buildAbaKhqrUiMockSession, isUiMockAbaKhqrSession } from '../lib/abaKhqrUiMock.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
-import { clearVipAbaKhqrSession, loadVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
-
-function formatDisplayAmount(session) {
-  const label = String(session?.amountLabel || '').trim()
-  if (label) return label.startsWith('$') ? label : `$ ${label.replace(/^\$/, '')}`
-  const n = Number(session?.amount)
-  if (Number.isFinite(n) && n > 0) return `$ ${n.toFixed(2)}`
-  return '$ —'
-}
+import { clearVipAbaKhqrSession, loadVipAbaKhqrSession, saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
+import { useViewerProfile } from '../hooks/useViewerProfile.js'
 
 export default function VipAbaKhqrPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const session = useMemo(() => loadVipAbaKhqrSession(), [])
-  const tranId = String(session?.tranId || searchParams.get('tran_id') || '').trim()
-  const planId = String(session?.planId || searchParams.get('plan_id') || '').trim()
+  const { viewerProfile } = useViewerProfile()
+  const uiMockQuery = searchParams.get('ui_mock') === '1'
+  const planIdParam = String(searchParams.get('plan_id') || '').trim()
+  const tranIdParam = String(searchParams.get('tran_id') || '').trim()
+
+  const sessionFromStorage = useMemo(() => loadVipAbaKhqrSession(), [])
+  const session = useMemo(() => {
+    if (sessionFromStorage) return sessionFromStorage
+    if (uiMockQuery && planIdParam) {
+      return buildAbaKhqrUiMockSession(planIdParam, viewerProfile.role)
+    }
+    return null
+  }, [planIdParam, sessionFromStorage, uiMockQuery, viewerProfile.role])
+
+  const isUiMock = isUiMockAbaKhqrSession(session) || uiMockQuery
+  const tranId = String(session?.tranId || tranIdParam || '').trim()
+  const planId = String(session?.planId || planIdParam || '').trim()
+
   const [statusNote, setStatusNote] = useState('')
   const [deeplinkTried, setDeeplinkTried] = useState(false)
   const pollRef = useRef(0)
@@ -26,14 +36,21 @@ export default function VipAbaKhqrPage() {
 
   const goSuccess = useCallback(() => {
     clearVipAbaKhqrSession()
+    if (isUiMock) {
+      navigate(
+        `/vip/payment-return?ui_mock=1&tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`,
+        { replace: true },
+      )
+      return
+    }
     navigate(
       `/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}&paid=1`,
       { replace: true },
     )
-  }, [navigate, planId, tranId])
+  }, [isUiMock, navigate, planId, tranId])
 
   const pollPayment = useCallback(async () => {
-    if (!tranId) return
+    if (!tranId || isUiMock) return
     const result = await confirmViewerVipPayment({ tranId, planId })
     if (result.ok && result.profile?.vipActive) {
       goSuccess()
@@ -42,11 +59,16 @@ export default function VipAbaKhqrPage() {
     if (result.error === 'payment_not_confirmed') {
       setStatusNote('Waiting for payment confirmation…')
     }
-  }, [goSuccess, planId, tranId])
+  }, [goSuccess, isUiMock, planId, tranId])
 
   useEffect(() => {
     if (!session || !tranId) {
       navigate('/vip', { replace: true })
+      return undefined
+    }
+
+    if (isUiMock) {
+      saveVipAbaKhqrSession(session)
       return undefined
     }
 
@@ -74,9 +96,14 @@ export default function VipAbaKhqrPage() {
       if (pollRef.current) window.clearInterval(pollRef.current)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [navigate, planId, pollPayment, session, tranId])
+  }, [isUiMock, navigate, planId, pollPayment, session, tranId])
 
   const onOpenAbaMobile = () => {
+    if (isUiMock) {
+      setStatusNote('ABA Mobile deeplink (UI demo — app not opened)')
+      setDeeplinkTried(true)
+      return
+    }
     if (!session?.abapayDeeplink) return
     const opened = openAbaMobileDeeplink(session.abapayDeeplink, {
       playStore: session.playStore,
@@ -90,42 +117,19 @@ export default function VipAbaKhqrPage() {
     return null
   }
 
-  const qrSrc = session.qrImage.startsWith('data:')
-    ? session.qrImage
-    : session.qrImage || ''
-
   return (
     <div className="tg-app tg-app--account tg-aba-khqr-page">
       <BrandTabToolbar title="ABA KHQR" titleLang="en" titleClassName="text-[16px]" />
       <main className="tg-list-wrap tg-account-scroll flex flex-1 flex-col px-3 py-5">
         <section className="mx-auto flex w-full max-w-[420px] flex-col gap-4">
-          <p className="tg-aba-khqr-page__brand" lang="en">
-            ABA&apos; PAY
-          </p>
+          <AbaKhqrPaymentScreen
+            session={session}
+            showDemoActions={isUiMock}
+            onOpenAbaMobileDemo={onOpenAbaMobile}
+            onSimulatePaid={goSuccess}
+          />
 
-          <article className="tg-aba-khqr-card">
-            <div className="tg-aba-khqr-card__header">
-              <span className="tg-aba-khqr-card__khqr-logo">KHQR</span>
-            </div>
-            <div className="tg-aba-khqr-card__body">
-              <p className="tg-aba-khqr-card__merchant">{session.merchantLabel}</p>
-              <p className="tg-aba-khqr-card__amount">{formatDisplayAmount(session)}</p>
-              <div className="tg-aba-khqr-card__qr-wrap">
-                {qrSrc ? (
-                  <img src={qrSrc} alt="KHQR" className="tg-aba-khqr-card__qr" decoding="async" />
-                ) : (
-                  <p className="tg-aba-khqr-card__qr-fallback" lang="en">
-                    QR unavailable — use ABA Mobile below
-                  </p>
-                )}
-              </div>
-              <p className="tg-aba-khqr-card__hint" lang="en">
-                Scan with ABA Mobile or any KHQR supported banking app
-              </p>
-            </div>
-          </article>
-
-          {session.abapayDeeplink ? (
+          {!isUiMock && session.abapayDeeplink ? (
             <button
               type="button"
               className="tg-aba-khqr-page__deeplink-btn"
@@ -136,12 +140,15 @@ export default function VipAbaKhqrPage() {
           ) : null}
 
           {statusNote ? (
-            <p className="text-center text-[11px] text-white/55" lang="en">
+            <p className="text-center text-[11px] text-slate-500" lang="en">
               {statusNote}
             </p>
           ) : null}
 
-          <Link to="/vip" className="text-center text-[11px] text-white/45 underline-offset-2 hover:underline">
+          <Link
+            to="/vip"
+            className="text-center text-[11px] text-slate-400 underline-offset-2 hover:underline"
+          >
             Cancel
           </Link>
         </section>
