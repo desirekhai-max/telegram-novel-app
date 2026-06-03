@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import AbaKhqrPaymentScreen from '../components/AbaKhqrPaymentScreen.jsx'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import VipPaymentResultModal from '../components/VipPaymentResultModal.jsx'
@@ -131,14 +131,6 @@ export default function VipAbaKhqrPage() {
               {statusNote}
             </p>
           ) : null}
-
-          <Link
-            to="/vip"
-            className="tg-aba-khqr-page__cancel text-center text-[11px] text-slate-400 underline-offset-2 hover:underline"
-            lang="km"
-          >
-            បោះបង់
-          </Link>
         </div>
       </main>
 

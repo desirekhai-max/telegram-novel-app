@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
 import { ABA_KHQR_MOCK_QR_DATA_URL } from '../lib/abaKhqrUiMock.js'
@@ -58,16 +59,26 @@ export default function AbaKhqrPaymentScreen({
         </div>
       </article>
 
-      {showDemoActions ? (
-        <div className="tg-aba-khqr-page__demo-actions">
-          <button type="button" className="tg-aba-khqr-page__simulate-btn" lang="km" onClick={onSimulatePaid}>
-            សាកល្បងការទូទាត់ជោគជ័យ
-          </button>
-          <p className="tg-aba-khqr-page__demo-note" lang="km">
-            សម្រាប់ការសាកល្បង UI ប៉ុណ្ណោះ
-          </p>
-        </div>
-      ) : null}
+      <div className="tg-aba-khqr-page__action-stack">
+        {showDemoActions ? (
+          <>
+            <button
+              type="button"
+              className="tg-aba-khqr-page__action-btn tg-aba-khqr-page__action-btn--simulate"
+              lang="km"
+              onClick={onSimulatePaid}
+            >
+              សាកល្បងការទូទាត់ជោគជ័យ
+            </button>
+            <p className="tg-aba-khqr-page__demo-note" lang="km">
+              សម្រាប់ការសាកល្បង UI ប៉ុណ្ណោះ
+            </p>
+          </>
+        ) : null}
+        <Link to="/vip" className="tg-aba-khqr-page__action-btn tg-aba-khqr-page__action-btn--cancel" lang="km">
+          បោះបង់
+        </Link>
+      </div>
     </div>
   )
 }
