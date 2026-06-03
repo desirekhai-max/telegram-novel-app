@@ -45,6 +45,7 @@ export function buildAbaKhqrUiMockSession(planId, role = 'normal') {
     amount,
     currency: 'USD',
     merchantLabel: 'VIP-Subscription',
+    planTitleKm: String(plan?.titleKm || '').trim(),
     qrImage: ABA_KHQR_MOCK_QR_DATA_URL,
     qrString: '',
     abapayDeeplink: '',

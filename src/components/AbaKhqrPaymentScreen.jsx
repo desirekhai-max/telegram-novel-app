@@ -1,4 +1,14 @@
+import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
+import { useViewerProfile } from '../hooks/useViewerProfile.js'
 import { ABA_KHQR_MOCK_QR_DATA_URL } from '../lib/abaKhqrUiMock.js'
+
+function resolveKhqrPlanTitleKm(session, role) {
+  const saved = String(session?.planTitleKm || '').trim()
+  if (saved) return saved
+  const planId = String(session?.planId || '').trim()
+  if (!planId) return ''
+  return String(getVipPlanForPurchase(planId, role)?.titleKm || '').trim()
+}
 
 function formatDisplayAmount(session) {
   const label = String(session?.amountLabel || '').trim()
@@ -10,13 +20,15 @@ function formatDisplayAmount(session) {
 
 /**
  * Figma Payment Screen — template3_color style KHQR card.
- * @param {{ session: { merchantLabel?: string, amountLabel?: string, amount?: number, qrImage?: string }, onSimulatePaid?: () => void, showDemoActions?: boolean }} props
+ * @param {{ session: { planId?: string, planTitleKm?: string, amountLabel?: string, amount?: number, qrImage?: string }, onSimulatePaid?: () => void, showDemoActions?: boolean }} props
  */
 export default function AbaKhqrPaymentScreen({
   session,
   onSimulatePaid,
   showDemoActions = false,
 }) {
+  const { viewerProfile } = useViewerProfile()
+  const planTitleKm = resolveKhqrPlanTitleKm(session, viewerProfile.role)
   const qrSrc =
     String(session?.qrImage || '').trim() || ABA_KHQR_MOCK_QR_DATA_URL
 
@@ -32,7 +44,9 @@ export default function AbaKhqrPaymentScreen({
           <span className="tg-aba-khqr-card__khqr-logo">KHQR</span>
         </div>
         <div className="tg-aba-khqr-card__body">
-          <p className="tg-aba-khqr-card__merchant">{session?.merchantLabel || 'VIP-Subscription'}</p>
+          <p className="tg-aba-khqr-card__merchant" lang="km">
+            {planTitleKm}
+          </p>
           <p className="tg-aba-khqr-card__amount">{formatDisplayAmount(session)}</p>
           <div className="tg-aba-khqr-card__divider" aria-hidden />
           <div className="tg-aba-khqr-card__qr-wrap">
