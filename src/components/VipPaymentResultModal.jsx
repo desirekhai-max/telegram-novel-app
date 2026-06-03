@@ -126,7 +126,7 @@ export default function VipPaymentResultModal({ open, viewState, durationHours =
                 ចាប់ផ្ដើមអាន
               </Link>
               <Link
-                to="/"
+                to="/vip"
                 className="tg-vip-result-modal__btn tg-vip-result-modal__btn--ghost"
                 lang="km"
                 onClick={onClose}
