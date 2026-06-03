@@ -1708,15 +1708,13 @@ a {
 }
 
 .tg-aba-khqr-page__shell {
-  width: 100%;
-  max-width: 340px;
+  width: min(100%, 280px);
   margin: 0 auto;
   box-sizing: border-box;
 }
 
 .tg-aba-khqr-page__panel {
   width: 100%;
-  max-width: 340px;
   margin: 0 auto;
   box-sizing: border-box;
 }
@@ -1724,8 +1722,7 @@ a {
 .tg-aba-khqr-page__status,
 .tg-aba-khqr-page__cancel {
   display: block;
-  width: 100%;
-  max-width: 340px;
+  width: min(100%, 280px);
   margin: 8px auto 0;
 }
 
@@ -1748,7 +1745,7 @@ a {
 
 .tg-aba-khqr-card {
   width: 100%;
-  max-width: 340px;
+  max-width: 200px;
   margin: 0 auto;
   overflow: hidden;
   border-radius: 14px;
@@ -1843,8 +1840,7 @@ a {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 100%;
-  max-width: 340px;
+  width: min(100%, 280px);
   margin: 2px auto 0;
 }
 
