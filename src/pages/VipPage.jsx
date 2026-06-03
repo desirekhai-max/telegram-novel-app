@@ -155,8 +155,8 @@ export default function VipPage() {
   }, [runAbaPaymentStart])
 
   const onAbaMobilePay = useCallback(() => {
-    void runAbaPaymentStart('aba')
-  }, [runAbaPaymentStart])
+    /* ABA Mobile flow — reserved; no action yet */
+  }, [])
 
   const selectPlan = useCallback(
     (planId) => {
