@@ -262,20 +262,34 @@ export default function VipPage() {
           })}
 
           {selectedPlanId && termsAccepted && tgUser?.id ? (
-            <div className="flex flex-col gap-3">
-              <AbaKhqrEntryRow
-                title="ស្កេន KHQR"
-                pending={abaKhqrPending}
-                disabled={!selectedPlanId}
-                onSelect={onKhqrScanPay}
-              />
-              <AbaKhqrEntryRow
-                title="បង់ប្រាក់តាម ABA Mobile"
-                pending={abaKhqrPending}
-                disabled={!selectedPlanId}
-                onSelect={onAbaMobilePay}
-              />
-            </div>
+            <section className="tg-vip-payment-section" aria-labelledby="tg-vip-payment-heading">
+              <header className="tg-vip-payment-section__intro">
+                <h2 id="tg-vip-payment-heading" className="tg-vip-payment-section__title" lang="km">
+                  ជ្រើសរើសវិធីបង់ប្រាក់
+                </h2>
+                <p className="tg-vip-payment-section__desc" lang="km">
+                  សូមជ្រើសរើសវិធីបង់ប្រាក់ដែលអ្នកពេញចិត្ត
+                </p>
+              </header>
+              <div className="tg-vip-payment-section__cards">
+                <AbaKhqrEntryRow
+                  decor="khqr"
+                  title="ស្កេន KHQR"
+                  subtitle="ស្កេន KHQR ដើម្បីបង់ប្រាក់ភ្លាមៗ"
+                  pending={abaKhqrPending}
+                  disabled={!selectedPlanId}
+                  onSelect={onKhqrScanPay}
+                />
+                <AbaKhqrEntryRow
+                  decor="aba-mobile"
+                  title="បង់ប្រាក់តាម ABA Mobile"
+                  subtitle="បើកកម្មវិធី ABA Mobile ដើម្បីបង់ប្រាក់ដោយផ្ទាល់"
+                  pending={abaKhqrPending}
+                  disabled={!selectedPlanId}
+                  onSelect={onAbaMobilePay}
+                />
+              </div>
+            </section>
           ) : null}
 
           {!termsAccepted ? (
