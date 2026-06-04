@@ -36,6 +36,11 @@
    * 底栏总高 ≈ safe-area + 导航条(≈70px) + 缓冲；静态页滚动区 padding-bottom 与此对齐。
    */
   --tg-bottom-nav-gap: calc(70px + env(safe-area-inset-bottom, 0px) + 16px);
+  /* 正文滚到底时，最后一行与底栏顶部的安全间距 */
+  --tg-home-body-scroll-clearance: 24px;
+  --tg-home-body-scroll-end: calc(
+    var(--tg-bottom-nav-gap) + var(--tg-home-body-scroll-clearance)
+  );
   --tg-static-page-scroll-pad-bottom: max(120px, calc(var(--tg-bottom-nav-gap) + 24px));
 
   /* Noto Sans/Serif Khmer：Android 上高棉文回退字体观感弱，显式优先使用 */
@@ -6888,14 +6893,15 @@ body.tg-desktop-admin #root {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-  clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
-  -webkit-clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
+  scroll-padding-bottom: var(--tg-home-body-scroll-end);
+  clip-path: inset(0 0 var(--tg-home-body-scroll-end) 0);
+  -webkit-clip-path: inset(0 0 var(--tg-home-body-scroll-end) 0);
 }
 
 .tg-home-body-scroll__dock-mask {
   flex: 0 0 auto;
-  height: var(--tg-bottom-nav-gap);
-  min-height: var(--tg-bottom-nav-gap);
+  height: var(--tg-home-body-scroll-end);
+  min-height: var(--tg-home-body-scroll-end);
   background: var(--tg-app-surface);
   pointer-events: none;
 }
