@@ -277,32 +277,6 @@ a {
   box-sizing: border-box;
 }
 
-/* About / Contact / Terms / Privacy / Refund — 统一静态政策页布局 */
-.tg-static-legal-page {
-  padding-bottom: var(--tg-bottom-nav-gap);
-  height: 100dvh;
-  max-height: 100dvh;
-  min-height: 100dvh;
-  overflow: hidden;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  background: var(--tg-app-surface);
-}
-
-.tg-static-legal-page__scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  max-height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 2rem 1.5rem var(--tg-static-page-scroll-pad-bottom);
-  scroll-padding-bottom: var(--tg-static-page-scroll-pad-bottom);
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
-  touch-action: pan-y;
-}
-
 /* 账户页 / VIP：锁定视口，滚动在 main 内 */
 .tg-app--account {
   padding-bottom: var(--tg-bottom-nav-gap);

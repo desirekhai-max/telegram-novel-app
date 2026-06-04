@@ -2,27 +2,25 @@ import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 
 /**
- * About / Contact / Terms / Privacy / Refund 等静态政策页共用布局。
- * 为 fixed 底栏预留滚动留白，避免最后一段正文被 Home/VIP/账户 遮挡。
- *
- * @param {{
- *   title: string,
- *   titleLang?: string,
- *   children: import('react').ReactNode,
- * }} props
+ * About / Contact / Terms / Privacy / Refund — 与首页相同的视口壳 + 内层滚动区。
+ * 底栏占位由 .tg-app padding-bottom 承担（见 .tg-home-body-scroll 注释），不在滚动区叠 padding。
  */
 export default function StaticLegalPageLayout({ title, titleLang = 'km', children }) {
   const swipeHandlers = useEdgeSwipeBack()
 
   return (
-    <div className="tg-app tg-static-legal-page">
+    <div className="tg-app tg-app--home">
       <BrandTabToolbar
         title={title}
         titleLang={titleLang}
         titleClassName="text-[16px]"
         showDivider
       />
-      <main className="tg-list-wrap tg-static-legal-page__scroll flex flex-1 flex-col gap-5" {...swipeHandlers}>
+      <div className="tg-home-main-rule" aria-hidden />
+      <main
+        className="tg-list-wrap tg-home-body-scroll flex min-h-0 flex-1 flex-col gap-5 px-6 pt-8"
+        {...swipeHandlers}
+      >
         {children}
       </main>
     </div>
