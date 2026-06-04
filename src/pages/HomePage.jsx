@@ -37,7 +37,7 @@ import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount.js'
 import { setNovelGenreOptions } from '../lib/novelDisplay.js'
-import HomePageViewport from '../components/HomePageViewport.jsx'
+import HomePageDom from '../components/HomePageDom.jsx'
 
 const SORT_OPTIONS = [
   { id: 'update', label: '​ថ្មីៗ'},
@@ -503,9 +503,19 @@ export default function HomePage() {
   )
 
   return (
-    <HomePageViewport
+    <HomePageDom
       shellClassName={homeSearchInputFocused ? 'tg-app--home-search-focus' : ''}
       toolbar={homeToolbar}
+      afterMain={
+        filterOpen ? (
+          <HomeFilterPanelOverlay
+            criteria={panelCriteria}
+            panelConfig={filterPanelConfig}
+            onCriteriaChange={onFilterCriteriaChange}
+            onClose={() => setFilterOpen(false)}
+          />
+        ) : null
+      }
     >
         <div className="tg-home-filter-bar">
           <div className="tg-home-filter-bar__picked-row">
@@ -680,14 +690,6 @@ export default function HomePage() {
           </nav>
         ) : null}
 
-      {filterOpen ? (
-        <HomeFilterPanelOverlay
-          criteria={panelCriteria}
-          panelConfig={filterPanelConfig}
-          onCriteriaChange={onFilterCriteriaChange}
-          onClose={() => setFilterOpen(false)}
-        />
-      ) : null}
-    </HomePageViewport>
+    </HomePageDom>
   )
 }

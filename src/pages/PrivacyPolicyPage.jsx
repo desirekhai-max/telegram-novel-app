@@ -1,9 +1,9 @@
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
-import HomePageViewport from '../components/HomePageViewport.jsx'
+import HomePageDom from '../components/HomePageDom.jsx'
 
 export default function PrivacyPolicyPage() {
   return (
-    <HomePageViewport
+    <HomePageDom
       toolbar={
         <BrandTabToolbar title="Privacy Policy · គោលការណ៍ឯកជនភាព" titleClassName="text-[16px]" showDivider />
       }
@@ -70,6 +70,6 @@ export default function PrivacyPolicyPage() {
           </p>
         </li>
       </ul>
-    </HomePageViewport>
+    </HomePageDom>
   )
 }

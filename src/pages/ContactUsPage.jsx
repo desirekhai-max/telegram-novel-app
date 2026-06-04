@@ -6,7 +6,7 @@ import {
   tryOpenTelegramMeLink,
 } from '../lib/telegramWebApp.js'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
-import HomePageViewport from '../components/HomePageViewport.jsx'
+import HomePageDom from '../components/HomePageDom.jsx'
 
 const TELEGRAM_SUPPORT_URL = 'https://t.me/VIP_69kkh'
 const SUPPORT_EMAIL = DEFAULT_SUPPORT_EMAIL
@@ -18,7 +18,7 @@ export default function ContactUsPage() {
   )
 
   return (
-    <HomePageViewport toolbar={<BrandTabToolbar title="Contact Us · ទាក់ទងមកយើង" titleClassName="text-[16px]" showDivider />}>
+    <HomePageDom toolbar={<BrandTabToolbar title="Contact Us · ទាក់ទងមកយើង" titleClassName="text-[16px]" showDivider />}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p
@@ -86,6 +86,6 @@ export default function ContactUsPage() {
       </p>
         </li>
       </ul>
-    </HomePageViewport>
+    </HomePageDom>
   )
 }

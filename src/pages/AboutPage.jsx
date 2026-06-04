@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
-import HomePageViewport from '../components/HomePageViewport.jsx'
+import HomePageDom from '../components/HomePageDom.jsx'
 
 export default function AboutPage() {
   return (
-    <HomePageViewport toolbar={<BrandTabToolbar title="About Us · អំពីពួកយើង" titleClassName="text-[16px]" showDivider />}>
+    <HomePageDom toolbar={<BrandTabToolbar title="About Us · អំពីពួកយើង" titleClassName="text-[16px]" showDivider />}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p
@@ -43,6 +43,6 @@ export default function AboutPage() {
       </p>
         </li>
       </ul>
-    </HomePageViewport>
+    </HomePageDom>
   )
 }

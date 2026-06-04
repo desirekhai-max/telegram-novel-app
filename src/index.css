@@ -6714,7 +6714,7 @@ body.tg-desktop-admin #root {
   position: fixed;
   inset-inline: 0;
   bottom: 0;
-  z-index: 70;
+  z-index: 100;
   display: flex;
   justify-content: center;
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -6723,6 +6723,7 @@ body.tg-desktop-admin #root {
   opacity: 1;
   visibility: visible;
   background: var(--tg-app-surface);
+  isolation: isolate;
   transition:
     transform 0.34s cubic-bezier(0.32, 0.72, 0, 1),
     opacity 0.26s ease-out,
@@ -6734,9 +6735,9 @@ body.tg-desktop-admin #root {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
-  height: calc(100% + 28px);
+  height: calc(100% + 48px);
   background: var(--tg-app-surface);
-  z-index: -1;
+  z-index: 0;
   pointer-events: none;
 }
 
@@ -6767,7 +6768,7 @@ body.tg-desktop-admin #root {
 .tg-bottom-nav {
   pointer-events: none;
   position: relative;
-  z-index: 0;
+  z-index: 1;
   display: flex;
   width: 100%;
   justify-content: center;
@@ -6898,6 +6899,16 @@ body.tg-desktop-admin #root {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
+  clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
+  -webkit-clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
+}
+
+.tg-home-body-scroll__dock-mask {
+  flex: 0 0 auto;
+  height: var(--tg-bottom-nav-gap);
+  min-height: var(--tg-bottom-nav-gap);
+  background: var(--tg-app-surface);
+  pointer-events: none;
 }
 
 /* 首页：已选行全宽；第二行筛选按钮 + 排序（避免已选标签被排序区挤裁切） */

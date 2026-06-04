@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
-import HomePageViewport from '../components/HomePageViewport.jsx'
+import HomePageDom from '../components/HomePageDom.jsx'
 
 export default function TermsOfServicePage() {
   return (
-    <HomePageViewport toolbar={<BrandTabToolbar title="Terms of Service · លក្ខខណ្ឌប្រើប្រាស់" titleClassName="text-[16px]" showDivider />}>
+    <HomePageDom toolbar={<BrandTabToolbar title="Terms of Service · លក្ខខណ្ឌប្រើប្រាស់" titleClassName="text-[16px]" showDivider />}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p
@@ -71,6 +71,6 @@ export default function TermsOfServicePage() {
       </p>
         </li>
       </ul>
-    </HomePageViewport>
+    </HomePageDom>
   )
 }

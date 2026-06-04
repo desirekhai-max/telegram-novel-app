@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import AmbientBackdrop from './components/AmbientBackdrop.jsx'
-import BottomNav from './components/BottomNav.jsx'
+import AppBottomNavDock from './components/AppBottomNavDock.jsx'
 import { AppChromeProvider } from './contexts/AppChromeProvider.jsx'
 import { ViewerProfileProvider } from './contexts/ViewerProfileProvider.jsx'
 import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.jsx'
@@ -166,16 +166,7 @@ function AppShell() {
         >
           <AppRoutes routeLocation={location} />
         </div>
-        <div
-          className={
-            bottomNavHidden
-              ? 'tg-bottom-nav-dock tg-bottom-nav-dock--hidden'
-              : 'tg-bottom-nav-dock'
-          }
-          inert={bottomNavHidden}
-        >
-          <BottomNav />
-        </div>
+        <AppBottomNavDock hidden={bottomNavHidden} />
       </div>
     </>
   )
