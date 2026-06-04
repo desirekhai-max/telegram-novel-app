@@ -150,37 +150,32 @@ function AppShell() {
         {showSwipeUnderlay ? (
           <div className="tg-swipe-underlay" aria-hidden>
             <AppRoutes routeLocation={previousLocationRef.current} />
-            {!prevBottomNavHidden ? <div className="tg-bottom-nav-shield" aria-hidden /> : null}
-            <div
-              className={
-                prevBottomNavHidden
-                  ? 'tg-bottom-nav-dock tg-bottom-nav-dock--hidden'
-                  : 'tg-bottom-nav-dock'
-              }
-            >
-              <BottomNav />
-            </div>
           </div>
         ) : null}
         <div
-          className="tg-swipe-foreground"
+          className={[
+            'tg-swipe-foreground',
+            swipe.active || swipe.animating ? 'tg-swipe-foreground--gesture' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
           style={{
             transform: swipe.active && swipe.dx > 0 ? `translateX(${swipe.dx}px)` : undefined,
             transition: swipe.animating ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
           }}
         >
           <AppRoutes routeLocation={location} />
-          {!bottomNavHidden ? <div className="tg-bottom-nav-shield" aria-hidden /> : null}
-          <div
-            className={
-              bottomNavHidden
-                ? 'tg-bottom-nav-dock tg-bottom-nav-dock--hidden'
-                : 'tg-bottom-nav-dock'
-            }
-            inert={bottomNavHidden}
-          >
-            <BottomNav />
-          </div>
+        </div>
+        {!bottomNavHidden ? <div className="tg-bottom-nav-shield" aria-hidden /> : null}
+        <div
+          className={
+            bottomNavHidden
+              ? 'tg-bottom-nav-dock tg-bottom-nav-dock--hidden'
+              : 'tg-bottom-nav-dock'
+          }
+          inert={bottomNavHidden}
+        >
+          <BottomNav />
         </div>
       </div>
     </>

@@ -114,6 +114,10 @@ body {
   z-index: 1;
   min-height: 100%;
   background: var(--tg-app-surface);
+}
+
+/* 仅边缘返回跟手时启用，避免 will-change:transform 把底栏 fixed 锁进错误层叠 */
+.tg-swipe-foreground--gesture {
   will-change: transform;
 }
 
@@ -1273,6 +1277,11 @@ a {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
+}
+
+.tg-app--account .tg-account-scroll {
+  clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
+  -webkit-clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
 }
 
 /* Notifications: toolbar divider + empty/loading polish; no outer cards */
@@ -2479,6 +2488,8 @@ a {
   max-height: 100%;
   padding-bottom: calc(var(--tg-bottom-nav-gap) + 32px);
   scroll-padding-bottom: calc(var(--tg-bottom-nav-gap) + 32px);
+  clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
+  -webkit-clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
@@ -6715,21 +6726,21 @@ body.tg-desktop-admin #root {
   position: fixed;
   inset-inline: 0;
   bottom: 0;
-  z-index: 68;
+  z-index: 9000;
   height: var(--tg-bottom-nav-gap);
   max-width: 520px;
   margin-inline: auto;
   background: var(--tg-app-surface);
   pointer-events: none;
-  box-shadow: 0 -8px 24px 8px var(--tg-app-surface);
+  box-shadow: 0 -12px 32px 12px var(--tg-app-surface);
 }
 
-/* 底栏容器：实色衬底 + 导航条 */
+/* 底栏容器：实色衬底 + 导航条（挂在 tg-app-root，不受 swipe transform 影响） */
 .tg-bottom-nav-dock {
   position: fixed;
   inset-inline: 0;
   bottom: 0;
-  z-index: 70;
+  z-index: 9010;
   display: flex;
   justify-content: center;
   padding-bottom: env(safe-area-inset-bottom, 0px);
