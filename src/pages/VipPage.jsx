@@ -11,7 +11,6 @@ import {
   savePayWayCheckoutSession,
   submitPayWayCheckoutForm,
 } from '../lib/paywayCheckout.js'
-import { openAbaMobileDeeplink } from '../lib/abaMobile.js'
 import { buildAbaKhqrUiMockSession, isAbaKhqrUiMockFlowEnabled } from '../lib/abaKhqrUiMock.js'
 import { saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
 import {
@@ -61,18 +60,17 @@ export default function VipPage() {
   )
 
   const navigateToAbaKhqrPage = useCallback(
-    (session, planId, payMode) => {
-      const base = isAbaKhqrUiMockFlowEnabled() && session.uiMock
+    (session, planId) => {
+      const path = isAbaKhqrUiMockFlowEnabled() && session.uiMock
         ? `/vip/aba-khqr?ui_mock=1&tran_id=${encodeURIComponent(session.tranId)}&plan_id=${encodeURIComponent(planId)}`
         : `/vip/aba-khqr?tran_id=${encodeURIComponent(session.tranId)}&plan_id=${encodeURIComponent(planId)}`
-      const sep = base.includes('?') ? '&' : '?'
-      navigate(`${base}${sep}pay_mode=${encodeURIComponent(payMode)}`)
+      navigate(path)
     },
     [navigate],
   )
 
   const runAbaPaymentStart = useCallback(
-    async (payMode) => {
+    async () => {
       if (!termsAccepted) {
         setPurchaseError('សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ')
         return
@@ -92,26 +90,14 @@ export default function VipPage() {
         if (isAbaKhqrUiMockFlowEnabled()) {
           const mockSession = buildAbaKhqrUiMockSession(planId, viewerProfile.role)
           saveVipAbaKhqrSession(mockSession)
-          if (payMode === 'aba' && mockSession.abapayDeeplink) {
-            openAbaMobileDeeplink(mockSession.abapayDeeplink, {
-              playStore: mockSession.playStore,
-              appStore: mockSession.appStore,
-            })
-          }
-          navigateToAbaKhqrPage(mockSession, planId, payMode)
+          navigateToAbaKhqrPage(mockSession, planId)
           return
         }
 
         const aba = await startViewerVipAbaKhqr(planId)
         if (aba?.ok && aba.session?.tranId) {
           saveVipAbaKhqrSession(aba.session)
-          if (payMode === 'aba' && aba.session.abapayDeeplink) {
-            openAbaMobileDeeplink(aba.session.abapayDeeplink, {
-              playStore: aba.session.playStore,
-              appStore: aba.session.appStore,
-            })
-          }
-          navigateToAbaKhqrPage(aba.session, planId, payMode)
+          navigateToAbaKhqrPage(aba.session, planId)
           return
         }
 
@@ -150,13 +136,9 @@ export default function VipPage() {
     ],
   )
 
-  const onKhqrScanPay = useCallback(() => {
-    void runAbaPaymentStart('khqr')
+  const onAbaKhqrPay = useCallback(() => {
+    void runAbaPaymentStart()
   }, [runAbaPaymentStart])
-
-  const onAbaMobilePay = useCallback(() => {
-    /* ABA Mobile flow — reserved; no action yet */
-  }, [])
 
   const selectPlan = useCallback(
     (planId) => {
@@ -296,19 +278,11 @@ export default function VipPage() {
               <div className="tg-vip-payment-section__cards">
                 <AbaKhqrEntryRow
                   decor="khqr"
-                  title="ស្កេន KHQR"
-                  subtitle="ស្កេន KHQR ដើម្បីបង់ប្រាក់ភ្លាមៗ"
+                  title="ABA KHQR"
+                  subtitle="បង់ប្រាក់តាម ABA KHQR"
                   pending={abaKhqrPending}
                   disabled={!selectedPlanId}
-                  onSelect={onKhqrScanPay}
-                />
-                <AbaKhqrEntryRow
-                  decor="aba-mobile"
-                  title="បង់ប្រាក់តាម ABA Mobile"
-                  subtitle="បើកកម្មវិធី ABA Mobile ដើម្បីបង់ប្រាក់ដោយផ្ទាល់"
-                  pending={abaKhqrPending}
-                  disabled={!selectedPlanId}
-                  onSelect={onAbaMobilePay}
+                  onSelect={onAbaKhqrPay}
                 />
               </div>
             </section>
