@@ -6729,60 +6729,49 @@ body.tg-desktop-admin #root {
   color: var(--tg-blue-hover);
 }
 
-/* 底栏容器：fixed，挂在 tg-app-root（不受 swipe transform 影响） */
+/* 底栏容器：全宽实色底板，禁止半透明/毛玻璃，避免正文透出 */
 .tg-bottom-nav-dock {
   position: fixed;
   inset-inline: 0;
   bottom: 0;
-  z-index: 100;
+  z-index: 10000;
   display: flex;
   justify-content: center;
+  align-items: flex-end;
+  min-height: var(--tg-bottom-nav-gap);
+  padding-top: 6px;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   pointer-events: none;
-  transform: translateY(0);
-  opacity: 1;
-  visibility: visible;
-  background: var(--tg-app-surface);
+  background-color: #131a36;
   isolation: isolate;
-  transition:
-    transform 0.34s cubic-bezier(0.32, 0.72, 0, 1),
-    opacity 0.26s ease-out,
-    visibility 0s linear 0s;
 }
 
-.tg-bottom-nav-dock::before {
-  content: '';
+.tg-bottom-nav-dock__plate {
   position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  height: calc(100% + 48px);
-  background: var(--tg-app-surface);
+  inset: 0;
   z-index: 0;
   pointer-events: none;
+  background-color: #131a36;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tg-bottom-nav-dock {
-    transition: none;
-  }
-}
-
-/* Bottom tab bar — compact vertical rhythm, frosted pill, active glow */
+/* Bottom tab bar */
 .tg-bottom-nav {
-  pointer-events: none;
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   width: 100%;
+  max-width: 520px;
   justify-content: center;
-  padding-top: 2px;
+  padding-top: 0;
+  pointer-events: none;
+  background-color: #131a36;
 }
 
 .tg-bottom-nav__inner {
   pointer-events: auto;
   width: 100%;
-  max-width: 520px;
-  padding: 0 8px;
+  padding: 0 8px 4px;
+  background-color: #131a36;
 }
 
 .tg-bottom-nav__bar {
@@ -6793,12 +6782,9 @@ body.tg-desktop-admin #root {
   min-height: 54px;
   padding: 5px 6px 7px;
   border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: var(--tg-app-surface);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.13),
-    0 0 0 1px rgba(56, 189, 248, 0.06),
-    0 -10px 36px rgba(0, 0, 0, 0.42);
+  border: 1px solid #3d4a6f;
+  background-color: #131a36;
+  box-shadow: inset 0 1px 0 #2a3558;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -6821,7 +6807,7 @@ body.tg-desktop-admin #root {
   font-weight: 600;
   letter-spacing: 0.03em;
   line-height: 1.15;
-  color: rgba(214, 219, 236, 0.52);
+  color: #9aa3bc;
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
   transition:
@@ -6838,8 +6824,8 @@ body.tg-desktop-admin #root {
 
 @media (hover: hover) and (pointer: fine) {
   .tg-bottom-nav__link:not(.tg-bottom-nav__link--active):hover {
-    color: rgba(240, 244, 255, 0.78);
-    background: rgba(255, 255, 255, 0.06);
+    color: #e8ebf5;
+    background-color: #1c2444;
   }
 }
 
