@@ -5,7 +5,7 @@ export function normalizeAppPathname(pathname) {
   return raw
 }
 
-/** 仅这些路由渲染 BottomNav（白名单） */
+/** 与 HomePage 相同：这些路由渲染 AppBottomNavDock */
 export const PATHS_WITH_BOTTOM_NAV = [
   '/',
   '/notifications',
@@ -17,10 +17,6 @@ export const PATHS_WITH_BOTTOM_NAV = [
   '/account/orders',
   '/account/reading-history',
   '/account/saved',
-]
-
-/** 政策/关于页：绝不渲染 BottomNav */
-export const PATHS_WITHOUT_BOTTOM_NAV = [
   '/about',
   '/contact-us',
   '/terms-of-service',
@@ -33,19 +29,13 @@ export function isPathWithBottomNav(pathname) {
   return PATHS_WITH_BOTTOM_NAV.includes(path)
 }
 
-export function isPathWithoutBottomNav(pathname) {
-  const path = normalizeAppPathname(pathname)
-  return PATHS_WITHOUT_BOTTOM_NAV.includes(path)
-}
-
-/** AppShell 用：是否挂载 AppBottomNavDock */
+/** AppShell 用：是否挂载 AppBottomNavDock（与 HomePage 同一套逻辑） */
 export function shouldRenderAppBottomNavDock(pathname, chrome = {}) {
   const {
     searchExploreOpen = false,
     filterPanelOpen = false,
     homeSearchInputFocused = false,
   } = chrome
-  if (isPathWithoutBottomNav(pathname)) return false
   if (!isPathWithBottomNav(pathname)) return false
   if (searchExploreOpen || filterPanelOpen || homeSearchInputFocused) return false
   return true

@@ -4,7 +4,7 @@ import HomePageDom from '../components/HomePageDom.jsx'
 
 export default function AboutPage() {
   return (
-    <HomePageDom withBottomNav={false} toolbar={<BrandTabToolbar title="About Us · អំពីពួកយើង" titleClassName="text-[16px]" showDivider />}>
+    <HomePageDom toolbar={<BrandTabToolbar title="About Us · អំពីពួកយើង" titleClassName="text-[16px]" showDivider />}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p

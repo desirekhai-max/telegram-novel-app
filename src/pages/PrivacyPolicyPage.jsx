@@ -4,7 +4,6 @@ import HomePageDom from '../components/HomePageDom.jsx'
 export default function PrivacyPolicyPage() {
   return (
     <HomePageDom
-      withBottomNav={false}
       toolbar={
         <BrandTabToolbar title="Privacy Policy · គោលការណ៍ឯកជនភាព" titleClassName="text-[16px]" showDivider />
       }

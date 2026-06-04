@@ -185,16 +185,6 @@ a {
   padding-bottom: 0;
 }
 
-/* About / Contact / Terms / Privacy / Refund：无底栏，不占位 */
-.tg-app--no-bottom-nav {
-  padding-bottom: 0;
-}
-
-.tg-home-body-scroll--no-bottom-nav {
-  clip-path: none;
-  -webkit-clip-path: none;
-}
-
 .tg-app--reader {
   background: var(--tg-reader-bg);
   padding-bottom: 0;

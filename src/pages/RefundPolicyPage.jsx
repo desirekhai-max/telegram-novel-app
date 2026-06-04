@@ -6,7 +6,7 @@ const TELEGRAM_SUPPORT_URL = 'https://t.me/VIP_69kkh'
 
 export default function RefundPolicyPage() {
   return (
-    <HomePageDom withBottomNav={false} toolbar={<BrandTabToolbar title="Refund Policy · គោលការណ៍សងប្រាក់វិញ" titleClassName="text-[16px]" showDivider />}>
+    <HomePageDom toolbar={<BrandTabToolbar title="Refund Policy · គោលការណ៍សងប្រាក់វិញ" titleClassName="text-[16px]" showDivider />}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p
