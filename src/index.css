@@ -29,11 +29,10 @@
   --tg-toolbar-line: rgba(255, 255, 255, 0.18);
 
   /*
-   * 底部导航占位：须与 fixed 底栏「上沿到屏幕底」高度一致。
-   * 过大会在列表与底栏之间留出死区、最后一卡像被裁切；过小会滚进底栏背后。
-   * 底栏结构：dock 的 safe-area padding + nav pt-1 + 圆角条（py + 图标+文案）≈ 4rem 量级。
+   * 底部导航占位：须 ≥ fixed 底栏「顶边」到屏幕底（safe-area + 圆角条 + 缓冲）。
+   * 过小会导致条款/隐私等长文滚进半透明底栏背后仍可看见。
    */
-  --tg-bottom-nav-gap: calc(4rem + env(safe-area-inset-bottom, 0px));
+  --tg-bottom-nav-gap: calc(4.75rem + env(safe-area-inset-bottom, 0px) + 12px);
 
   /* Noto Sans/Serif Khmer：Android 上高棉文回退字体观感弱，显式优先使用 */
   --tg-font: 'Noto Sans Khmer', -apple-system, BlinkMacSystemFont, 'Segoe UI',
@@ -270,6 +269,29 @@ a {
   max-height: 100dvh;
   min-height: 100dvh;
   overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* 滚动区底部实色渐隐，正文在底栏上沿前被遮住（配合 dock 实底） */
+.tg-app--about .tg-about-scroll {
+  position: relative;
+}
+
+.tg-app--about .tg-about-scroll::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  display: block;
+  height: calc(var(--tg-bottom-nav-gap) + 8px);
+  margin-top: calc(-1 * (var(--tg-bottom-nav-gap) + 8px));
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--tg-app-surface) 72%,
+    var(--tg-app-surface) 100%
+  );
+  pointer-events: none;
+  z-index: 2;
 }
 
 /* 账户页 / VIP：锁定视口高度，滚动在 main 内 */
@@ -1266,7 +1288,8 @@ a {
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
-  padding-bottom: 20px;
+  max-height: 100%;
+  padding-bottom: 36px;
   scroll-padding-bottom: var(--tg-bottom-nav-gap);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
@@ -2474,7 +2497,8 @@ a {
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
-  padding-bottom: 24px;
+  max-height: 100%;
+  padding-bottom: 40px;
   scroll-padding-bottom: var(--tg-bottom-nav-gap);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
@@ -6704,7 +6728,7 @@ body.tg-desktop-admin #root {
   color: var(--tg-blue-hover);
 }
 
-/* 底栏容器：透明衬底；显隐带下滑 + 淡出（系统减少动态效果时关闭） */
+/* 底栏容器：实色衬底遮住其下滚动正文，避免长文透出到 Home/VIP/账户 背后 */
 .tg-bottom-nav-dock {
   position: fixed;
   inset-inline: 0;
@@ -6717,11 +6741,22 @@ body.tg-desktop-admin #root {
   transform: translateY(0);
   opacity: 1;
   visibility: visible;
-  background: transparent;
+  background: var(--tg-app-surface);
   transition:
     transform 0.34s cubic-bezier(0.32, 0.72, 0, 1),
     opacity 0.26s ease-out,
     visibility 0s linear 0s;
+}
+
+.tg-bottom-nav-dock::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: calc(100% + 12px);
+  background: var(--tg-app-surface);
+  z-index: -1;
+  pointer-events: none;
 }
 
 .tg-bottom-nav-dock--hidden {
@@ -6776,16 +6811,16 @@ body.tg-desktop-admin #root {
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: linear-gradient(
     178deg,
-    rgba(22, 28, 52, 0.82) 0%,
-    rgba(10, 12, 26, 0.9) 55%,
-    rgba(6, 8, 18, 0.92) 100%
+    rgba(19, 26, 54, 0.98) 0%,
+    rgba(19, 26, 54, 0.99) 55%,
+    var(--tg-app-surface) 100%
   );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.13),
     0 0 0 1px rgba(56, 189, 248, 0.06),
     0 -10px 36px rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .tg-bottom-nav__link {
