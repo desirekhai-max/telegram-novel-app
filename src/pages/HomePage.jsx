@@ -37,6 +37,7 @@ import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount.js'
 import { setNovelGenreOptions } from '../lib/novelDisplay.js'
+import HomePageViewport from '../components/HomePageViewport.jsx'
 
 const SORT_OPTIONS = [
   { id: 'update', label: '​ថ្មីៗ'},
@@ -416,12 +417,8 @@ export default function HomePage() {
     }
   }, [filterOpen, setFilterPanelOpen])
 
-  return (
-    <div
-      className={['tg-app', 'tg-app--home', homeSearchInputFocused ? 'tg-app--home-search-focus' : '']
-        .filter(Boolean)
-        .join(' ')}
-    >
+  const homeToolbar = (
+    <>
       <header className="tg-toolbar tg-toolbar--large tg-toolbar--home">
         <button
           type="button"
@@ -502,10 +499,14 @@ export default function HomePage() {
           ) : null}
         </NavLink>
       </header>
+    </>
+  )
 
-      <div className="tg-home-main-rule" aria-hidden />
-
-      <main className="tg-list-wrap tg-home-body-scroll flex min-h-0 flex-1 flex-col">
+  return (
+    <HomePageViewport
+      shellClassName={homeSearchInputFocused ? 'tg-app--home-search-focus' : ''}
+      toolbar={homeToolbar}
+    >
         <div className="tg-home-filter-bar">
           <div className="tg-home-filter-bar__picked-row">
             <span className="tg-home-filter-bar__picked-label" lang="zh-Hans">
@@ -678,7 +679,6 @@ export default function HomePage() {
             </button>
           </nav>
         ) : null}
-      </main>
 
       {filterOpen ? (
         <HomeFilterPanelOverlay
@@ -688,6 +688,6 @@ export default function HomePage() {
           onClose={() => setFilterOpen(false)}
         />
       ) : null}
-    </div>
+    </HomePageViewport>
   )
 }

@@ -6,6 +6,7 @@ import {
   tryOpenTelegramMeLink,
 } from '../lib/telegramWebApp.js'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
+import HomePageViewport from '../components/HomePageViewport.jsx'
 
 const TELEGRAM_SUPPORT_URL = 'https://t.me/VIP_69kkh'
 const SUPPORT_EMAIL = DEFAULT_SUPPORT_EMAIL
@@ -17,10 +18,9 @@ export default function ContactUsPage() {
   )
 
   return (
-    <div className="tg-app tg-app--home">
-      <BrandTabToolbar title="Contact Us · ទាក់ទងមកយើង" titleClassName="text-[16px]" showDivider />
-      <div className="tg-home-main-rule" aria-hidden />
-      <main className="tg-list-wrap tg-home-body-scroll flex min-h-0 flex-1 flex-col">
+    <HomePageViewport toolbar={<BrandTabToolbar title="Contact Us · ទាក់ទងមកយើង" titleClassName="text-[16px]" showDivider />}>
+      <ul className="tg-list tg-home-novel-list">
+        <li className="tg-list__item flex flex-col gap-5">
       <p
         className="mx-auto max-w-md text-center text-[1.05rem] font-medium leading-relaxed text-white/90"
         lang="km"
@@ -84,7 +84,8 @@ export default function ContactUsPage() {
       <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
         សូមអរគុណចំពោះការគាំទ្រ និងការប្រើប្រាស់ 69KKH NOVEL។
       </p>
-      </main>
-    </div>
+        </li>
+      </ul>
+    </HomePageViewport>
   )
 }
