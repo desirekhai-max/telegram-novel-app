@@ -121,16 +121,6 @@ function AppShell() {
     setHomeSearchInputFocused(false)
   }, [location.pathname, setSearchExploreOpen, setFilterPanelOpen, setHomeSearchInputFocused])
 
-  useLayoutEffect(() => {
-    document.documentElement.dataset.appPath = location.pathname
-    document.documentElement.dataset.showBottomNav = shouldRenderAppBottomNavDock(
-      location.pathname,
-      { searchExploreOpen, filterPanelOpen, homeSearchInputFocused },
-    )
-      ? '1'
-      : '0'
-  }, [location.pathname, searchExploreOpen, filterPanelOpen, homeSearchInputFocused])
-
   useEffect(() => {
     const adminOnline = location.pathname === '/admin' && isAdminAuthed()
     registerPresencePing(location.pathname, adminOnline)
@@ -158,6 +148,13 @@ function AppShell() {
     filterPanelOpen,
     homeSearchInputFocused,
   })
+
+  useLayoutEffect(() => {
+    document.documentElement.dataset.commitHash = __BUILD_COMMIT__
+    document.documentElement.dataset.showBottomNav = showBottomNav ? '1' : '0'
+    document.documentElement.dataset.appPath = location.pathname
+  }, [location.pathname, showBottomNav])
+
   const showSwipeUnderlay = swipe.active && previousLocationRef.current
 
   return (
