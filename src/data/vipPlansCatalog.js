@@ -39,7 +39,7 @@ export const VIP_PLANS_CATALOG_NORMAL = [
     priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 3 ម៉ោង',
     durationHours: 3,
-    buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
+    buyButtonKm: 'ទិញកម្រិតនេះ',
   },
   {
     planId: 'vip_standard',
@@ -51,7 +51,7 @@ export const VIP_PLANS_CATALOG_NORMAL = [
     priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 12 ម៉ោង',
     durationHours: 12,
-    buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
+    buyButtonKm: 'ទិញកម្រិតនេះ',
   },
   {
     planId: 'vip_premium',
@@ -63,7 +63,7 @@ export const VIP_PLANS_CATALOG_NORMAL = [
     priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 24 ម៉ោង',
     durationHours: 24,
-    buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
+    buyButtonKm: 'ទិញកម្រិតនេះ',
   },
 ]
 
@@ -79,7 +79,7 @@ export const VIP_PLANS_CATALOG_AUTHOR = [
     priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 5 ម៉ោង',
     durationHours: 5,
-    buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
+    buyButtonKm: 'ទិញកម្រិតនេះ',
   },
   {
     planId: 'vip_standard',
@@ -91,7 +91,7 @@ export const VIP_PLANS_CATALOG_AUTHOR = [
     priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 18 ម៉ោង',
     durationHours: 18,
-    buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
+    buyButtonKm: 'ទិញកម្រិតនេះ',
   },
   {
     planId: 'vip_premium',
@@ -103,7 +103,7 @@ export const VIP_PLANS_CATALOG_AUTHOR = [
     priceHintKm: VIP_PLAN_PRICE_HINT_KM,
     durationKm: 'អានបាន 36 ម៉ោង',
     durationHours: 36,
-    buyButtonKm: 'ទិញប្រើឥឡូវនេះ',
+    buyButtonKm: 'ទិញកម្រិតនេះ',
   },
 ]
 

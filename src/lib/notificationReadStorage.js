@@ -1,4 +1,8 @@
 import { getPresenceMemberId } from './miniAppPresence.js'
+import {
+  callTelegramCloudStorageGet,
+  callTelegramCloudStorageSet,
+} from './telegramWebApp.js'
 
 export const NOTIFICATION_READ_STORAGE_KEY = 'tg_notification_read_ids_v1'
 export const NOTIFICATION_READ_CLOUD_KEY = 'tg_notification_read_ids_v1'
@@ -50,14 +54,7 @@ function readMapsEqual(a, b) {
 }
 
 function writeReadMapToCloud(json) {
-  try {
-    const cs = window.Telegram?.WebApp?.CloudStorage
-    if (cs && typeof cs.setItem === 'function') {
-      cs.setItem(NOTIFICATION_READ_CLOUD_KEY, json, () => {})
-    }
-  } catch {
-    /* ignore */
-  }
+  callTelegramCloudStorageSet(NOTIFICATION_READ_CLOUD_KEY, json)
 }
 
 export function resolveNotificationViewerId(tgUser) {
@@ -93,10 +90,7 @@ export function writeReadMap(next) {
  * 启动时从 Telegram CloudStorage 拉取并与 localStorage 合并（Mini App 跨重启持久化）。
  */
 export function hydrateNotificationReadFromTelegramCloud() {
-  const cs = window.Telegram?.WebApp?.CloudStorage
-  if (!cs || typeof cs.getItem !== 'function') return
-
-  cs.getItem(NOTIFICATION_READ_CLOUD_KEY, (err, value) => {
+  callTelegramCloudStorageGet(NOTIFICATION_READ_CLOUD_KEY, (err, value) => {
     if (err || value == null || value === '') return
     let cloud = null
     try {

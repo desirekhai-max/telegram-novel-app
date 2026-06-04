@@ -11,8 +11,8 @@ export function useEdgeSwipeBack(options = {}) {
   const instantBack = options.instantBack === true
   const followGesture = options.followGesture !== false
   const navigate = useNavigate()
-  const { setSwipe } = useSwipeBack()
-  const swipeRef = useRef({ startX: 0, startY: 0, tracking: false, axis: null, dx: 0 })
+  const { resetGesture, startGesture, moveGesture, finishGesture } = useSwipeBack()
+  const swipeRef = useRef({ startX: 0, startY: 0, tracking: false, axis: null, dx: 0, started: false })
   const resetTimerRef = useRef(0)
 
   useEffect(() => {
@@ -20,9 +20,9 @@ export function useEdgeSwipeBack(options = {}) {
       if (resetTimerRef.current) {
         window.clearTimeout(resetTimerRef.current)
       }
-      setSwipe({ active: false, dx: 0, animating: false })
+      resetGesture()
     }
-  }, [setSwipe])
+  }, [resetGesture])
 
   const onTouchStart = (e) => {
     const t = e.touches?.[0]
@@ -33,13 +33,14 @@ export function useEdgeSwipeBack(options = {}) {
       tracking: t.clientX <= 36,
       axis: null,
       dx: 0,
+      started: false,
     }
     if (resetTimerRef.current) {
       window.clearTimeout(resetTimerRef.current)
       resetTimerRef.current = 0
     }
     if (followGesture) {
-      setSwipe({ active: false, dx: 0, animating: false })
+      resetGesture()
     }
   }
 
@@ -67,8 +68,12 @@ export function useEdgeSwipeBack(options = {}) {
     e.preventDefault()
     e.stopPropagation()
     if (followGesture) {
+      if (!st.started) {
+        st.started = true
+        startGesture()
+      }
       const clampedDx = Math.max(0, Math.min(dx, window.innerWidth * 0.92))
-      setSwipe({ active: true, dx: clampedDx, animating: false })
+      moveGesture(clampedDx)
     }
   }
 
@@ -79,36 +84,27 @@ export function useEdgeSwipeBack(options = {}) {
     if (shouldBack) {
       if (instantBack) {
         if (followGesture) {
-          setSwipe({ active: false, dx: 0, animating: false })
+          resetGesture()
         }
-      } else {
-        // 成功返回时不要先“弹回原位”再跳页，避免视觉晃动。
-        if (followGesture) {
-          setSwipe({
-            active: true,
-            dx: Math.max(window.innerWidth, st.dx),
-            animating: true,
-          })
-        }
+      } else if (followGesture) {
+        finishGesture({ commit: true, releaseDx: st.dx })
       }
-      swipeRef.current = { startX: 0, startY: 0, tracking: false, axis: null, dx: 0 }
+      swipeRef.current = { startX: 0, startY: 0, tracking: false, axis: null, dx: 0, started: false }
       if (instantBack) {
         navigate(-1)
       } else {
         window.setTimeout(() => {
           navigate(-1)
-        }, 180)
+        }, 220)
       }
       return
     }
-    if (followGesture) {
-      setSwipe({ active: false, dx: 0, animating: true })
-      resetTimerRef.current = window.setTimeout(() => {
-        setSwipe({ active: false, dx: 0, animating: false })
-        resetTimerRef.current = 0
-      }, 220)
+    if (followGesture && st.started) {
+      finishGesture({ commit: false, releaseDx: 0 })
+    } else if (followGesture) {
+      resetGesture()
     }
-    swipeRef.current = { startX: 0, startY: 0, tracking: false, axis: null, dx: 0 }
+    swipeRef.current = { startX: 0, startY: 0, tracking: false, axis: null, dx: 0, started: false }
   }
 
   return {

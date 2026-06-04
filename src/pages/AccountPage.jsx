@@ -182,7 +182,7 @@ export default function AccountPage() {
   return (
     <div className="tg-app tg-app--account">
       <BrandTabToolbar title="គណនី" />
-      <main className="tg-list-wrap tg-account-scroll flex flex-1 flex-col px-4 pt-2">
+      <main className="tg-list-wrap tg-account-scroll tg-account-scroll--hub flex flex-1 flex-col px-4 pt-2">
         <section className="relative mx-auto w-full max-w-md" aria-labelledby="account-profile-title">
           <div
             className={[

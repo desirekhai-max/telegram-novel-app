@@ -8,8 +8,16 @@ import {
   DEFAULT_HOME_FILTER_PANEL_CONFIG,
   fetchHomeFilterPanelConfig,
 } from '../lib/homeFilterPanelConfig.js'
-import { novels as bundledNovels } from '../data/novels.js'
-import { loadCatalogNovels } from '../lib/novelsRuntime.js'
+import {
+  applyStableHomeListOrder,
+  commitHomeFavoriteCounts,
+  commitHomeLikeCounts,
+  commitHomeStats,
+  getCachedHomeFavoriteCounts,
+  getCachedHomeLikeCounts,
+  getCachedHomeStats,
+} from '../lib/homeStatsCache.js'
+import { getCatalogNovelsSync, loadCatalogNovels } from '../lib/novelsRuntime.js'
 import { useAppChrome } from '../contexts/useAppChrome.js'
 import {
   applyThemeLabelToCriteria,
@@ -88,7 +96,7 @@ export default function HomePage() {
   const location = useLocation()
   const navigate = useNavigate()
   const tgUser = useTelegramUser()
-  const [novelList, setNovelList] = useState(bundledNovels)
+  const [novelList, setNovelList] = useState(() => getCatalogNovelsSync())
   const unreadNotificationCount = useUnreadNotificationCount(tgUser)
   /** 顶栏搜索框文案（可随时编辑） */
   const [searchDraft, setSearchDraft] = useState('')
@@ -156,7 +164,16 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false
     void loadCatalogNovels().then((list) => {
-      if (!cancelled && Array.isArray(list) && list.length) setNovelList(list)
+      if (cancelled || !Array.isArray(list) || !list.length) return
+      setNovelList((prev) => {
+        if (
+          prev.length === list.length &&
+          prev.every((n, i) => String(n?.id) === String(list[i]?.id))
+        ) {
+          return prev
+        }
+        return list
+      })
     })
     return () => {
       cancelled = true
@@ -170,9 +187,9 @@ export default function HomePage() {
 
   /** 阅读页提交评论分后刷新卡片与「评分」排序 */
   const [reviewRatingTick, setReviewRatingTick] = useState(0)
-  const [homeStats, setHomeStats] = useState({})
-  const [homeLikeCounts, setHomeLikeCounts] = useState({})
-  const [homeFavoriteCounts, setHomeFavoriteCounts] = useState({})
+  const [homeStats, setHomeStats] = useState(() => getCachedHomeStats())
+  const [homeLikeCounts, setHomeLikeCounts] = useState(() => getCachedHomeLikeCounts())
+  const [homeFavoriteCounts, setHomeFavoriteCounts] = useState(() => getCachedHomeFavoriteCounts())
   /** 与详情页对齐：详情广播 / sessionStorage 恢复快照 */
   const [detailStatsSnap, setDetailStatsSnap] = useState(() => loadPersistedDetailStats())
   const [currentPage, setCurrentPage] = useState(1)
@@ -205,7 +222,10 @@ export default function HomePage() {
       if (cancelled) return
       setHomeStats((prev) => {
         const nextHasData = items && typeof items === 'object' && Object.keys(items).length > 0
-        if (nextHasData) return items
+        if (nextHasData) {
+          commitHomeStats(items)
+          return items
+        }
         // 网络抖动/接口异常时保留上一帧，避免首页卡片排序来回跳动。
         return prev
       })
@@ -234,7 +254,11 @@ export default function HomePage() {
         if (!row) continue
         next[row[0]] = row[1]
       }
-      setHomeFavoriteCounts((prev) => (Object.keys(next).length > 0 ? next : prev))
+      setHomeFavoriteCounts((prev) => {
+        if (Object.keys(next).length === 0) return prev
+        commitHomeFavoriteCounts(next)
+        return next
+      })
     }
     void pullFavoriteCounts()
     const timer = window.setInterval(pullFavoriteCounts, 15000)
@@ -260,7 +284,11 @@ export default function HomePage() {
         if (!row) continue
         next[row[0]] = row[1]
       }
-      setHomeLikeCounts((prev) => (Object.keys(next).length > 0 ? next : prev))
+      setHomeLikeCounts((prev) => {
+        if (Object.keys(next).length === 0) return prev
+        commitHomeLikeCounts(next)
+        return next
+      })
     }
     void pullLikeCounts()
     const timer = window.setInterval(pullLikeCounts, 15000)
@@ -279,13 +307,23 @@ export default function HomePage() {
   const displayedNovels = useMemo(() => {
     const withStats = (list) =>
       list.map((n) => {
-        const s = homeStats?.[String(n.id)] ?? {}
         const id = String(n.id)
+        const s = homeStats?.[id] ?? getCachedHomeStats()?.[id] ?? {}
         const apiView = Number(s?.viewCount) >= 0 ? Number(s.viewCount) : 0
+        const cachedLikes = getCachedHomeLikeCounts()
+        const cachedFavs = getCachedHomeFavoriteCounts()
         const apiLike =
-          Number(homeLikeCounts?.[id]) >= 0 ? Number(homeLikeCounts[id]) : 0
+          Number(homeLikeCounts?.[id]) >= 0
+            ? Number(homeLikeCounts[id])
+            : Number(cachedLikes?.[id]) >= 0
+              ? Number(cachedLikes[id])
+              : 0
         const apiFav =
-          Number(homeFavoriteCounts?.[id]) >= 0 ? Number(homeFavoriteCounts[id]) : 0
+          Number(homeFavoriteCounts?.[id]) >= 0
+            ? Number(homeFavoriteCounts[id])
+            : Number(cachedFavs?.[id]) >= 0
+              ? Number(cachedFavs[id])
+              : 0
         const snap = detailStatsSnap[id]
         const fromDetail = snap && typeof snap === 'object'
         const localViewFloor = getLocalViewMax(id)
@@ -308,11 +346,19 @@ export default function HomePage() {
     if (isSearchMode) {
       const hit = searchKeywordHits ?? []
       const filtered = filterNovelsByHomeCriteria(hit, appliedCriteria)
-      return buildHomeOrderedNovels(withStats(filtered), sortKey, sortDesc)
+      return applyStableHomeListOrder(
+        buildHomeOrderedNovels(withStats(filtered), sortKey, sortDesc),
+        sortKey,
+        sortDesc,
+      )
     }
     const pool = authorShelfFilter ? novelList.filter((n) => n.author === authorShelfFilter) : novelList
     const filtered = filterNovelsByHomeCriteria(pool, appliedCriteria)
-    return buildHomeOrderedNovels(withStats(filtered), sortKey, sortDesc)
+    return applyStableHomeListOrder(
+      buildHomeOrderedNovels(withStats(filtered), sortKey, sortDesc),
+      sortKey,
+      sortDesc,
+    )
   }, [
     appliedCriteria,
     authorShelfFilter,

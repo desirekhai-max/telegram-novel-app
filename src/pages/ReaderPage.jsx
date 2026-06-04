@@ -279,12 +279,8 @@ export default function ReaderPage() {
   const { id } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
-  const cameFromSaved = location.state?.from === 'saved'
-  const edgeSwipeHandlers = useEdgeSwipeBack({
-    triggerRatio: 0.1,
-    instantBack: true,
-    followGesture: !cameFromSaved,
-  })
+  /** 跟手露出 AppShell 真实上一页；勿 instantBack，避免松手先弹回再跳转晃动 */
+  const edgeSwipeHandlers = useEdgeSwipeBack({ triggerRatio: 0.1 })
   const tgUser = useTelegramUser()
   const { viewerProfile } = useViewerProfile()
   const unreadNotificationCount = useUnreadNotificationCount(tgUser)

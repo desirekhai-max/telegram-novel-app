@@ -2,14 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import AmbientBackdrop from './components/AmbientBackdrop.jsx'
 import AppBottomNavDock from './components/AppBottomNavDock.jsx'
-import AppDeployDebugBadge from './components/AppDeployDebugBadge.jsx'
 import { AppChromeProvider } from './contexts/AppChromeProvider.jsx'
 import { ViewerProfileProvider } from './contexts/ViewerProfileProvider.jsx'
 import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.jsx'
 import { useAppChrome } from './contexts/useAppChrome.js'
 import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
 import { registerPresencePing } from './lib/miniAppPresence.js'
-import { shouldRenderAppBottomNavDock } from './lib/bottomNavRoutes.js'
+import { normalizeAppPathname, shouldRenderAppBottomNavDock } from './lib/bottomNavRoutes.js'
 import { loadCatalogNovels } from './lib/novelsRuntime.js'
 import PageTransitionLayout from './layouts/PageTransitionLayout.jsx'
 import AboutPage from './pages/AboutPage.jsx'
@@ -81,7 +80,7 @@ function AppRoutes({ routeLocation }) {
 
 function AppShell() {
   const location = useLocation()
-  const { swipe, setSwipe } = useSwipeBack()
+  const { gestureLive, gestureAnimating, registerForeground, resetGesture } = useSwipeBack()
   const {
     searchExploreOpen,
     setSearchExploreOpen,
@@ -113,8 +112,8 @@ function AppShell() {
 
   /** 路由切换时清零边缘返回位移，避免整页仍被 translate 到屏外（表现为点卡片后全白） */
   useEffect(() => {
-    setSwipe({ active: false, dx: 0, animating: false })
-  }, [location.pathname, setSwipe])
+    resetGesture()
+  }, [location.pathname, resetGesture])
 
   useEffect(() => {
     setSearchExploreOpen(false)
@@ -150,35 +149,29 @@ function AppShell() {
     homeSearchInputFocused,
   })
 
-  useLayoutEffect(() => {
-    document.documentElement.dataset.commitHash = __BUILD_COMMIT__
-    document.documentElement.dataset.showBottomNav = showBottomNav ? '1' : '0'
-    document.documentElement.dataset.appPath = location.pathname
-  }, [location.pathname, showBottomNav])
-
-  const showSwipeUnderlay = swipe.active && previousLocationRef.current
+  const backLocation = previousLocationRef.current
+  const hasSwipeBackUnderlay =
+    backLocation &&
+    normalizeAppPathname(backLocation.pathname) !== normalizeAppPathname(location.pathname)
+  const swipeGestureActive = gestureLive || gestureAnimating
 
   return (
     <>
-      <AppDeployDebugBadge showBottomNav={showBottomNav} />
       <AmbientBackdrop />
       <div className="tg-app-root">
-        {showSwipeUnderlay ? (
+        {hasSwipeBackUnderlay ? (
           <div className="tg-swipe-underlay" aria-hidden>
-            <AppRoutes routeLocation={previousLocationRef.current} />
+            <AppRoutes routeLocation={backLocation} />
           </div>
         ) : null}
         <div
+          ref={registerForeground}
           className={[
             'tg-swipe-foreground',
-            swipe.active || swipe.animating ? 'tg-swipe-foreground--gesture' : '',
+            swipeGestureActive ? 'tg-swipe-foreground--gesture' : '',
           ]
             .filter(Boolean)
             .join(' ')}
-          style={{
-            transform: swipe.active && swipe.dx > 0 ? `translateX(${swipe.dx}px)` : undefined,
-            transition: swipe.animating ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
-          }}
         >
           <AppRoutes routeLocation={location} />
         </div>

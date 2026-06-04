@@ -4,7 +4,7 @@ import HomePageDom from '../components/HomePageDom.jsx'
 
 export default function TermsOfServicePage() {
   return (
-    <HomePageDom toolbar={<BrandTabToolbar title="Terms of Service · លក្ខខណ្ឌប្រើប្រាស់" titleClassName="text-[16px]" showDivider />}>
+    <HomePageDom toolbar={<BrandTabToolbar title="Terms of Service · លក្ខខណ្ឌប្រើប្រាស់" titleClassName="text-[16px]" />}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p
@@ -33,7 +33,7 @@ export default function TermsOfServicePage() {
           </li>
           <li>
             ការទូទាត់សម្រាប់សេវាឌីជីថល នឹងត្រូវអនុវត្តតាម{' '}
-            <Link to="/refund-policy" className="text-amber-200/90 underline-offset-2 hover:underline">
+            <Link to="/refund-policy" className="text-amber-200/90 no-underline hover:text-amber-100">
               គោលការណ៍សងប្រាក់វិញ (Refund Policy)
             </Link>{' '}
             របស់វេទិកា។

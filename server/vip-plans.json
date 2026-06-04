@@ -12,7 +12,7 @@
       "priceHintKm": "សិទ្ធិអាន VIP",
       "durationKm": "អានបាន 3 ម៉ោង",
       "durationHours": 3,
-      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+      "buyButtonKm": "ទិញកម្រិតនេះ"
     },
     {
       "planId": "vip_standard",
@@ -24,7 +24,7 @@
       "priceHintKm": "សិទ្ធិអាន VIP",
       "durationKm": "អានបាន 12 ម៉ោង",
       "durationHours": 12,
-      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+      "buyButtonKm": "ទិញកម្រិតនេះ"
     },
     {
       "planId": "vip_premium",
@@ -36,7 +36,7 @@
       "priceHintKm": "សិទ្ធិអាន VIP",
       "durationKm": "អានបាន 24 ម៉ោង",
       "durationHours": 24,
-      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+      "buyButtonKm": "ទិញកម្រិតនេះ"
     }
   ],
   "plansAuthor": [
@@ -50,7 +50,7 @@
       "priceHintKm": "សិទ្ធិអាន VIP",
       "durationKm": "អានបាន 5 ម៉ោង",
       "durationHours": 5,
-      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+      "buyButtonKm": "ទិញកម្រិតនេះ"
     },
     {
       "planId": "vip_standard",
@@ -62,7 +62,7 @@
       "priceHintKm": "សិទ្ធិអាន VIP",
       "durationKm": "អានបាន 18 ម៉ោង",
       "durationHours": 18,
-      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+      "buyButtonKm": "ទិញកម្រិតនេះ"
     },
     {
       "planId": "vip_premium",
@@ -74,7 +74,7 @@
       "priceHintKm": "សិទ្ធិអាន VIP",
       "durationKm": "អានបាន 36 ម៉ោង",
       "durationHours": 36,
-      "buyButtonKm": "ទិញប្រើឥឡូវនេះ"
+      "buyButtonKm": "ទិញកម្រិតនេះ"
     }
   ]
 }

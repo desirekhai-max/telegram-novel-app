@@ -5,7 +5,7 @@ export default function PrivacyPolicyPage() {
   return (
     <HomePageDom
       toolbar={
-        <BrandTabToolbar title="Privacy Policy · គោលការណ៍ឯកជនភាព" titleClassName="text-[16px]" showDivider />
+        <BrandTabToolbar title="Privacy Policy · គោលការណ៍ឯកជនភាព" titleClassName="text-[16px]" />
       }
     >
       <ul className="tg-list tg-home-novel-list">

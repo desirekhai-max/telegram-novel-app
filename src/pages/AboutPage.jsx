@@ -4,7 +4,7 @@ import HomePageDom from '../components/HomePageDom.jsx'
 
 export default function AboutPage() {
   return (
-    <HomePageDom toolbar={<BrandTabToolbar title="About Us · អំពីពួកយើង" titleClassName="text-[16px]" showDivider />}>
+    <HomePageDom toolbar={<BrandTabToolbar title="About Us · អំពីពួកយើង" titleClassName="text-[16px]" />}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p
@@ -36,7 +36,7 @@ export default function AboutPage() {
       </p>
       <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
         ប្រសិនបើអ្នកមានសំណួរ ឬត្រូវការជំនួយ សូមទាក់ទងក្រុមការងាររបស់យើងតាមរយៈ{' '}
-        <Link to="/contact-us" className="text-cyan-200/90 underline-offset-2 hover:underline">
+        <Link to="/contact-us" className="text-cyan-200/90 no-underline hover:text-cyan-100">
           Contact Us
         </Link>
         ។

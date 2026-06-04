@@ -13,6 +13,7 @@ function gitShortHash() {
 
 // https://vite.dev/config/
 export default defineConfig({
+  assetsInclude: ['**/*.lottie'],
   define: {
     __BUILD_COMMIT__: JSON.stringify(gitShortHash()),
   },

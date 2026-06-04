@@ -1,3 +1,29 @@
+/**
+ * 浏览器直开 localhost 时 Telegram SDK 常为 6.x 桩，CloudStorage 存在但调用会抛 WebAppMethodUnsupported。
+ * @param {string} key
+ * @param {(err: unknown, value: string | null) => void} callback
+ */
+export function callTelegramCloudStorageGet(key, callback) {
+  try {
+    const cs = window.Telegram?.WebApp?.CloudStorage
+    if (!cs || typeof cs.getItem !== 'function') return
+    cs.getItem(key, callback)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** @param {string} key @param {string} value @param {() => void} [done] */
+export function callTelegramCloudStorageSet(key, value, done) {
+  try {
+    const cs = window.Telegram?.WebApp?.CloudStorage
+    if (!cs || typeof cs.setItem !== 'function') return
+    cs.setItem(key, value, done ?? (() => {}))
+  } catch {
+    /* ignore */
+  }
+}
+
 /** 在 Telegram 内嵌 WebView 中初始化 Mini App（非 Telegram 环境无操作） */
 export function initTelegramWebApp() {
   try {

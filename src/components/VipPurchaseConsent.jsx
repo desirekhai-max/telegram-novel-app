@@ -10,9 +10,19 @@ import {
 /**
  * VIP 购买前条款摘要 + 确认勾选（投资人要求：未勾选不可付款）。
  */
-export default function VipPurchaseConsent({ accepted, onAcceptedChange, disabled = false }) {
+export default function VipPurchaseConsent({
+  accepted,
+  onAcceptedChange,
+  disabled = false,
+  shake = false,
+  sectionRef,
+}) {
   return (
-    <section className="tg-vip-consent shrink-0" aria-labelledby="tg-vip-consent-title">
+    <section
+      ref={sectionRef}
+      className={['tg-vip-consent shrink-0', shake ? 'tg-vip-consent--shake' : ''].filter(Boolean).join(' ')}
+      aria-labelledby="tg-vip-consent-title"
+    >
       <div className="tg-vip-consent__terms">
         <h2 id="tg-vip-consent-title" className="tg-vip-consent__title" lang="km">
           {VIP_PURCHASE_TERMS_TITLE_KM}

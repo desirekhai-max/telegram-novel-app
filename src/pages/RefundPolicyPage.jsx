@@ -6,7 +6,7 @@ const TELEGRAM_SUPPORT_URL = 'https://t.me/VIP_69kkh'
 
 export default function RefundPolicyPage() {
   return (
-    <HomePageDom toolbar={<BrandTabToolbar title="Refund Policy · គោលការណ៍សងប្រាក់វិញ" titleClassName="text-[16px]" showDivider />}>
+    <HomePageDom toolbar={<BrandTabToolbar title="Refund Policy · គោលការណ៍សងប្រាក់វិញ" titleClassName="text-[16px]" />}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p
@@ -57,7 +57,7 @@ export default function RefundPolicyPage() {
             href={TELEGRAM_SUPPORT_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-cyan-200/90 underline-offset-2 hover:underline"
+            className="text-cyan-200/90 no-underline hover:text-cyan-100"
             onClick={(e) => {
               if (tryOpenTelegramMeLink(TELEGRAM_SUPPORT_URL)) e.preventDefault()
             }}

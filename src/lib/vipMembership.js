@@ -8,6 +8,10 @@
 import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
 import { buildOrderNo } from './orderNo.js'
 import { parseVipExpireAtMs } from './memberTier.js'
+import {
+  callTelegramCloudStorageGet,
+  callTelegramCloudStorageSet,
+} from './telegramWebApp.js'
 
 // v2: 与旧测试数据（v1）隔离，避免历史本地/云端缓存导致身份误判。
 export const VIP_PURCHASE_STORAGE_KEY = 'tg-vip-purchase:v2'
@@ -55,14 +59,7 @@ function purchaseMapsEqual(a, b) {
 }
 
 function writePurchaseMapToCloud(json) {
-  try {
-    const cs = window.Telegram?.WebApp?.CloudStorage
-    if (cs && typeof cs.setItem === 'function') {
-      cs.setItem(VIP_PURCHASE_CLOUD_KEY, json, () => {})
-    }
-  } catch {
-    /* ignore */
-  }
+  callTelegramCloudStorageSet(VIP_PURCHASE_CLOUD_KEY, json)
 }
 
 function writeAllMap(map) {
@@ -116,10 +113,7 @@ function formatOrderTime(ms) {
  * 启动时从 Telegram CloudStorage 拉取并与 localStorage 按 userId 取较大到期合并（仅 Mini App 内有 CloudStorage）。
  */
 export function hydrateVipPurchaseFromTelegramCloud() {
-  const cs = window.Telegram?.WebApp?.CloudStorage
-  if (!cs || typeof cs.getItem !== 'function') return
-
-  cs.getItem(VIP_PURCHASE_CLOUD_KEY, (err, value) => {
+  callTelegramCloudStorageGet(VIP_PURCHASE_CLOUD_KEY, (err, value) => {
     if (err || value == null || value === '') return
     let cloud = null
     try {

@@ -11,10 +11,10 @@
     "export:novels-catalog": "node scripts/export-novels-catalog.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
-    "dev:share": "vite --port 5174",
-    "share": "npx cloudflared tunnel --url http://localhost:5174"
+    "share": "npx --yes cloudflared tunnel --url http://127.0.0.1:5173"
   },
   "dependencies": {
+    "@lottiefiles/dotlottie-react": "^0.19.4",
     "bcryptjs": "^3.0.3",
     "lucide-react": "^1.8.0",
     "react": "^19.2.4",
