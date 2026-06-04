@@ -8,6 +8,7 @@ import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.js
 import { useAppChrome } from './contexts/useAppChrome.js'
 import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
 import { registerPresencePing } from './lib/miniAppPresence.js'
+import { isPathWithoutBottomNav } from './lib/pathsWithoutBottomNav.js'
 import { loadCatalogNovels } from './lib/novelsRuntime.js'
 import PageTransitionLayout from './layouts/PageTransitionLayout.jsx'
 import AboutPage from './pages/AboutPage.jsx'
@@ -77,13 +78,6 @@ function AppRoutes({ routeLocation }) {
   )
 }
 
-function isBottomNavHiddenByPath(pathname) {
-  const isReader = pathname.startsWith('/read/')
-  const isAdminLogin = pathname === '/admin-login'
-  const isAdminRoute = pathname === '/admin' || isAdminLogin
-  return isReader || isAdminRoute
-}
-
 function AppShell() {
   const location = useLocation()
   const { swipe, setSwipe } = useSwipeBack()
@@ -136,12 +130,14 @@ function AppShell() {
     }
   }, [location.pathname])
 
-  const bottomNavHidden =
-    isReader || searchExploreOpen || filterPanelOpen || isAdminRoute || homeSearchInputFocused
+  const showBottomNav =
+    !isReader &&
+    !isAdminRoute &&
+    !isPathWithoutBottomNav(location.pathname) &&
+    !searchExploreOpen &&
+    !filterPanelOpen &&
+    !homeSearchInputFocused
   const showSwipeUnderlay = swipe.active && previousLocationRef.current
-  const prevBottomNavHidden = previousLocationRef.current
-    ? isBottomNavHiddenByPath(previousLocationRef.current.pathname)
-    : true
 
   return (
     <>
@@ -166,7 +162,7 @@ function AppShell() {
         >
           <AppRoutes routeLocation={location} />
         </div>
-        <AppBottomNavDock hidden={bottomNavHidden} />
+        {showBottomNav ? <AppBottomNavDock /> : null}
       </div>
     </>
   )

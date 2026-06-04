@@ -4,7 +4,7 @@ import HomePageDom from '../components/HomePageDom.jsx'
 
 export default function TermsOfServicePage() {
   return (
-    <HomePageDom toolbar={<BrandTabToolbar title="Terms of Service · លក្ខខណ្ឌប្រើប្រាស់" titleClassName="text-[16px]" showDivider />}>
+    <HomePageDom withBottomNav={false} toolbar={<BrandTabToolbar title="Terms of Service · លក្ខខណ្ឌប្រើប្រាស់" titleClassName="text-[16px]" showDivider />}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p

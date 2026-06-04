@@ -18,7 +18,7 @@ export default function ContactUsPage() {
   )
 
   return (
-    <HomePageDom toolbar={<BrandTabToolbar title="Contact Us · ទាក់ទងមកយើង" titleClassName="text-[16px]" showDivider />}>
+    <HomePageDom withBottomNav={false} toolbar={<BrandTabToolbar title="Contact Us · ទាក់ទងមកយើង" titleClassName="text-[16px]" showDivider />}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p
