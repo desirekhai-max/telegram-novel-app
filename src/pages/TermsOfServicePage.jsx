@@ -14,7 +14,7 @@ export default function TermsOfServicePage() {
         showDivider
       />
       <main
-        className="tg-list-wrap tg-about-scroll flex flex-1 flex-col gap-5 px-6 pb-32 pt-8"
+        className="tg-list-wrap tg-about-scroll flex flex-1 flex-col gap-5 px-6 pt-8"
         {...swipeHandlers}
       >
         <p

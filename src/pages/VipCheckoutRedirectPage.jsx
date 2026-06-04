@@ -29,7 +29,7 @@ export default function VipCheckoutRedirectPage() {
   return (
     <div className="tg-app tg-app--about">
       <BrandTabToolbar title="កំពុងបើកទំព័រទូទាត់" titleLang="km" titleClassName="text-[15px]" showDivider />
-      <main className="tg-list-wrap tg-about-scroll flex flex-1 flex-col items-center justify-center gap-4 px-6 pb-32 pt-12 text-center">
+      <main className="tg-list-wrap tg-about-scroll flex flex-1 flex-col items-center justify-center gap-4 px-6 pt-12 text-center">
         {status === 'loading' ? (
           <p className="text-[0.95rem] text-white/75" lang="km">
             កំពុងបើក ABA PayWay...

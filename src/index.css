@@ -260,9 +260,9 @@ a {
   z-index: 6;
 }
 
-/* អំពីយើងខ្ញុំ /about：底栏隐藏时不再预留底栏高度 */
+/* 关于/条款/隐私等：锁定视口，滚动在 main 内；预留底栏高度避免正文滚进 fixed 底栏背后 */
 .tg-app--about {
-  padding-bottom: 0;
+  padding-bottom: var(--tg-bottom-nav-gap);
   height: 100vh;
   max-height: 100vh;
   min-height: 100vh;
@@ -272,8 +272,9 @@ a {
   overflow: hidden;
 }
 
-/* 账户页：与首页一致锁定视口高度，把滚动交给内部 main（桌面鼠标滚轮也可用） */
+/* 账户页 / VIP：锁定视口高度，滚动在 main 内 */
 .tg-app--account {
+  padding-bottom: var(--tg-bottom-nav-gap);
   height: 100vh;
   max-height: 100vh;
   min-height: 100vh;
@@ -1265,6 +1266,8 @@ a {
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
+  padding-bottom: 20px;
+  scroll-padding-bottom: var(--tg-bottom-nav-gap);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
@@ -2466,11 +2469,13 @@ a {
   }
 }
 
-/* 关于我们：内容区独立滚动，顶部栏固定不随内容滑动 */
+/* 关于/条款/隐私/联系：内容区独立滚动，底部留白对齐底栏上沿 */
 .tg-about-scroll {
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
+  padding-bottom: 24px;
+  scroll-padding-bottom: var(--tg-bottom-nav-gap);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
