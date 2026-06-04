@@ -32,7 +32,11 @@
    * 底部导航占位：须 ≥ fixed 底栏「顶边」到屏幕底（safe-area + 圆角条 + 缓冲）。
    * 过小会导致条款/隐私等长文滚进半透明底栏背后仍可看见。
    */
-  --tg-bottom-nav-gap: calc(5.25rem + env(safe-area-inset-bottom, 0px) + 16px);
+  /*
+   * 底栏总高 ≈ safe-area + 导航条(≈70px) + 缓冲；静态页滚动区 padding-bottom 与此对齐。
+   */
+  --tg-bottom-nav-gap: calc(70px + env(safe-area-inset-bottom, 0px) + 16px);
+  --tg-static-page-scroll-pad-bottom: max(120px, calc(var(--tg-bottom-nav-gap) + 24px));
 
   /* Noto Sans/Serif Khmer：Android 上高棉文回退字体观感弱，显式优先使用 */
   --tg-font: 'Noto Sans Khmer', -apple-system, BlinkMacSystemFont, 'Segoe UI',
@@ -263,12 +267,9 @@ a {
   z-index: 6;
 }
 
-/* 关于/条款/隐私等：锁定视口；底栏区由 .tg-bottom-nav-shield 实色遮住滚动正文 */
+/* 非政策类 about 壳（如 checkout-redirect） */
 .tg-app--about {
-  padding-bottom: 0;
-  height: 100vh;
-  max-height: 100vh;
-  min-height: 100vh;
+  padding-bottom: var(--tg-bottom-nav-gap);
   height: 100dvh;
   max-height: 100dvh;
   min-height: 100dvh;
@@ -276,12 +277,35 @@ a {
   box-sizing: border-box;
 }
 
-/* 账户页 / VIP：同上 */
+/* About / Contact / Terms / Privacy / Refund — 统一静态政策页布局 */
+.tg-static-legal-page {
+  padding-bottom: var(--tg-bottom-nav-gap);
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: var(--tg-app-surface);
+}
+
+.tg-static-legal-page__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2rem 1.5rem var(--tg-static-page-scroll-pad-bottom);
+  scroll-padding-bottom: var(--tg-static-page-scroll-pad-bottom);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
+/* 账户页 / VIP：锁定视口，滚动在 main 内 */
 .tg-app--account {
-  padding-bottom: 0;
-  height: 100vh;
-  max-height: 100vh;
-  min-height: 100vh;
+  padding-bottom: var(--tg-bottom-nav-gap);
   height: 100dvh;
   max-height: 100dvh;
   min-height: 100dvh;
@@ -1272,16 +1296,11 @@ a {
   overflow-x: hidden;
   min-height: 0;
   max-height: 100%;
-  padding-bottom: calc(var(--tg-bottom-nav-gap) + 28px);
-  scroll-padding-bottom: calc(var(--tg-bottom-nav-gap) + 28px);
+  padding-bottom: var(--tg-static-page-scroll-pad-bottom);
+  scroll-padding-bottom: var(--tg-static-page-scroll-pad-bottom);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
-}
-
-.tg-app--account .tg-account-scroll {
-  clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
-  -webkit-clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
 }
 
 /* Notifications: toolbar divider + empty/loading polish; no outer cards */
@@ -2480,16 +2499,14 @@ a {
   }
 }
 
-/* 关于/条款/隐私/联系：内容区独立滚动，底部留白对齐底栏上沿 */
+/* checkout-redirect 等沿用 */
 .tg-about-scroll {
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
   max-height: 100%;
-  padding-bottom: calc(var(--tg-bottom-nav-gap) + 32px);
-  scroll-padding-bottom: calc(var(--tg-bottom-nav-gap) + 32px);
-  clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
-  -webkit-clip-path: inset(0 0 var(--tg-bottom-nav-gap) 0);
+  padding-bottom: var(--tg-static-page-scroll-pad-bottom);
+  scroll-padding-bottom: var(--tg-static-page-scroll-pad-bottom);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
@@ -6718,29 +6735,12 @@ body.tg-desktop-admin #root {
   color: var(--tg-blue-hover);
 }
 
-/*
- * 底栏实色遮罩：盖住滚动正文，避免条款/隐私/账户入口文字透到 Home/VIP/账户 背后。
- * z-index 低于 .tg-bottom-nav-dock，高于页面正文。
- */
-.tg-bottom-nav-shield {
-  position: fixed;
-  inset-inline: 0;
-  bottom: 0;
-  z-index: 9000;
-  height: var(--tg-bottom-nav-gap);
-  max-width: 520px;
-  margin-inline: auto;
-  background: var(--tg-app-surface);
-  pointer-events: none;
-  box-shadow: 0 -12px 32px 12px var(--tg-app-surface);
-}
-
-/* 底栏容器：实色衬底 + 导航条（挂在 tg-app-root，不受 swipe transform 影响） */
+/* 底栏容器：fixed，挂在 tg-app-root（不受 swipe transform 影响） */
 .tg-bottom-nav-dock {
   position: fixed;
   inset-inline: 0;
   bottom: 0;
-  z-index: 9010;
+  z-index: 70;
   display: flex;
   justify-content: center;
   padding-bottom: env(safe-area-inset-bottom, 0px);

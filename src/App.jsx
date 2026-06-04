@@ -166,7 +166,6 @@ function AppShell() {
         >
           <AppRoutes routeLocation={location} />
         </div>
-        {!bottomNavHidden ? <div className="tg-bottom-nav-shield" aria-hidden /> : null}
         <div
           className={
             bottomNavHidden
