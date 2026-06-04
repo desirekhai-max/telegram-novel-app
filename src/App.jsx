@@ -8,7 +8,7 @@ import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.js
 import { useAppChrome } from './contexts/useAppChrome.js'
 import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
 import { registerPresencePing } from './lib/miniAppPresence.js'
-import { isPathWithBottomNav } from './lib/pathsWithoutBottomNav.js'
+import { shouldRenderAppBottomNavDock } from './lib/bottomNavRoutes.js'
 import { loadCatalogNovels } from './lib/novelsRuntime.js'
 import PageTransitionLayout from './layouts/PageTransitionLayout.jsx'
 import AboutPage from './pages/AboutPage.jsx'
@@ -81,7 +81,14 @@ function AppRoutes({ routeLocation }) {
 function AppShell() {
   const location = useLocation()
   const { swipe, setSwipe } = useSwipeBack()
-  const { searchExploreOpen, filterPanelOpen, homeSearchInputFocused } = useAppChrome()
+  const {
+    searchExploreOpen,
+    setSearchExploreOpen,
+    filterPanelOpen,
+    setFilterPanelOpen,
+    homeSearchInputFocused,
+    setHomeSearchInputFocused,
+  } = useAppChrome()
 
   const isReader = location.pathname.startsWith('/read/')
   const isAdminLogin = location.pathname === '/admin-login'
@@ -109,6 +116,22 @@ function AppShell() {
   }, [location.pathname, setSwipe])
 
   useEffect(() => {
+    setSearchExploreOpen(false)
+    setFilterPanelOpen(false)
+    setHomeSearchInputFocused(false)
+  }, [location.pathname, setSearchExploreOpen, setFilterPanelOpen, setHomeSearchInputFocused])
+
+  useLayoutEffect(() => {
+    document.documentElement.dataset.appPath = location.pathname
+    document.documentElement.dataset.showBottomNav = shouldRenderAppBottomNavDock(
+      location.pathname,
+      { searchExploreOpen, filterPanelOpen, homeSearchInputFocused },
+    )
+      ? '1'
+      : '0'
+  }, [location.pathname, searchExploreOpen, filterPanelOpen, homeSearchInputFocused])
+
+  useEffect(() => {
     const adminOnline = location.pathname === '/admin' && isAdminAuthed()
     registerPresencePing(location.pathname, adminOnline)
     const timer = window.setInterval(() => {
@@ -130,11 +153,11 @@ function AppShell() {
     }
   }, [location.pathname])
 
-  const showBottomNav =
-    isPathWithBottomNav(location.pathname) &&
-    !searchExploreOpen &&
-    !filterPanelOpen &&
-    !homeSearchInputFocused
+  const showBottomNav = shouldRenderAppBottomNavDock(location.pathname, {
+    searchExploreOpen,
+    filterPanelOpen,
+    homeSearchInputFocused,
+  })
   const showSwipeUnderlay = swipe.active && previousLocationRef.current
 
   return (
