@@ -1,8 +1,11 @@
-import StaticLegalPageLayout from '../layouts/StaticLegalPageLayout.jsx'
+import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 
 export default function PrivacyPolicyPage() {
   return (
-    <StaticLegalPageLayout title="Privacy Policy · គោលការណ៍ឯកជនភាព">
+    <div className="tg-app tg-app--home">
+      <BrandTabToolbar title="Privacy Policy · គោលការណ៍ឯកជនភាព" titleClassName="text-[16px]" showDivider />
+      <div className="tg-home-main-rule" aria-hidden />
+      <main className="tg-list-wrap tg-home-body-scroll flex min-h-0 flex-1 flex-col">
       <p
         className="mx-auto max-w-md text-center text-[1.05rem] font-medium leading-relaxed text-white/90"
         lang="km"
@@ -61,6 +64,7 @@ export default function PrivacyPolicyPage() {
       <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
         ដោយប្រើប្រាស់វេទិកានេះ អ្នកយល់ព្រមតាមគោលការណ៍ឯកជនភាពនេះ។
       </p>
-    </StaticLegalPageLayout>
+      </main>
+    </div>
   )
 }

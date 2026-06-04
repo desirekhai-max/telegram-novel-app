@@ -1,9 +1,12 @@
 import { Link } from 'react-router-dom'
-import StaticLegalPageLayout from '../layouts/StaticLegalPageLayout.jsx'
+import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 
 export default function AboutPage() {
   return (
-    <StaticLegalPageLayout title="About Us · អំពីពួកយើង">
+    <div className="tg-app tg-app--home">
+      <BrandTabToolbar title="About Us · អំពីពួកយើង" titleClassName="text-[16px]" showDivider />
+      <div className="tg-home-main-rule" aria-hidden />
+      <main className="tg-list-wrap tg-home-body-scroll flex min-h-0 flex-1 flex-col">
       <p
         className="mx-auto max-w-md text-center text-[1.05rem] font-medium leading-relaxed text-white/90"
         lang="en"
@@ -38,6 +41,7 @@ export default function AboutPage() {
         </Link>
         ។
       </p>
-    </StaticLegalPageLayout>
+      </main>
+    </div>
   )
 }

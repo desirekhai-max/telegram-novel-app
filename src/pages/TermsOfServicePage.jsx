@@ -1,9 +1,12 @@
 import { Link } from 'react-router-dom'
-import StaticLegalPageLayout from '../layouts/StaticLegalPageLayout.jsx'
+import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 
 export default function TermsOfServicePage() {
   return (
-    <StaticLegalPageLayout title="Terms of Service · លក្ខខណ្ឌប្រើប្រាស់">
+    <div className="tg-app tg-app--home">
+      <BrandTabToolbar title="Terms of Service · លក្ខខណ្ឌប្រើប្រាស់" titleClassName="text-[16px]" showDivider />
+      <div className="tg-home-main-rule" aria-hidden />
+      <main className="tg-list-wrap tg-home-body-scroll flex min-h-0 flex-1 flex-col">
       <p
         className="mx-auto max-w-md text-center text-[1.05rem] font-medium leading-relaxed text-white/90"
         lang="km"
@@ -66,6 +69,7 @@ export default function TermsOfServicePage() {
       <p className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
         វេទិកាអាចធ្វើការកែប្រែលក្ខខណ្ឌប្រើប្រាស់បានគ្រប់ពេល ដោយមិនចាំបាច់ជូនដំណឹងជាមុន។
       </p>
-    </StaticLegalPageLayout>
+      </main>
+    </div>
   )
 }

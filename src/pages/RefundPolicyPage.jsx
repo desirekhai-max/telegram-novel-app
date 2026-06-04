@@ -1,11 +1,14 @@
 import { tryOpenTelegramMeLink } from '../lib/telegramWebApp.js'
-import StaticLegalPageLayout from '../layouts/StaticLegalPageLayout.jsx'
+import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 
 const TELEGRAM_SUPPORT_URL = 'https://t.me/VIP_69kkh'
 
 export default function RefundPolicyPage() {
   return (
-    <StaticLegalPageLayout title="Refund Policy · គោលការណ៍សងប្រាក់វិញ">
+    <div className="tg-app tg-app--home">
+      <BrandTabToolbar title="Refund Policy · គោលការណ៍សងប្រាក់វិញ" titleClassName="text-[16px]" showDivider />
+      <div className="tg-home-main-rule" aria-hidden />
+      <main className="tg-list-wrap tg-home-body-scroll flex min-h-0 flex-1 flex-col">
       <p
         className="mx-auto max-w-md text-center text-[1.05rem] font-medium leading-relaxed text-white/90"
         lang="km"
@@ -63,6 +66,7 @@ export default function RefundPolicyPage() {
           </a>
         </p>
       </div>
-    </StaticLegalPageLayout>
+      </main>
+    </div>
   )
 }
