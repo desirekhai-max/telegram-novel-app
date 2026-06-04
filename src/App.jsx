@@ -8,7 +8,7 @@ import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.js
 import { useAppChrome } from './contexts/useAppChrome.js'
 import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
 import { registerPresencePing } from './lib/miniAppPresence.js'
-import { isPathWithoutBottomNav } from './lib/pathsWithoutBottomNav.js'
+import { isPathWithBottomNav } from './lib/pathsWithoutBottomNav.js'
 import { loadCatalogNovels } from './lib/novelsRuntime.js'
 import PageTransitionLayout from './layouts/PageTransitionLayout.jsx'
 import AboutPage from './pages/AboutPage.jsx'
@@ -131,9 +131,7 @@ function AppShell() {
   }, [location.pathname])
 
   const showBottomNav =
-    !isReader &&
-    !isAdminRoute &&
-    !isPathWithoutBottomNav(location.pathname) &&
+    isPathWithBottomNav(location.pathname) &&
     !searchExploreOpen &&
     !filterPanelOpen &&
     !homeSearchInputFocused
