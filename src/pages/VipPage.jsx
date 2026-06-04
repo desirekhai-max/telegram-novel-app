@@ -277,7 +277,6 @@ export default function VipPage() {
               </header>
               <div className="tg-vip-payment-section__cards">
                 <AbaKhqrEntryRow
-                  decor="khqr"
                   title="ABA KHQR"
                   subtitle="បង់ប្រាក់តាម ABA KHQR"
                   pending={abaKhqrPending}
