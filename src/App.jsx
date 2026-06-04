@@ -150,6 +150,7 @@ function AppShell() {
         {showSwipeUnderlay ? (
           <div className="tg-swipe-underlay" aria-hidden>
             <AppRoutes routeLocation={previousLocationRef.current} />
+            {!prevBottomNavHidden ? <div className="tg-bottom-nav-shield" aria-hidden /> : null}
             <div
               className={
                 prevBottomNavHidden
@@ -169,6 +170,7 @@ function AppShell() {
           }}
         >
           <AppRoutes routeLocation={location} />
+          {!bottomNavHidden ? <div className="tg-bottom-nav-shield" aria-hidden /> : null}
           <div
             className={
               bottomNavHidden

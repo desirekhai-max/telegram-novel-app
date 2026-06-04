@@ -32,7 +32,7 @@
    * 底部导航占位：须 ≥ fixed 底栏「顶边」到屏幕底（safe-area + 圆角条 + 缓冲）。
    * 过小会导致条款/隐私等长文滚进半透明底栏背后仍可看见。
    */
-  --tg-bottom-nav-gap: calc(4.75rem + env(safe-area-inset-bottom, 0px) + 12px);
+  --tg-bottom-nav-gap: calc(5.25rem + env(safe-area-inset-bottom, 0px) + 16px);
 
   /* Noto Sans/Serif Khmer：Android 上高棉文回退字体观感弱，显式优先使用 */
   --tg-font: 'Noto Sans Khmer', -apple-system, BlinkMacSystemFont, 'Segoe UI',
@@ -259,9 +259,9 @@ a {
   z-index: 6;
 }
 
-/* 关于/条款/隐私等：锁定视口，滚动在 main 内；预留底栏高度避免正文滚进 fixed 底栏背后 */
+/* 关于/条款/隐私等：锁定视口；底栏区由 .tg-bottom-nav-shield 实色遮住滚动正文 */
 .tg-app--about {
-  padding-bottom: var(--tg-bottom-nav-gap);
+  padding-bottom: 0;
   height: 100vh;
   max-height: 100vh;
   min-height: 100vh;
@@ -272,31 +272,9 @@ a {
   box-sizing: border-box;
 }
 
-/* 滚动区底部实色渐隐，正文在底栏上沿前被遮住（配合 dock 实底） */
-.tg-app--about .tg-about-scroll {
-  position: relative;
-}
-
-.tg-app--about .tg-about-scroll::after {
-  content: '';
-  position: sticky;
-  bottom: 0;
-  display: block;
-  height: calc(var(--tg-bottom-nav-gap) + 8px);
-  margin-top: calc(-1 * (var(--tg-bottom-nav-gap) + 8px));
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    var(--tg-app-surface) 72%,
-    var(--tg-app-surface) 100%
-  );
-  pointer-events: none;
-  z-index: 2;
-}
-
-/* 账户页 / VIP：锁定视口高度，滚动在 main 内 */
+/* 账户页 / VIP：同上 */
 .tg-app--account {
-  padding-bottom: var(--tg-bottom-nav-gap);
+  padding-bottom: 0;
   height: 100vh;
   max-height: 100vh;
   min-height: 100vh;
@@ -304,6 +282,7 @@ a {
   max-height: 100dvh;
   min-height: 100dvh;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 /* 个人中心头像卡 · 内壳（蓝/紫/粉/青高光 + 深色底） */
@@ -1289,8 +1268,8 @@ a {
   overflow-x: hidden;
   min-height: 0;
   max-height: 100%;
-  padding-bottom: 36px;
-  scroll-padding-bottom: var(--tg-bottom-nav-gap);
+  padding-bottom: calc(var(--tg-bottom-nav-gap) + 28px);
+  scroll-padding-bottom: calc(var(--tg-bottom-nav-gap) + 28px);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
@@ -2498,8 +2477,8 @@ a {
   overflow-x: hidden;
   min-height: 0;
   max-height: 100%;
-  padding-bottom: 40px;
-  scroll-padding-bottom: var(--tg-bottom-nav-gap);
+  padding-bottom: calc(var(--tg-bottom-nav-gap) + 32px);
+  scroll-padding-bottom: calc(var(--tg-bottom-nav-gap) + 32px);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
@@ -6728,7 +6707,24 @@ body.tg-desktop-admin #root {
   color: var(--tg-blue-hover);
 }
 
-/* 底栏容器：实色衬底遮住其下滚动正文，避免长文透出到 Home/VIP/账户 背后 */
+/*
+ * 底栏实色遮罩：盖住滚动正文，避免条款/隐私/账户入口文字透到 Home/VIP/账户 背后。
+ * z-index 低于 .tg-bottom-nav-dock，高于页面正文。
+ */
+.tg-bottom-nav-shield {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 68;
+  height: var(--tg-bottom-nav-gap);
+  max-width: 520px;
+  margin-inline: auto;
+  background: var(--tg-app-surface);
+  pointer-events: none;
+  box-shadow: 0 -8px 24px 8px var(--tg-app-surface);
+}
+
+/* 底栏容器：实色衬底 + 导航条 */
 .tg-bottom-nav-dock {
   position: fixed;
   inset-inline: 0;
@@ -6753,7 +6749,7 @@ body.tg-desktop-admin #root {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
-  height: calc(100% + 12px);
+  height: calc(100% + 28px);
   background: var(--tg-app-surface);
   z-index: -1;
   pointer-events: none;
@@ -6809,12 +6805,7 @@ body.tg-desktop-admin #root {
   padding: 5px 6px 7px;
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.22);
-  background: linear-gradient(
-    178deg,
-    rgba(19, 26, 54, 0.98) 0%,
-    rgba(19, 26, 54, 0.99) 55%,
-    var(--tg-app-surface) 100%
-  );
+  background: var(--tg-app-surface);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.13),
     0 0 0 1px rgba(56, 189, 248, 0.06),
