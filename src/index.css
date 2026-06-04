@@ -45,6 +45,26 @@
     'Songti SC', SimSun, 'Times New Roman', serif;
 }
 
+/* 右上角临时部署调试标识 */
+.tg-deploy-debug-badge {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top, 0px));
+  right: 8px;
+  z-index: 99999;
+  max-width: min(92vw, 320px);
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: rgba(8, 12, 28, 0.92);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #7dd3fc;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 *,
 *::before,
 *::after {

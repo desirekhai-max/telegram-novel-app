@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import AmbientBackdrop from './components/AmbientBackdrop.jsx'
 import AppBottomNavDock from './components/AppBottomNavDock.jsx'
+import AppDeployDebugBadge from './components/AppDeployDebugBadge.jsx'
 import { AppChromeProvider } from './contexts/AppChromeProvider.jsx'
 import { ViewerProfileProvider } from './contexts/ViewerProfileProvider.jsx'
 import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.jsx'
@@ -159,6 +160,7 @@ function AppShell() {
 
   return (
     <>
+      <AppDeployDebugBadge showBottomNav={showBottomNav} />
       <AmbientBackdrop />
       <div className="tg-app-root">
         {showSwipeUnderlay ? (
