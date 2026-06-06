@@ -11,7 +11,7 @@
     "export:novels-catalog": "node scripts/export-novels-catalog.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
-    "share": "npx --yes cloudflared tunnel --url http://127.0.0.1:5173"
+    "share": "npx --yes cloudflared tunnel --protocol http2 --url http://127.0.0.1:5173"
   },
   "dependencies": {
     "@lottiefiles/dotlottie-react": "^0.19.4",

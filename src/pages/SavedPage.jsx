@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { bindNovelNavPrefetchHandlers } from '../lib/prefetchNovelOnNav.js'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
-import { novels } from '../data/novels.js'
+import { getCatalogNovelsSync, getNovelSummaryById, loadCatalogNovels } from '../lib/novelsRuntime.js'
 import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
@@ -22,11 +22,29 @@ function readSavedNovelRows() {
       .map(([novelId, row]) => ({
         novelId: String(novelId),
         favoritedAtMs: Number(row.favoritedAtMs) || 0,
+        snapshot: row,
       }))
       .sort((a, b) => b.favoritedAtMs - a.favoritedAtMs)
   } catch {
     return []
   }
+}
+
+function resolveSavedNovelCard(novelId, snapshot) {
+  const fromCatalog = getNovelSummaryById(novelId)
+  if (fromCatalog?.title) return fromCatalog
+  if (snapshot?.title) {
+    return {
+      id: novelId,
+      title: String(snapshot.title || ''),
+      author: String(snapshot.author || ''),
+      coverUrl: String(snapshot.coverUrl || ''),
+      accent: snapshot.accent === 'teal' || snapshot.accent === 'rose' ? snapshot.accent : 'violet',
+      tags: Array.isArray(snapshot.tags) ? snapshot.tags : [],
+      genreId: String(snapshot.genreId || ''),
+    }
+  }
+  return null
 }
 
 function mergeFavoritedAtMs(serverMs, localMs) {
@@ -44,6 +62,11 @@ export default function SavedPage() {
   const [serverRows, setServerRows] = useState(
     () => serverFavoritesMemoryCache.get(effectiveUserId) ?? [],
   )
+  const [catalogTick, setCatalogTick] = useState(0)
+
+  useEffect(() => {
+    void loadCatalogNovels().then(() => setCatalogTick((t) => t + 1))
+  }, [])
 
   useEffect(() => {
     const sync = () => setSavedRows(readSavedNovelRows())
@@ -66,7 +89,7 @@ export default function SavedPage() {
   }, [effectiveUserId])
 
   const savedNovels = useMemo(() => {
-    const byId = new Map(novels.map((n) => [String(n.id), n]))
+    void catalogTick
     const localById = new Map(savedRows.map((row) => [String(row.novelId), row]))
     const serverById = new Map(serverRows.map((row) => [String(row.novelId), row]))
     const mergedIds = new Set([
@@ -75,17 +98,18 @@ export default function SavedPage() {
     ])
     return [...mergedIds]
       .map((novelId) => {
-        const novel = byId.get(novelId)
+        const local = localById.get(novelId)
+        const novel = resolveSavedNovelCard(novelId, local?.snapshot)
         if (!novel) return null
         const favoritedAtMs = mergeFavoritedAtMs(
           serverById.get(novelId)?.favoritedAtMs,
-          localById.get(novelId)?.favoritedAtMs,
+          local?.favoritedAtMs,
         )
         return { novel, favoritedAtMs }
       })
       .filter(Boolean)
       .sort((a, b) => b.favoritedAtMs - a.favoritedAtMs)
-  }, [savedRows, serverRows])
+  }, [savedRows, serverRows, catalogTick])
 
   return (
     <div className="tg-app tg-app--account">

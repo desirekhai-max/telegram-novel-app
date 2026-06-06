@@ -1,14 +1,15 @@
-import { getNovelById, novels } from '../data/novels.js'
+import { getCatalogNovelsSync, getNovelSummaryById } from './novelsRuntime.js'
 
-/** 从阅读记录解析小说 ID（novelId 或按书名匹配目录） */
+/** 从阅读记录解析小说 ID（优先 novelId；否则按书名匹配目录/内置） */
 export function resolveNovelIdFromHistoryItem(item) {
   const nid = String(item?.novelId || '').trim()
-  if (nid && getNovelById(nid)) return nid
+  if (nid) return nid
   const title = String(item?.shelfTitle || '').trim()
   if (!title) return ''
-  const exact = novels.find((n) => String(n?.title || '').trim() === title)
+  const pool = getCatalogNovelsSync()
+  const exact = pool.find((n) => String(n?.title || '').trim() === title)
   if (exact?.id) return String(exact.id)
-  const loose = novels.find((n) => {
+  const loose = pool.find((n) => {
     const t = String(n?.title || '').trim()
     return t && (title.includes(t) || t.includes(title))
   })
@@ -50,9 +51,12 @@ export function resolveChapterIndexFromHistoryItem(novel, item) {
 export function buildReadingHistoryNavigateTarget(item) {
   const novelId = resolveNovelIdFromHistoryItem(item)
   if (!novelId) return null
-  const novel = getNovelById(novelId)
-  if (!novel) return null
-  const openChapterIndex = resolveChapterIndexFromHistoryItem(novel, item)
+  const novel = getNovelSummaryById(novelId)
+  const openChapterIndex = novel
+    ? resolveChapterIndexFromHistoryItem(novel, item)
+    : Number.isFinite(Number(item?.chapterIndex)) && Number(item.chapterIndex) >= 0
+      ? Math.floor(Number(item.chapterIndex))
+      : 0
   return {
     pathname: `/read/${encodeURIComponent(novelId)}`,
     state: { from: 'reading-history', openChapterIndex },

@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AbaKhqrPaymentScreen from '../components/AbaKhqrPaymentScreen.jsx'
-import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import VipPaymentResultModal from '../components/VipPaymentResultModal.jsx'
 import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
 import { openAbaMobileDeeplink, shouldTryAbaMobileDeeplinkFirst } from '../lib/abaMobile.js'
-import { buildAbaKhqrUiMockSession, isUiMockAbaKhqrSession } from '../lib/abaKhqrUiMock.js'
+import {
+  buildAbaKhqrUiMockSession,
+  isUiMockAbaKhqrSession,
+  withFreshMockKhqrImage,
+} from '../lib/abaKhqrUiMock.js'
 import { readVipPaymentFulfillmentHint } from '../lib/vipPaymentResultState.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 import { clearVipAbaKhqrSession, loadVipAbaKhqrSession, saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
+import { saveVipPaymentSuccessPayload } from '../lib/vipPaymentSuccessState.js'
+import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 
@@ -28,7 +33,7 @@ export default function VipAbaKhqrPage() {
 
   const sessionFromStorage = useMemo(() => loadVipAbaKhqrSession(), [])
   const session = useMemo(() => {
-    if (sessionFromStorage) return sessionFromStorage
+    if (sessionFromStorage) return withFreshMockKhqrImage(sessionFromStorage)
     if (uiMockQuery && planIdParam) {
       return buildAbaKhqrUiMockSession(planIdParam, viewerProfile.role)
     }
@@ -51,22 +56,44 @@ export default function VipAbaKhqrPage() {
     [planId, viewerProfile.role],
   )
 
+  useEffect(() => {
+    void preloadVipPaymentSuccessAssets()
+  }, [])
+
   const openSuccessModal = useCallback(() => {
     if (pollRef.current) {
       window.clearInterval(pollRef.current)
       pollRef.current = 0
     }
+    saveVipPaymentSuccessPayload({
+      planId,
+      priceLabel: String(session?.amountLabel || '').trim(),
+      durationHours,
+      purchasedAt: new Date().toISOString(),
+    })
     clearVipAbaKhqrSession()
     setResultModal(fulfillmentHint === 'manual' ? 'manual_success' : 'auto_success')
-  }, [fulfillmentHint])
+  }, [durationHours, fulfillmentHint, planId, session?.amountLabel])
 
   const closeResultModal = useCallback(() => {
     setResultModal(null)
   }, [])
 
-  const goSuccess = useCallback(() => {
-    openSuccessModal()
-  }, [openSuccessModal])
+  const goSuccess = useCallback(async () => {
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current)
+      pollRef.current = 0
+    }
+    saveVipPaymentSuccessPayload({
+      planId,
+      priceLabel: String(session?.amountLabel || '').trim(),
+      durationHours,
+      purchasedAt: new Date().toISOString(),
+    })
+    clearVipAbaKhqrSession()
+    await preloadVipPaymentSuccessAssets()
+    navigate(`/vip/payment-success?plan_id=${encodeURIComponent(planId || 'vip_entry')}`)
+  }, [durationHours, navigate, planId, session?.amountLabel])
 
   const pollPayment = useCallback(async () => {
     if (!tranId || isUiMock) return
@@ -137,17 +164,15 @@ export default function VipAbaKhqrPage() {
 
   return (
     <div className="tg-app tg-app--account tg-aba-khqr-page" {...pageSwipeHandlers}>
-      <BrandTabToolbar title="ការទូទាត់តាម ABA KHQR" titleLang="km" titleClassName="text-[16px]" />
-      <main className="tg-list-wrap tg-account-scroll tg-aba-khqr-page__main flex flex-1 flex-col">
+      <main className="tg-list-wrap tg-aba-khqr-page__main flex min-h-0 flex-1 flex-col">
         <div className="tg-aba-khqr-page__shell">
           <AbaKhqrPaymentScreen
             session={session}
             showDemoActions={isUiMock}
             onSimulatePaid={goSuccess}
           />
-
           {statusNote ? (
-            <p className="tg-aba-khqr-page__status text-center text-[11px] text-slate-500" lang="km">
+            <p className="tg-aba-khqr-page__status" lang="km">
               {statusNote}
             </p>
           ) : null}

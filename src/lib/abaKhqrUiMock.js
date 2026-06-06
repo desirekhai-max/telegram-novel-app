@@ -6,22 +6,66 @@ export function isAbaKhqrUiMockFlowEnabled() {
   return raw !== '0' && raw !== 'false' && raw !== 'off'
 }
 
-const MOCK_QR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
-  <rect width="240" height="240" fill="#fff"/>
-  <g fill="#0f172a">
-    <rect x="16" y="16" width="56" height="56"/><rect x="88" y="16" width="16" height="16"/><rect x="120" y="16" width="40" height="16"/>
-    <rect x="168" y="16" width="56" height="56"/><rect x="16" y="88" width="16" height="16"/><rect x="56" y="88" width="24" height="16"/>
-    <rect x="120" y="88" width="56" height="16"/><rect x="200" y="88" width="24" height="16"/><rect x="16" y="120" width="40" height="40"/>
-    <rect x="88" y="120" width="16" height="56"/><rect x="120" y="120" width="24" height="24"/><rect x="168" y="120" width="56" height="40"/>
-    <rect x="56" y="168" width="16" height="56"/><rect x="120" y="168" width="40" height="16"/><rect x="200" y="168" width="24" height="56"/>
-    <rect x="16" y="200" width="56" height="24"/><rect x="88" y="200" width="56" height="24"/><rect x="168" y="200" width="56" height="24"/>
-  </g>
-  <circle cx="120" cy="120" r="26" fill="#e31837"/>
-  <circle cx="120" cy="120" r="18" fill="#fff"/>
-  <path fill="#e31837" d="M120 108l8 12h-6l2 10-8-12h6z"/>
-</svg>`
+const MOCK_QR_MODULE_COUNT = 37
+const MOCK_QR_MODULE_PX = 8
+const MOCK_QR_CANVAS = MOCK_QR_MODULE_COUNT * MOCK_QR_MODULE_PX
 
-export const ABA_KHQR_MOCK_QR_DATA_URL = `data:image/svg+xml,${encodeURIComponent(MOCK_QR_SVG)}`
+function isFinderArea(x, y, size) {
+  return (x < 7 && y < 7) || (x >= size - 7 && y < 7) || (x < 7 && y >= size - 7)
+}
+
+function finderModuleOn(lx, ly) {
+  const onBorder = lx === 0 || lx === 6 || ly === 0 || ly === 6
+  const inInner = lx >= 2 && lx <= 4 && ly >= 2 && ly <= 4
+  return onBorder || inInner
+}
+
+function isCenterLogoArea(x, y, size) {
+  const center = (size - 1) / 2
+  const dx = x - center
+  const dy = y - center
+  return dx * dx + dy * dy <= 3.2 * 3.2
+}
+
+function shouldPaintMockModule(x, y, size) {
+  if (isCenterLogoArea(x, y, size)) return false
+
+  if (isFinderArea(x, y, size)) {
+    const local = (fx, fy) => finderModuleOn(fx, fy)
+    if (x < 7 && y < 7) return local(x, y)
+    if (x >= size - 7 && y < 7) return local(x - (size - 7), y)
+    return local(x, y - (size - 7))
+  }
+
+  if (x === 6 || y === 6) return (x + y) % 2 === 0
+
+  return ((x * 17 + y * 31 + ((x * y) % 7)) % 5) < 3
+}
+
+function buildKhqrMockQrSvg() {
+  const size = MOCK_QR_MODULE_COUNT
+  const px = MOCK_QR_MODULE_PX
+  const canvas = MOCK_QR_CANVAS
+  const center = canvas / 2
+  const rects = []
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      if (!shouldPaintMockModule(x, y, size)) continue
+      rects.push(`<rect x="${x * px}" y="${y * px}" width="${px}" height="${px}"/>`)
+    }
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvas} ${canvas}" width="${canvas}" height="${canvas}">
+  <rect width="${canvas}" height="${canvas}" fill="#fff"/>
+  <g fill="#0f172a">${rects.join('')}</g>
+  <circle cx="${center}" cy="${center}" r="30" fill="#fff"/>
+  <circle cx="${center}" cy="${center}" r="24" fill="#0f172a"/>
+  <text x="${center}" y="${center + 9}" text-anchor="middle" font-size="28" font-weight="700" fill="#fff" font-family="system-ui,-apple-system,'Segoe UI',sans-serif">$</text>
+</svg>`
+}
+
+export const ABA_KHQR_MOCK_QR_DATA_URL = `data:image/svg+xml,${encodeURIComponent(buildKhqrMockQrSvg())}`
 
 function parseUsdAmount(label) {
   const n = Number(String(label || '').replace(/[^0-9.]/g, ''))
@@ -57,4 +101,10 @@ export function buildAbaKhqrUiMockSession(planId, role = 'normal') {
 
 export function isUiMockAbaKhqrSession(session) {
   return Boolean(session && session.uiMock === true)
+}
+
+/** 演示 session 始终用当前 mock 二维码，避免 sessionStorage 缓存旧图。 */
+export function withFreshMockKhqrImage(session) {
+  if (!isUiMockAbaKhqrSession(session)) return session
+  return { ...session, qrImage: ABA_KHQR_MOCK_QR_DATA_URL }
 }

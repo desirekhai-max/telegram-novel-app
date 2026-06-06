@@ -110,6 +110,32 @@ export const VIP_PLANS_CATALOG_AUTHOR = [
 /** @deprecated 与 `VIP_PLANS_CATALOG_NORMAL` 同义，兼容旧 import */
 export const VIP_PLANS_CATALOG = VIP_PLANS_CATALOG_NORMAL
 
+/** 与 VIP 套餐卡 `VipPage` 主题 class 一致，供成功页等复用 */
+export const VIP_PLAN_TIER_CLASS = {
+  vip_entry: 'tg-vip-plan-card--entry',
+  vip_standard: 'tg-vip-plan-card--standard',
+  vip_premium: 'tg-vip-plan-card--premium',
+}
+
+/** 成功页等信息区图标强调色，与套餐卡 `--vip-plan-price-to` 一致 */
+export const VIP_PLAN_TIER_ACCENT_COLOR = {
+  vip_entry: '#7dd3fc',
+  vip_standard: '#fbbf24',
+  vip_premium: '#c4b5fd',
+}
+
+/** @param {string} planId */
+export function getVipPlanTierClass(planId) {
+  const id = String(planId || '').trim()
+  return VIP_PLAN_TIER_CLASS[id] || VIP_PLAN_TIER_CLASS.vip_entry
+}
+
+/** @param {string} planId */
+export function getVipPlanTierAccentColor(planId) {
+  const id = String(planId || '').trim()
+  return VIP_PLAN_TIER_ACCENT_COLOR[id] || VIP_PLAN_TIER_ACCENT_COLOR.vip_entry
+}
+
 /**
  * 是否走「作者会员」时长价目（与普通档同 planId、不同小时数）。
  * @param {'normal'|'author'|string|null|undefined} role

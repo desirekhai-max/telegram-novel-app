@@ -4,7 +4,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AbaKhqrEntryRow from '../components/AbaKhqrEntryRow.jsx'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import VipPurchaseConsent from '../components/VipPurchaseConsent.jsx'
-import { getVipPlansCatalogForRole, VIP_MEMBER_FOOTER_KM } from '../data/vipPlansCatalog.js'
+import { getVipPlansCatalogForRole, getVipPlanTierClass, VIP_MEMBER_FOOTER_KM } from '../data/vipPlansCatalog.js'
+import { VIP_LOGIN_GATE_DESC_KM, VIP_LOGIN_GATE_TITLE_KM } from '../lib/errorMessagesKm.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
 import {
@@ -12,18 +13,14 @@ import {
   submitPayWayCheckoutForm,
 } from '../lib/paywayCheckout.js'
 import { buildAbaKhqrUiMockSession, isAbaKhqrUiMockFlowEnabled } from '../lib/abaKhqrUiMock.js'
+import { preloadAbaKhqrPaymentAssets } from '../lib/abaKhqrAssets.js'
+import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
 import { saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
 import {
   purchaseViewerVipPlan,
   startViewerVipAbaKhqr,
   startViewerVipPayWayCheckout,
 } from '../lib/viewerProfileApi.js'
-
-const VIP_PLAN_TIER_CLASS = {
-  vip_entry: 'tg-vip-plan-card--entry',
-  vip_standard: 'tg-vip-plan-card--standard',
-  vip_premium: 'tg-vip-plan-card--premium',
-}
 
 export default function VipPage() {
   const navigate = useNavigate()
@@ -37,8 +34,22 @@ export default function VipPage() {
   const [purchaseError, setPurchaseError] = useState('')
   const scrollRef = useRef(null)
   const paymentSectionRef = useRef(null)
+  const refundFooterRef = useRef(null)
   const consentRef = useRef(null)
   const [consentShaking, setConsentShaking] = useState(false)
+  const [loginPromptOpen, setLoginPromptOpen] = useState(false)
+
+  const openLoginPrompt = useCallback(() => {
+    setPurchaseError('')
+    setLoginPromptOpen(true)
+  }, [])
+
+  const onCloseLoginPrompt = useCallback(() => setLoginPromptOpen(false), [])
+
+  const onEnterLoginFromVipPage = useCallback(() => {
+    setLoginPromptOpen(false)
+    navigate('/account')
+  }, [navigate])
 
   const resetVipScrollTop = useCallback(() => {
     const el = scrollRef.current
@@ -49,6 +60,11 @@ export default function VipPage() {
   useLayoutEffect(() => {
     resetVipScrollTop()
   }, [location.pathname, resetVipScrollTop])
+
+  useEffect(() => {
+    void preloadVipPaymentSuccessAssets()
+  }, [])
+
   const plans = useMemo(
     () => [...getVipPlansCatalogForRole(viewerProfile.role)].sort((a, b) => a.sortOrder - b.sortOrder),
     [viewerProfile.role],
@@ -79,7 +95,8 @@ export default function VipPage() {
   )
 
   const navigateToAbaKhqrPage = useCallback(
-    (session, planId) => {
+    async (session, planId) => {
+      await preloadAbaKhqrPaymentAssets()
       const path = isAbaKhqrUiMockFlowEnabled() && session.uiMock
         ? `/vip/aba-khqr?ui_mock=1&tran_id=${encodeURIComponent(session.tranId)}&plan_id=${encodeURIComponent(planId)}`
         : `/vip/aba-khqr?tran_id=${encodeURIComponent(session.tranId)}&plan_id=${encodeURIComponent(planId)}`
@@ -95,7 +112,7 @@ export default function VipPage() {
         return
       }
       if (!tgUser?.id) {
-        setPurchaseError('សូមបើកក្នុង Telegram Mini App')
+        openLoginPrompt()
         return
       }
       const planId = String(selectedPlanId || '').trim()
@@ -109,14 +126,14 @@ export default function VipPage() {
         if (isAbaKhqrUiMockFlowEnabled()) {
           const mockSession = buildAbaKhqrUiMockSession(planId, viewerProfile.role)
           saveVipAbaKhqrSession(mockSession)
-          navigateToAbaKhqrPage(mockSession, planId)
+          await navigateToAbaKhqrPage(mockSession, planId)
           return
         }
 
         const aba = await startViewerVipAbaKhqr(planId)
         if (aba?.ok && aba.session?.tranId) {
           saveVipAbaKhqrSession(aba.session)
-          navigateToAbaKhqrPage(aba.session, planId)
+          await navigateToAbaKhqrPage(aba.session, planId)
           return
         }
 
@@ -150,6 +167,7 @@ export default function VipPage() {
       refreshViewerProfile,
       selectedPlanId,
       termsAccepted,
+      openLoginPrompt,
       tgUser?.id,
       viewerProfile.role,
     ],
@@ -182,7 +200,7 @@ export default function VipPage() {
         return
       }
       if (!tgUser?.id) {
-        setPurchaseError('សូមបើកក្នុង Telegram Mini App')
+        openLoginPrompt()
         return
       }
       setPurchaseError('')
@@ -190,19 +208,33 @@ export default function VipPage() {
       if (!id) return
       setSelectedPlanId(id)
     },
-    [abaKhqrPending, nudgeTermsConsent, termsAccepted, tgUser?.id],
+    [abaKhqrPending, nudgeTermsConsent, openLoginPrompt, termsAccepted, tgUser?.id],
   )
 
   useEffect(() => {
     if (!selectedPlanId || !termsAccepted || !tgUser?.id) return undefined
     const t = window.setTimeout(() => {
       const root = scrollRef.current
-      const target = paymentSectionRef.current
-      if (!root || !target) return
-      const rootRect = root.getBoundingClientRect()
-      const targetRect = target.getBoundingClientRect()
-      if (targetRect.top < rootRect.bottom - 48) return
-      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      const payment = paymentSectionRef.current
+      const footer = refundFooterRef.current
+      if (!root || !payment || !footer) return
+
+      window.requestAnimationFrame(() => {
+        const rootRect = root.getBoundingClientRect()
+        const footerRect = footer.getBoundingClientRect()
+        const paymentRect = payment.getBoundingClientRect()
+        const bottomInset = 20
+
+        const footerOverflow = footerRect.bottom - (rootRect.bottom - bottomInset)
+        if (footerOverflow > 0) {
+          root.scrollBy({ top: footerOverflow, behavior: 'smooth' })
+          return
+        }
+
+        if (paymentRect.top > rootRect.top + 12 && paymentRect.top > rootRect.bottom * 0.45) {
+          payment.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      })
     }, 120)
     return () => window.clearTimeout(t)
   }, [selectedPlanId, termsAccepted, tgUser?.id])
@@ -251,7 +283,7 @@ export default function VipPage() {
                 key={plan.planId}
                 className={[
                   'tg-vip-plan-card shrink-0',
-                  VIP_PLAN_TIER_CLASS[plan.planId] || '',
+                  getVipPlanTierClass(plan.planId),
                   plan.featured ? 'tg-vip-plan-card--featured' : '',
                   !termsAccepted ? 'tg-vip-plan-card--locked' : '',
                   isSelected ? 'tg-vip-plan-card--selected' : '',
@@ -338,7 +370,7 @@ export default function VipPage() {
               <div className="tg-vip-payment-section__cards">
                 <AbaKhqrEntryRow
                   title="ABA KHQR"
-                  subtitle="បង់ប្រាក់តាម ABA KHQR"
+                  subtitle="Scan to pay with any banking app"
                   pending={abaKhqrPending}
                   disabled={!selectedPlanId}
                   onSelect={onAbaKhqrPay}
@@ -363,7 +395,7 @@ export default function VipPage() {
             </p>
           ) : null}
 
-          <footer className="mt-1 px-1 pb-2 text-center">
+          <footer ref={refundFooterRef} className="tg-vip-page__footer mt-1 px-1 pb-2 text-center">
             <Link
               to="/refund-policy"
               className="inline-flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 text-[11px] font-medium leading-snug text-white/65 underline-offset-2 transition active:scale-[0.98] hover:border-white/22 hover:bg-white/[0.09] hover:text-white/85"
@@ -378,6 +410,43 @@ export default function VipPage() {
           </footer>
         </section>
       </main>
+
+      {loginPromptOpen ? (
+        <div className="tg-reader-start-page" role="dialog" aria-modal="true" aria-labelledby="tg-vip-login-gate-title">
+          <button
+            type="button"
+            className="tg-reader-start-page__backdrop"
+            aria-label="បិទ"
+            onClick={onCloseLoginPrompt}
+          />
+          <div className="tg-reader-start-page__panel">
+            <h3 id="tg-vip-login-gate-title" className="tg-reader-start-page__title" lang="km">
+              {VIP_LOGIN_GATE_TITLE_KM}
+            </h3>
+            <p className="tg-reader-start-page__desc" lang="km">
+              {VIP_LOGIN_GATE_DESC_KM}
+            </p>
+            <div className="tg-reader-start-page__actions">
+              <button
+                type="button"
+                className="tg-reader-start-page__btn tg-reader-start-page__btn--ghost"
+                onClick={onCloseLoginPrompt}
+                lang="km"
+              >
+                ចាំពេលក្រោយ
+              </button>
+              <button
+                type="button"
+                className="tg-reader-start-page__btn tg-reader-start-page__btn--primary"
+                onClick={onEnterLoginFromVipPage}
+                lang="km"
+              >
+                ចូលប្រើឥឡូវនេះ
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

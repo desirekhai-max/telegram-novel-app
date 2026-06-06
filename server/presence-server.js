@@ -282,6 +282,12 @@ function normalizeReportIn(raw, novelId = '') {
 function normalizeReadRecordIn(raw) {
   if (!raw || typeof raw !== 'object') return null
   const readChapter = String(raw.readChapter || '').slice(0, 250)
+  const novelId = String(raw.novelId || '').trim().slice(0, 80)
+  const chapterIndexRaw = Number(raw.chapterIndex)
+  const chapterIndex =
+    Number.isFinite(chapterIndexRaw) && chapterIndexRaw >= 0
+      ? Math.floor(chapterIndexRaw)
+      : null
   const out = {
     memberName: String(raw.memberName || '').slice(0, 120),
     memberId: String(raw.memberId || '').slice(0, 64),
@@ -292,6 +298,8 @@ function normalizeReadRecordIn(raw) {
     readChapter,
     readAt: String(raw.readAt || '').slice(0, 32),
     ts: Number(raw.ts) && Number.isFinite(Number(raw.ts)) ? Number(raw.ts) : now(),
+    ...(novelId ? { novelId } : {}),
+    ...(chapterIndex != null ? { chapterIndex } : {}),
   }
   if (!out.shelfTitle) return null
   return out
@@ -2454,9 +2462,14 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/reading-records/by-member') {
     const memberId = String(url.searchParams.get('memberId') || '').trim()
     if (!memberId) return sendJson(res, 400, { ok: false, error: 'memberId required' })
+    const memberKeys = new Set(
+      [memberId, memberId.replace(/^tg_/, ''), memberId ? `tg_${memberId.replace(/^tg_/, '')}` : '']
+        .map((v) => String(v || '').trim())
+        .filter(Boolean),
+    )
     pruneExpiredReadRecords()
     const items = readRecords
-      .filter((it) => String(it?.memberId || '').trim() === memberId)
+      .filter((it) => memberKeys.has(String(it?.memberId || '').trim()))
       .sort((a, b) => Number(b?.ts || 0) - Number(a?.ts || 0))
     return sendJson(res, 200, { ok: true, memberId, items })
   }

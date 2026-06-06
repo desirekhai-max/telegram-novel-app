@@ -1,9 +1,8 @@
 import { ChevronRight } from 'lucide-react'
-
-const ABA_MOBILE_LOGO_SRC = `${import.meta.env.BASE_URL}aba-mobile-logo.png`
+import { ABA_KHQR_LOGO_SRC } from '../lib/abaKhqrAssets.js'
 
 /**
- * VIP 支付入口行 — ABA Mobile 官方图标 + 自定义标题。
+ * VIP 支付入口行 — ABA KHQR 官方标识 + 自定义标题。
  * @param {{ disabled?: boolean, pending?: boolean, onSelect: () => void, title: string, subtitle?: string }} props
  */
 export default function AbaKhqrEntryRow({
@@ -29,26 +28,28 @@ export default function AbaKhqrEntryRow({
     >
       <span className="tg-aba-khqr-entry__logo-wrap" aria-hidden>
         <img
-          src={ABA_MOBILE_LOGO_SRC}
+          src={ABA_KHQR_LOGO_SRC}
           alt=""
           className="tg-aba-khqr-entry__logo"
-          width={56}
-          height={56}
+          width={48}
+          height={48}
           decoding="async"
           draggable={false}
         />
       </span>
       <span className="tg-aba-khqr-entry__text">
-        <span className="tg-aba-khqr-entry__title" lang="km">
+        <span className="tg-aba-khqr-entry__title" lang="en">
           {title}
         </span>
         {subtitle ? (
-          <span className="tg-aba-khqr-entry__subtitle" lang="km">
+          <span className="tg-aba-khqr-entry__subtitle" lang="en">
             {subtitle}
           </span>
         ) : null}
       </span>
-      <ChevronRight size={20} className="tg-aba-khqr-entry__chev" aria-hidden />
+      <span className="tg-aba-khqr-entry__chev-wrap" aria-hidden>
+        <ChevronRight size={18} strokeWidth={2.25} className="tg-aba-khqr-entry__chev" />
+      </span>
     </button>
   )
 }

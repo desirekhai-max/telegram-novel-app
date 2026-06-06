@@ -12,7 +12,7 @@ import {
   Star,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getNovelById } from '../data/novels.js'
 import {
@@ -81,15 +81,19 @@ import {
   READER_VIP_CHAPTER_GATE_DESC_KM,
   READER_VIP_CHAPTER_GATE_TITLE_KM,
 } from '../lib/errorMessagesKm.js'
-import { persistAndBroadcastDetailStats } from '../lib/novelDetailStatsSync.js'
+import {
+  persistAndBroadcastDetailStats,
+  resolveInitialDetailDisplayStats,
+} from '../lib/novelDetailStatsSync.js'
 import { mergeDisplayedViewCount, mergeDisplayedInteractionCount, getSeedFavoriteCount, getSeedLikeCount, getSeedViewCount } from '../lib/novelSeedStats.js'
 import { bumpLocalViewMax } from '../lib/novelViewCountLocal.js'
 import { appendReadingHistoryLocal, saveLastRead } from '../lib/readerStorage.js'
 
-function chapterAccessLabel(idx, isVipReader) {
-  if (idx === 0) return 'ឥតគិតថ្លៃ'
-  if (isVipReader) return 'VIP'
-  return 'សមាជិកVIP'
+function chapterAccessLabel(chapter, isVipReader) {
+  if (chapterRequiresVip(chapter)) {
+    return isVipReader ? 'VIP' : 'សមាជិកVIP'
+  }
+  return 'ឥតគិតថ្លៃ'
 }
 
 const COMMENT_VOTES_STORAGE_KEY = 'tg_novel_comment_votes_v1'
@@ -170,12 +174,14 @@ function reportReadOnChapterOpen(novel, chapterIndex, tgUser, isVipReader) {
     memberName: tgUser ? formatTelegramDisplayName(tgUser) : 'ភ្ញៀវ',
     memberId: displayMemberIdForRecord(tgUser),
     memberAccount: tgUser?.username ? `@${tgUser.username}` : '',
-    memberLevel: chapterAccessLabel(chapterIndex, isVipReader),
+    memberLevel: chapterAccessLabel(novel.chapters?.[chapterIndex], isVipReader),
     memberOrder,
+    novelId: String(novel?.id || ''),
     shelfTitle: String(novel?.title || ''),
     readChapter,
     readAt,
     ts,
+    chapterIndex,
   })
   appendReadingHistoryLocal({
     novelId: String(novel?.id || ''),
@@ -305,19 +311,16 @@ export default function ReaderPage() {
   const [reportSubmitError, setReportSubmitError] = useState('')
   const [likedDetail, setLikedDetail] = useState(false)
   const [detailLikeHydrated, setDetailLikeHydrated] = useState(false)
-  const [likeCount, setLikeCount] = useState(0)
+  const initialDetailStats = resolveInitialDetailDisplayStats(resolveInitialNovel(id).novel)
+  const [likeCount, setLikeCount] = useState(initialDetailStats.likeCount)
   const [favoritedDetail, setFavoritedDetail] = useState(false)
-  const [favoriteCount, setFavoriteCount] = useState(0)
-  const [viewCount, setViewCount] = useState(0)
+  const [favoriteCount, setFavoriteCount] = useState(initialDetailStats.favoriteCount)
+  const [viewCount, setViewCount] = useState(initialDetailStats.viewCount)
+  const [ratingPointsFloor, setRatingPointsFloor] = useState(initialDetailStats.ratingPoints)
   const [likeBump, setLikeBump] = useState(false)
   const [commentVotesHydrated, setCommentVotesHydrated] = useState(false)
   const [nowTs, setNowTs] = useState(() => Date.now())
-  /**
-   * 章节门控：
-   * - 第 1 章：全部身份可读
-   * - 第 2 章及以后：仅后端已激活 VIP 可读
-   * - 普通会员 / 作者会员均不可读
-   */
+  /** 章节门控：每章 `isVip` 由后台配置；免费章人人可读，VIP 章仅已激活 VIP 可读。 */
   const isVipReader = Boolean(viewerProfile.vipActive)
   const [reviewItems, setReviewItems] = useState([])
   const [startReadPageOpen, setStartReadPageOpen] = useState(false)
@@ -523,21 +526,32 @@ export default function ReaderPage() {
   useEffect(() => {
     setArticleHeaderCompact(false)
   }, [readingChapterIndex])
+  useLayoutEffect(() => {
+    if (!novel?.id) return
+    const stats = resolveInitialDetailDisplayStats(novel)
+    setViewCount(stats.viewCount)
+    setLikeCount(stats.likeCount)
+    setFavoriteCount(stats.favoriteCount)
+    setRatingPointsFloor(stats.ratingPoints)
+    setReviewItems([])
+    setExtraReplies({})
+  }, [novel?.id])
   useEffect(() => {
     if (!novel) return
     setDetailLikeHydrated(false)
     setCommentVotesHydrated(false)
+    const stats = resolveInitialDetailDisplayStats(novel)
     const safeBaseViewCount = getSeedViewCount(novel)
-    setViewCount(safeBaseViewCount)
+    setViewCount((prev) => Math.max(prev, stats.viewCount))
     void fetchNovelViewCount(novel.id, safeBaseViewCount).then((count) => {
-      setViewCount(mergeDisplayedViewCount(safeBaseViewCount, count))
+      setViewCount((prev) => Math.max(prev, mergeDisplayedViewCount(safeBaseViewCount, count)))
     })
     const baseLikeCount = getSeedLikeCount(novel)
     const baseFavoriteCount = getSeedFavoriteCount(novel)
     const likerId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
     const localInteractions = resolveInteractionByNovelId(readDetailInteractions(), novel.id)
-    setLikeCount(Math.max(0, baseLikeCount))
-    setFavoriteCount(baseFavoriteCount)
+    setLikeCount((prev) => Math.max(prev, stats.likeCount, baseLikeCount))
+    setFavoriteCount((prev) => Math.max(prev, stats.favoriteCount, baseFavoriteCount))
     setFavoritedDetail(false)
     void Promise.all([
       fetchNovelLikeState(novel.id, likerId, baseLikeCount),
@@ -646,13 +660,16 @@ export default function ReaderPage() {
       const seedV = getSeedViewCount(novel)
       const seedL = getSeedLikeCount(novel)
       const seedF = getSeedFavoriteCount(novel)
+      const floor = resolveInitialDetailDisplayStats(novel)
       const [latestViewCount, latestLikeState, latestFavoriteState] = await Promise.all([
         fetchNovelViewCount(novel.id, seedV),
         fetchNovelLikeState(novel.id, likerId, seedL),
         fetchNovelFavoriteState(novel.id, likerId, seedF),
       ])
       if (cancelled) return
-      setViewCount(mergeDisplayedViewCount(seedV, latestViewCount))
+      setViewCount((prev) =>
+        Math.max(prev, floor.viewCount, mergeDisplayedViewCount(seedV, latestViewCount)),
+      )
       const mergedLike = mergeCountByLocalPreference(
         mergeDisplayedInteractionCount(seedL, Number(latestLikeState?.count) || 0),
         Boolean(latestLikeState?.liked),
@@ -664,10 +681,11 @@ export default function ReaderPage() {
         localInteractions?.favorited,
       )
       setLikedDetail(mergedLike.state)
-      setLikeCount(mergedLike.count)
+      setLikeCount((prev) => Math.max(prev, floor.likeCount, mergedLike.count))
       setFavoritedDetail(mergedFavorite.state)
-      setFavoriteCount(mergedFavorite.count)
+      setFavoriteCount((prev) => Math.max(prev, floor.favoriteCount, mergedFavorite.count))
     }
+    void sync()
     const timer = window.setInterval(sync, 15000)
     return () => {
       cancelled = true
@@ -735,7 +753,8 @@ export default function ReaderPage() {
         id: `${novel.id}-${idx + 1}`,
         chapterIndex: idx,
         title: `ភាគទី${idx + 1}`,
-        access: chapterAccessLabel(idx, isVipReader),
+        access: chapterAccessLabel(ch, isVipReader),
+        requiresVip: chapterRequiresVip(ch),
         rawTitle: ch?.title ?? `ភាគទី${idx + 1}`,
       }
     })
@@ -774,7 +793,8 @@ export default function ReaderPage() {
       ),
     [extraReplies],
   )
-  const totalCommentCount = commentFeed.length + extraReplyCount
+  const liveCommentCount = commentFeed.length + extraReplyCount
+  const totalCommentCount = Math.max(ratingPointsFloor, liveCommentCount)
   const commentPoints = Math.min(100, totalCommentCount)
   const commentStarValue = commentPointsToStars(commentPoints)
   const displayedCommentFeed = useMemo(() => {
@@ -1004,6 +1024,16 @@ export default function ReaderPage() {
         ...prev,
         favorited: next,
         favoritedAtMs: next ? Date.now() : null,
+        ...(next
+          ? {
+              title: String(novel.title || ''),
+              author: String(novel.author || ''),
+              coverUrl: String(novel.coverUrl || ''),
+              accent: String(novel.accent || 'violet'),
+              tags: Array.isArray(novel.tags) ? novel.tags : [],
+              genreId: String(novel.genreId || ''),
+            }
+          : {}),
       },
     })
     const userId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
@@ -1099,7 +1129,7 @@ export default function ReaderPage() {
   const onOpenChapter = (chapterIndex) => {
     if (!ensureMiniAppLoggedIn()) return
     const chapter = novel?.chapters?.[chapterIndex]
-    if (!isVipReader && chapterRequiresVip(chapter, chapterIndex)) {
+    if (!isVipReader && chapterRequiresVip(chapter)) {
       setChapterVipGateOpen(true)
       return
     }
@@ -1447,7 +1477,8 @@ export default function ReaderPage() {
           <ul className="tg-reader-detail__chapter-list">
             {displayedChapterRows.map((row) => {
               const hasReadableBody = chapterHasReadableBody(novel, row.chapterIndex)
-              const clickable = hasReadableBody || (!isVipReader && row.chapterIndex > 0)
+              const canReadNow = hasReadableBody && (isVipReader || !row.requiresVip)
+              const clickable = canReadNow || (!isVipReader && row.requiresVip)
               return (
                 <li
                   key={row.id}

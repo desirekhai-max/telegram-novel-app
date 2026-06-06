@@ -42,11 +42,13 @@ export default function PrivacyPolicyPage() {
           <div className="mx-auto max-w-md text-[0.95rem] leading-[1.75] text-white/70" lang="km">
             <p className="mb-3 font-semibold text-white/85">សុវត្ថិភាពការទូទាត់</p>
             <p>
-              ការទូទាត់ VIP ត្រូវបានដំណើរការតាម ABA PayWay។ លេខកាតធនាគារ CVV/CVC និងកាលបរិច្ឆេទផុតកំណត់
-              ត្រូវបានបញ្ចូលតែលើទំព័រផ្លូវការរបស់ ABA PayWay ប៉ុណ្ណោះ។
+              ការទូទាត់ VIP ត្រូវបានដំណើរការតាមរយៈ ABA KHQR និង ABA PayWay
             </p>
             <p className="mt-3">
-              69KKH NOVEL មិនប្រមូល មិនរក្សាទុក និងមិនចែករំលែកព័ត៌មានកាតធនាគាររបស់អ្នកឡើយ។
+              69KKH Novel មិនប្រមូល មិនរក្សាទុក និងមិនចែករំលែកព័ត៌មានគណនីធនាគារ ឬព័ត៌មានការទូទាត់របស់អ្នកឡើយ
+            </p>
+            <p className="mt-3">
+              រាល់ប្រតិបត្តិការទូទាត់ត្រូវបានដំណើរការដោយប្រព័ន្ធសុវត្ថិភាពរបស់ ABA Bank
             </p>
           </div>
 

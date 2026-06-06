@@ -120,6 +120,17 @@ export function getCatalogNovelsSync() {
   return catalogNovels || bundledNovels
 }
 
+/** 列表/收藏/阅读历史用：目录 + 缓存 + 内置书，按 id 解析摘要（可无 chapters 正文） */
+export function getNovelSummaryById(id) {
+  const key = String(id || '').trim()
+  if (!key) return null
+  const full = getNovelFullSync(key)
+  if (full) return full
+  const fromCatalog = findCatalogNovel(key)
+  if (fromCatalog) return fromCatalog
+  return getBundledNovelById(key) ?? null
+}
+
 export function invalidateNovelsRuntimeCache() {
   catalogNovels = null
   catalogPromise = null
@@ -194,8 +205,7 @@ export async function fetchNovelFull(id, options = {}) {
   return promise
 }
 
-export function chapterRequiresVip(chapter, chapterIndex) {
-  if (chapter?.isVip === true) return true
-  if (chapter?.isVip === false) return false
-  return Number(chapterIndex) > 0
+/** 章节是否需 VIP：完全由后台 `chapter.isVip` 决定；未标注时视为免费。 */
+export function chapterRequiresVip(chapter) {
+  return chapter?.isVip === true
 }
