@@ -1,37 +1,120 @@
 import crypto from 'node:crypto'
-import { buildPayWayCustomFields, getPayWayItemsLine } from './paywayNeutralCopy.js'
+import {
+  buildPayWayCustomFields,
+  buildPayWayQrCustomFieldsBase64,
+  getPayWayItemsLine,
+} from './paywayNeutralCopy.js'
 import { sanitizePayWayCheckStatus } from './payway-security.js'
 
 /** Card PAN / CVV / expiry are entered only on PayWay hosted pages — never in this app. */
 
 const PAYWAY_MERCHANT_ID = String(process.env.PAYWAY_MERCHANT_ID || '').trim()
 const PAYWAY_API_KEY = String(process.env.PAYWAY_API_KEY || process.env.PAYWAY_PUBLIC_KEY || '').trim()
-const PAYWAY_CHECKOUT_URL = String(
-  process.env.PAYWAY_CHECKOUT_URL
-  || (process.env.PAYWAY_SANDBOX === '1' || process.env.PAYWAY_SANDBOX === 'true'
-    ? 'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase'
-    : 'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/purchase'),
-).trim()
-const PAYWAY_CHECK_URL = String(
-  process.env.PAYWAY_CHECK_URL
-  || (process.env.PAYWAY_SANDBOX === '1' || process.env.PAYWAY_SANDBOX === 'true'
-    ? 'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/check'
-    : 'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/check'),
-).trim()
-const PAYWAY_QR_URL = String(
-  process.env.PAYWAY_QR_URL
-  || (process.env.PAYWAY_SANDBOX === '1' || process.env.PAYWAY_SANDBOX === 'true'
-    ? 'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/generate-qr'
-    : 'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/generate-qr'),
-).trim()
+
+const DEFAULT_SANDBOX_API_BASE = 'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1'
+
 const PAYWAY_QR_TEMPLATE = String(process.env.PAYWAY_QR_TEMPLATE || 'template3_color').trim()
 const PAYWAY_QR_LIFETIME_MIN = Math.min(
   43200,
   Math.max(3, Math.floor(Number(process.env.PAYWAY_QR_LIFETIME_MIN || 30) || 30)),
 )
 
+function isSandboxModeEnabled() {
+  const flag = String(process.env.PAYWAY_SANDBOX ?? '1').trim().toLowerCase()
+  return flag === '1' || flag === 'true' || flag === 'yes'
+}
+
+function isProductionPayWayUrl(url) {
+  const u = String(url || '').trim().toLowerCase()
+  if (!u) return false
+  return u.includes('checkout.payway.com.kh') && !u.includes('checkout-sandbox.payway.com.kh')
+}
+
+function normalizeApiBaseUrl(raw) {
+  let url = String(raw || '').trim().replace(/\/+$/, '')
+  if (!url) return ''
+  const suffixes = [
+    '/payments/purchase',
+    '/payments/check',
+    '/payments/generate-qr',
+  ]
+  for (const suffix of suffixes) {
+    if (url.toLowerCase().endsWith(suffix)) {
+      url = url.slice(0, -suffix.length).replace(/\/+$/, '')
+      break
+    }
+  }
+  return url.replace(/\/+$/, '')
+}
+
+function resolveApiBaseUrl() {
+  const explicit = normalizeApiBaseUrl(process.env.PAYWAY_API_URL || '')
+  if (explicit) return explicit
+  if (isSandboxModeEnabled()) return DEFAULT_SANDBOX_API_BASE
+  return ''
+}
+
+function joinApiEndpoint(base, segment) {
+  const root = normalizeApiBaseUrl(base)
+  if (!root) return ''
+  return `${root}/${String(segment || '').replace(/^\/+/, '')}`
+}
+
+function resolveEndpointUrl(envOverride, segment, legacyProductionUrl) {
+  const override = String(envOverride || '').trim()
+  if (override) return override
+  const base = resolveApiBaseUrl()
+  if (base) return joinApiEndpoint(base, segment)
+  if (isSandboxModeEnabled()) return joinApiEndpoint(DEFAULT_SANDBOX_API_BASE, segment)
+  return legacyProductionUrl
+}
+
+const PAYWAY_CHECKOUT_URL = resolveEndpointUrl(
+  process.env.PAYWAY_CHECKOUT_URL,
+  'payments/purchase',
+  'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/purchase',
+)
+const PAYWAY_CHECK_URL = resolveEndpointUrl(
+  process.env.PAYWAY_CHECK_URL,
+  'payments/check',
+  'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/check',
+)
+const PAYWAY_QR_URL = resolveEndpointUrl(
+  process.env.PAYWAY_QR_URL,
+  'payments/generate-qr',
+  'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/generate-qr',
+)
+
+function isPhase1SandboxOnly() {
+  if (!isSandboxModeEnabled()) return false
+  const allowProduction = String(process.env.PAYWAY_ALLOW_PRODUCTION || '').trim() === '1'
+  if (allowProduction) return true
+  const urls = [PAYWAY_CHECKOUT_URL, PAYWAY_CHECK_URL, PAYWAY_QR_URL]
+  return !urls.some(isProductionPayWayUrl)
+}
+
 export function isPayWayConfigured() {
-  return Boolean(PAYWAY_MERCHANT_ID && PAYWAY_API_KEY)
+  if (!PAYWAY_MERCHANT_ID || !PAYWAY_API_KEY) return false
+  return isPhase1SandboxOnly()
+}
+
+export function getPayWayQrLifetimeMinutes() {
+  return PAYWAY_QR_LIFETIME_MIN
+}
+
+export function getPayWaySandboxStatus() {
+  return {
+    sandboxMode: isSandboxModeEnabled(),
+    configured: isPayWayConfigured(),
+    merchantIdPresent: Boolean(PAYWAY_MERCHANT_ID),
+    apiKeyPresent: Boolean(PAYWAY_API_KEY),
+    apiBaseUrl: resolveApiBaseUrl() || null,
+    checkoutUrl: PAYWAY_CHECKOUT_URL || null,
+    checkUrl: PAYWAY_CHECK_URL || null,
+    qrUrl: PAYWAY_QR_URL || null,
+    qrLifetimeMin: PAYWAY_QR_LIFETIME_MIN,
+    phase1SandboxOnly: isPhase1SandboxOnly(),
+  }
 }
 
 export function getPayWayCheckoutUrl() {
@@ -100,12 +183,22 @@ export function buildVipTranId(telegramUserId, atMs = Date.now()) {
   return `V${uid}${tail}`.slice(0, 20)
 }
 
-/** PayWay QR API: base64 JSON { ios_scheme, android_scheme } for return after ABA Mobile pay. */
+/** PayWay QR API: base64 JSON { ios_scheme, android_scheme }; encoded length must be ≤ 255. */
 export function buildPayWayReturnDeeplink(returnUrl) {
   const url = String(returnUrl || '').trim()
   if (!url) return ''
-  const payload = { ios_scheme: url, android_scheme: url }
-  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
+  const encode = (target) => {
+    const payload = { ios_scheme: target, android_scheme: target }
+    return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
+  }
+  const full = encode(url)
+  if (full.length <= 255) return full
+  const withoutQuery = url.split('?')[0]
+  if (withoutQuery && withoutQuery !== url) {
+    const shortened = encode(withoutQuery)
+    if (shortened.length <= 255) return shortened
+  }
+  return ''
 }
 
 function buildGenerateQrHash(fields) {
@@ -154,8 +247,13 @@ export async function generateAbaKhqrPayment(input) {
 
   const req_time = formatPayWayReqTime()
   const merchant_id = PAYWAY_MERCHANT_ID
-  const items = Buffer.from(getPayWayItemsLine(), 'utf8').toString('base64')
-  const custom_fields = buildPayWayCustomFields({ tranId: tran_id, planId: input.planId })
+  // QR API requires base64-encoded JSON array for items (not plain-text line).
+  const items = Buffer.from(
+    JSON.stringify([{ name: getPayWayItemsLine(), quantity: 1, price: amountNum }]),
+    'utf8',
+  ).toString('base64')
+  // QR API: base64(JSON) custom_fields, max 255 chars encoded (see buildPayWayQrCustomFieldsBase64).
+  const custom_fields = buildPayWayQrCustomFieldsBase64({ tranId: tran_id, planId: input.planId })
   const return_deeplink = buildPayWayReturnDeeplink(input.returnDeeplinkUrl)
   const callback_url = input.callbackUrl
     ? Buffer.from(String(input.callbackUrl), 'utf8').toString('base64')

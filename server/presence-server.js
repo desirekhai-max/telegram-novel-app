@@ -10,9 +10,20 @@ import {
   checkPayWayTransaction,
   generateAbaKhqrPayment,
   getPayWayCheckoutUrl,
+  getPayWayQrLifetimeMinutes,
+  getPayWaySandboxStatus,
   isPayWayConfigured,
   parseUsdAmountFromLabel,
 } from './payway.js'
+import {
+  initOrdersStore,
+  getOrdersDataFilePath,
+  getOrdersCount,
+  createPaymentOrder,
+  markOrderPaid,
+  markOrderFailed,
+  getOrderByTranId,
+} from './orders-store.js'
 import { buildPayWayCustomFields, getNeutralVipOrderProductLabel } from './paywayNeutralCopy.js'
 import { filterCheckoutFormFieldsForClient, stripSensitivePaymentFields } from './payway-security.js'
 import { PERSISTENT_DATA_DIR } from './persistent-data-dir.js'
@@ -696,6 +707,42 @@ function markMemberPaidPresence(memberId, req, atMs = now()) {
   }
 }
 
+function computePaymentExpireAt(atMs = now()) {
+  return atMs + getPayWayQrLifetimeMinutes() * 60 * 1000
+}
+
+function writePendingVipOrder(row) {
+  const tid = String(row?.tranId || '').trim().slice(0, 20)
+  if (!tid) return null
+  pendingVipOrdersByTranId.set(tid, row)
+  return row
+}
+
+function createPendingVipOrderRecord({
+  tranId,
+  planId,
+  profile,
+  amount,
+  atMs,
+  paymentChannel,
+  orderNo = '',
+  expireAt = 0,
+}) {
+  return writePendingVipOrder({
+    tranId,
+    planId,
+    telegramUserId: profile.telegramUserId,
+    memberId: profile.memberId,
+    amount,
+    status: 'pending',
+    createdAt: atMs,
+    paidAt: 0,
+    paymentChannel,
+    orderNo: String(orderNo || '').trim(),
+    expireAt: Number(expireAt || 0) || 0,
+  })
+}
+
 function fulfillVipAfterPayment(input = {}) {
   const tranId = String(input.tranId || input.tran_id || '').trim().slice(0, 20)
   const pending = tranId ? pendingVipOrdersByTranId.get(tranId) : null
@@ -740,6 +787,7 @@ function fulfillVipAfterPayment(input = {}) {
 
   if (tranId) {
     fulfilledVipTranIds.add(tranId)
+    markOrderPaid(tranId, now())
     const row = pendingVipOrdersByTranId.get(tranId)
     if (row) pendingVipOrdersByTranId.set(tranId, { ...row, status: 'paid', paidAt: now() })
   }
@@ -879,6 +927,9 @@ function loadPersistedMembers() {
         status: String(row.status || 'pending').trim(),
         createdAt: Number(row.createdAt || 0) || 0,
         paidAt: Number(row.paidAt || 0) || 0,
+        paymentChannel: String(row.paymentChannel || row.payment_channel || '').trim(),
+        orderNo: String(row.orderNo || row.order_no || '').trim(),
+        expireAt: Number(row.expireAt || row.expire_at || 0) || 0,
       })
     }
     for (const tranId of fulfilledTranIds) {
@@ -1523,12 +1574,16 @@ const server = http.createServer(async (req, res) => {
       paths: {
         novelsData: novelsPath,
         presenceData: DATA_FILE,
+        ordersData: getOrdersDataFilePath(),
         coversDir: COVERS_DIR,
       },
       novelsCount: getNovelsCount(),
+      ordersCount: getOrdersCount(),
+      payway: getPayWaySandboxStatus(),
       files: {
         novelsDataExists: fs.existsSync(novelsPath),
         presenceDataExists: fs.existsSync(DATA_FILE),
+        ordersDataExists: fs.existsSync(getOrdersDataFilePath()),
         legacyNovelsExists: fs.existsSync(legacyNovelsPath),
       },
       lastMigration: getLastMigrationResults(),
@@ -1651,17 +1706,29 @@ const server = http.createServer(async (req, res) => {
     const atMs = now()
     const tranId = buildVipTranId(profile.telegramUserId, atMs)
     const amount = parseUsdAmountFromLabel(plan.priceUsdLabel)
-    const returnUrl = `${APP_PUBLIC_URL}/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
-    pendingVipOrdersByTranId.set(tranId, {
+    const expireAt = computePaymentExpireAt(atMs)
+    const storeOrder = createPaymentOrder({
+      tran_id: tranId,
+      telegram_user_id: profile.telegramUserId,
+      member_id: profile.memberId,
+      plan_id: plan.planId,
+      amount,
+      currency: 'USD',
+      payment_channel: 'payway_hosted',
+      created_at: atMs,
+      expire_at: expireAt,
+    })
+    createPendingVipOrderRecord({
       tranId,
       planId: plan.planId,
-      telegramUserId: profile.telegramUserId,
-      memberId: profile.memberId,
+      profile,
       amount,
-      status: 'pending',
-      createdAt: atMs,
-      paidAt: 0,
+      atMs,
+      paymentChannel: 'payway_hosted',
+      orderNo: storeOrder?.order_no || '',
+      expireAt,
     })
+    const returnUrl = `${APP_PUBLIC_URL}/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
     const formFields = buildPurchaseFormFields({
       tranId,
       amount,
@@ -1677,6 +1744,8 @@ const server = http.createServer(async (req, res) => {
       ok: true,
       paywayConfigured: true,
       tranId,
+      orderNo: storeOrder?.order_no || '',
+      expireAt,
       checkoutUrl: getPayWayCheckoutUrl(),
       formFields: filterCheckoutFormFieldsForClient(formFields),
       hostedCheckout: true,
@@ -1706,18 +1775,29 @@ const server = http.createServer(async (req, res) => {
     const atMs = now()
     const tranId = buildVipTranId(profile.telegramUserId, atMs)
     const amount = parseUsdAmountFromLabel(plan.priceUsdLabel)
-    const returnDeeplinkUrl = `${APP_PUBLIC_URL}/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
-    pendingVipOrdersByTranId.set(tranId, {
+    const expireAt = computePaymentExpireAt(atMs)
+    const storeOrder = createPaymentOrder({
+      tran_id: tranId,
+      telegram_user_id: profile.telegramUserId,
+      member_id: profile.memberId,
+      plan_id: plan.planId,
+      amount,
+      currency: 'USD',
+      payment_channel: 'aba_khqr',
+      created_at: atMs,
+      expire_at: expireAt,
+    })
+    createPendingVipOrderRecord({
       tranId,
       planId: plan.planId,
-      telegramUserId: profile.telegramUserId,
-      memberId: profile.memberId,
+      profile,
       amount,
-      status: 'pending',
-      createdAt: atMs,
-      paidAt: 0,
+      atMs,
       paymentChannel: 'aba_khqr',
+      orderNo: storeOrder?.order_no || '',
+      expireAt,
     })
+    const returnDeeplinkUrl = `${APP_PUBLIC_URL}/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
     const qr = await generateAbaKhqrPayment({
       tranId,
       amount,
@@ -1725,6 +1805,7 @@ const server = http.createServer(async (req, res) => {
       returnDeeplinkUrl,
     })
     if (!qr.ok) {
+      markOrderFailed(tranId, qr.error || 'qr_generation_failed')
       pendingVipOrdersByTranId.delete(tranId)
       return sendJson(res, 502, { ok: false, error: qr.error || 'qr_generation_failed' })
     }
@@ -1733,6 +1814,8 @@ const server = http.createServer(async (req, res) => {
       ok: true,
       paywayConfigured: true,
       tranId,
+      orderNo: storeOrder?.order_no || '',
+      expireAt,
       planId: plan.planId,
       amountLabel: plan.priceUsdLabel,
       amount: qr.amount,
@@ -1762,7 +1845,11 @@ const server = http.createServer(async (req, res) => {
     const planId = String(body.planId || body.plan_id || '').trim()
     if (!tranId) return sendJson(res, 400, { ok: false, error: 'tranId required' })
     const pending = pendingVipOrdersByTranId.get(tranId)
-    if (pending && pending.telegramUserId !== auth.telegramUser.telegramUserId) {
+    const storedOrder = getOrderByTranId(tranId)
+    const orderOwnerId = normalizeTelegramUserId(
+      pending?.telegramUserId || storedOrder?.telegram_user_id,
+    )
+    if (orderOwnerId && orderOwnerId !== auth.telegramUser.telegramUserId) {
       return sendJson(res, 403, { ok: false, error: 'tran_id owner mismatch' })
     }
     const skipVerify = body.skipVerify === true || process.env.PAYWAY_SKIP_VERIFY === '1'
@@ -2540,6 +2627,7 @@ const server = http.createServer(async (req, res) => {
 
 const migrationResults = runAllLegacyMigrations()
 initAppFiltersStore()
+initOrdersStore()
 loadPersistedMembers()
 initNovelCoverUpload()
 initNovelsStore()
@@ -2550,6 +2638,9 @@ initNovelsStore()
       console.log(`[data] persistent dir: ${PERSISTENT_DATA_DIR}`)
       console.log(`[novels-store] data file: ${getNovelsDataFilePath()}`)
       console.log(`[novels-store] count: ${getNovelsCount()}`)
+      console.log(`[orders-store] data file: ${getOrdersDataFilePath()}`)
+      console.log(`[orders-store] count: ${getOrdersCount()}`)
+      console.log('[payway] sandbox status:', JSON.stringify(getPayWaySandboxStatus()))
       console.log('[migrate] results:', JSON.stringify(migrationResults))
     })
   })

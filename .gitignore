@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
 
 # Runtime novel CMS data (seeded from src/data/novels.js on first boot)
 server/novels-data.json

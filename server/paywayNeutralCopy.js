@@ -37,6 +37,21 @@ export function buildPayWayCustomFields(meta = {}) {
   })
 }
 
+/**
+ * QR API `custom_fields`：须 base64(JSON)，且编码后总长 ≤ 255。
+ * 使用精简键值，避免 purchase 用的完整 custom_fields 超长被拒（code 04）。
+ */
+export function buildPayWayQrCustomFieldsBase64(meta = {}) {
+  const payload = {}
+  const ref = String(meta.tranId || '').trim().slice(0, 20)
+  const sku = String(meta.planId || '').trim().slice(0, 40)
+  if (ref) payload.ref = ref
+  if (sku) payload.sku = sku
+  if (!Object.keys(payload).length) return ''
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
+  return encoded.length <= 255 ? encoded : ''
+}
+
 /** 应用内 VIP 订单 `product` / 备注展示（非 PayWay，但统一中性） */
 export function getNeutralVipOrderProductLabel() {
   return PAYWAY_NEUTRAL_ORDER_NOTE
