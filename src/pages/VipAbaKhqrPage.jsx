@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import AbaKhqrPaymentScreen from '../components/AbaKhqrPaymentScreen.jsx'
 import VipPaymentResultModal from '../components/VipPaymentResultModal.jsx'
 import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
-import { openAbaMobileDeeplink, shouldTryAbaMobileDeeplinkFirst } from '../lib/abaMobile.js'
 import {
   buildAbaKhqrUiMockSession,
   isUiMockAbaKhqrSession,
@@ -47,7 +46,6 @@ export default function VipAbaKhqrPage() {
   const [statusNote, setStatusNote] = useState('')
   const [resultModal, setResultModal] = useState(null)
   const pollRef = useRef(0)
-  const deeplinkAttemptedRef = useRef(false)
   const edgeSwipeHandlers = useEdgeSwipeBack()
   const pageSwipeHandlers = resultModal ? {} : edgeSwipeHandlers
 
@@ -107,21 +105,6 @@ export default function VipAbaKhqrPage() {
       setStatusNote('កំពុងរង់ចាំការបញ្ជាក់ការទូទាត់…')
     }
   }, [isUiMock, openSuccessModal, planId, refreshViewerProfile, tranId])
-
-  useEffect(() => {
-    if (!session || !tranId || isUiMock || deeplinkAttemptedRef.current) return undefined
-    if (!shouldTryAbaMobileDeeplinkFirst()) return undefined
-
-    const deeplink = String(session.abapayDeeplink || '').trim()
-    if (!deeplink) return undefined
-
-    deeplinkAttemptedRef.current = true
-    openAbaMobileDeeplink(deeplink, {
-      playStore: String(session.playStore || '').trim(),
-      appStore: String(session.appStore || '').trim(),
-    })
-    return undefined
-  }, [isUiMock, session, tranId])
 
   useEffect(() => {
     if (!session || !tranId) {
