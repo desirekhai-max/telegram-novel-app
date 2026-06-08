@@ -35,6 +35,7 @@ function normalizeApiBaseUrl(raw) {
   if (!url) return ''
   const suffixes = [
     '/payments/purchase',
+    '/payments/check-transaction',
     '/payments/check',
     '/payments/generate-qr',
   ]
@@ -76,8 +77,8 @@ const PAYWAY_CHECKOUT_URL = resolveEndpointUrl(
 )
 const PAYWAY_CHECK_URL = resolveEndpointUrl(
   process.env.PAYWAY_CHECK_URL,
-  'payments/check',
-  'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/check',
+  'payments/check-transaction',
+  'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/check-transaction',
 )
 const PAYWAY_QR_URL = resolveEndpointUrl(
   process.env.PAYWAY_QR_URL,
