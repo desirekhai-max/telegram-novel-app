@@ -1609,7 +1609,7 @@ a {
 @keyframes tg-vip-cine-float {
   0%,
   100% {
-    transform: translateY(0);
+    transform: translateY(-1px);
   }
   50% {
     transform: translateY(-4px);
@@ -2248,6 +2248,16 @@ a {
   touch-action: pan-y;
   /* 与 khqr-payment-screen.png 画布底色一致，避免贴图外再露一层灰/深蓝 */
   --tg-aba-khqr-canvas: #ebebeb;
+  --tg-aba-khqr-display-width: 74vw;
+  --tg-aba-khqr-aspect-ratio: 216 / 448;
+  --tg-aba-khqr-max-height: calc(
+    100dvh - 108px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  --tg-aba-khqr-merchant-mask-top: 27%;
+  --tg-aba-khqr-merchant-mask-height: 12.5%;
+  --tg-aba-khqr-merchant-mask-inset-left: 10%;
+  --tg-aba-khqr-merchant-mask-inset-right: 14%;
+  --tg-aba-khqr-mask-bleed: 3px;
 }
 
 .tg-vip-payment-success-page.tg-app {
@@ -2580,7 +2590,7 @@ a {
   line-height: 1.3;
   color: #1b2742;
   text-align: right;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--tg-font);
 }
 
 .tg-vip-payment-success-plan__value--km {
@@ -2664,16 +2674,17 @@ a {
 .tg-aba-khqr-page__main {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
   box-sizing: border-box;
   min-height: 0;
   overflow-y: auto;
-  padding: clamp(12px, 3vh, 20px) 20px 24px;
+  padding: max(8px, env(safe-area-inset-top, 0px)) 13vw max(8px, env(safe-area-inset-bottom, 0px));
 }
 
 .tg-aba-khqr-page__shell {
-  width: min(100%, 360px);
+  width: var(--tg-aba-khqr-display-width);
+  max-width: var(--tg-aba-khqr-display-width);
   margin: 0 auto;
   box-sizing: border-box;
 }
@@ -2682,11 +2693,176 @@ a {
   width: 100%;
   margin: 0;
   box-sizing: border-box;
-  padding: 8px 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.tg-aba-khqr-page__qr-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(
+    var(--tg-aba-khqr-display-width),
+    calc(var(--tg-aba-khqr-max-height) * 216 / 448)
+  );
+  max-width: var(--tg-aba-khqr-display-width);
+  max-height: var(--tg-aba-khqr-max-height);
+  margin: 0 auto;
+}
+
+.tg-aba-khqr-page__qr-stack {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--tg-aba-khqr-aspect-ratio);
+  max-height: var(--tg-aba-khqr-max-height);
+  container-type: size;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--tg-aba-khqr-canvas);
+}
+
+.tg-aba-khqr-page__qr-stack::before {
+  content: '';
+  position: absolute;
+  left: calc(0px - var(--tg-aba-khqr-mask-bleed));
+  right: calc(0px - var(--tg-aba-khqr-mask-bleed));
+  top: calc(0px - var(--tg-aba-khqr-mask-bleed));
+  height: calc(15% + var(--tg-aba-khqr-mask-bleed));
+  background: var(--tg-aba-khqr-canvas);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tg-aba-khqr-page__qr-stack::after {
+  content: '';
+  position: absolute;
+  left: calc(0px - var(--tg-aba-khqr-mask-bleed));
+  right: calc(0px - var(--tg-aba-khqr-mask-bleed));
+  bottom: calc(0px - var(--tg-aba-khqr-mask-bleed));
+  height: calc(9% + var(--tg-aba-khqr-mask-bleed));
+  background: var(--tg-aba-khqr-canvas);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tg-aba-khqr-page__qr-stack--placeholder {
+  min-height: 280px;
+  background: var(--tg-aba-khqr-canvas);
+}
+
+.tg-aba-khqr-page__qr {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  background: var(--tg-aba-khqr-canvas);
+}
+
+.tg-aba-khqr-page__header-logo {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  z-index: 2;
+  display: block;
+  width: auto;
+  max-width: 88%;
+  height: 15%;
+  transform: translateX(-50%);
+  object-fit: contain;
+  object-position: center;
+  pointer-events: none;
+}
+
+.tg-aba-khqr-page__merchant-mask {
+  position: absolute;
+  left: calc(var(--tg-aba-khqr-merchant-mask-inset-left) - var(--tg-aba-khqr-mask-bleed));
+  right: calc(var(--tg-aba-khqr-merchant-mask-inset-right) - var(--tg-aba-khqr-mask-bleed));
+  top: calc(var(--tg-aba-khqr-merchant-mask-top) - var(--tg-aba-khqr-mask-bleed));
+  height: calc(var(--tg-aba-khqr-merchant-mask-height) + var(--tg-aba-khqr-mask-bleed) * 2);
+  background: #ffffff;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tg-aba-khqr-page__merchant-info {
+  position: absolute;
+  left: calc(var(--tg-aba-khqr-merchant-mask-inset-left) + 2.5%);
+  right: calc(var(--tg-aba-khqr-merchant-mask-inset-right) + 2%);
+  top: var(--tg-aba-khqr-merchant-mask-top);
+  height: var(--tg-aba-khqr-merchant-mask-height);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0 0 0 3%;
+  pointer-events: none;
+}
+
+.tg-aba-khqr-page__merchant-name {
+  margin: 0;
+  font-size: 5cqw;
+  line-height: 1.2;
+  font-weight: 400;
+  color: #4b4b4b;
+  letter-spacing: 0.01em;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.tg-aba-khqr-page__merchant-amount {
+  margin: 0.8cqw 0 0;
+  line-height: 1.1;
+  color: #1a1a1a;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.tg-aba-khqr-page__merchant-amount-value {
+  font-size: 8.2cqw;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.tg-aba-khqr-page__merchant-amount-currency {
+  font-size: 4.8cqw;
+  font-weight: 400;
+  color: #4b4b4b;
+}
+
+.tg-aba-khqr-page__qr-stack .tg-aba-khqr-page__scan-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 9%;
+  margin: 0;
+  padding: 0 6px;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 400;
+  color: #9ca3af;
+  pointer-events: none;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.tg-aba-khqr-page__actions {
+  margin: 8px auto 0;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .tg-aba-khqr-page__status {
-  margin: 12px 0 0;
+  min-height: 18px;
+  margin: 8px 0 0;
   text-align: center;
   font-size: 11px;
   color: #64748b;

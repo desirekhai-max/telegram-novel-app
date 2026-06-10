@@ -2,7 +2,7 @@ import { getVipPlansCatalogForRole } from '../data/vipPlansCatalog.js'
 
 /** UI-only demo flow for ABA Figma review (no PayWay / no backend payment). */
 export function isAbaKhqrUiMockFlowEnabled() {
-  const raw = String(import.meta.env.VITE_ABA_UI_MOCK_FLOW ?? 'true').trim().toLowerCase()
+  const raw = String(import.meta.env.VITE_ABA_UI_MOCK_FLOW ?? 'false').trim().toLowerCase()
   return raw !== '0' && raw !== 'false' && raw !== 'off'
 }
 

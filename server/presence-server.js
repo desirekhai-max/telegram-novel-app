@@ -1728,7 +1728,7 @@ const server = http.createServer(async (req, res) => {
       orderNo: storeOrder?.order_no || '',
       expireAt,
     })
-    const returnUrl = `${APP_PUBLIC_URL}/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
+    const returnUrl = `${APP_PUBLIC_URL}/vip/payment-return?hosted=1&tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
     const formFields = buildPurchaseFormFields({
       tranId,
       amount,
@@ -1797,7 +1797,7 @@ const server = http.createServer(async (req, res) => {
       orderNo: storeOrder?.order_no || '',
       expireAt,
     })
-    const returnDeeplinkUrl = `${APP_PUBLIC_URL}/vip/payment-return?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
+    const returnDeeplinkUrl = `${APP_PUBLIC_URL}/vip/aba-khqr?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
     const qr = await generateAbaKhqrPayment({
       tranId,
       amount,

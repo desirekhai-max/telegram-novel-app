@@ -16,12 +16,13 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preload" href="/logo.png" as="image" />
     <link rel="preload" href="/khqr-logo.png" as="image" />
+    <link rel="preload" href="/aba-pay-header-logo.png" as="image" />
     <link rel="preload" href="/vip/payment-success-hero.png" as="image" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <meta name="theme-color" content="#131a36" />
+    <meta name="theme-color" content="#ebebeb" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="រឿងនិទាន" />
     <meta property="og:title" content="រឿងនិទាន · 小说阅读" />
@@ -34,9 +35,393 @@
     <meta name="twitter:description" content="点击查看小说详情并开始阅读。" />
     <meta name="twitter:image" content="/logo.png" />
     <title>小说</title>
+    <script>
+      (function () {
+        var path = window.location.pathname || ''
+        var search = window.location.search || ''
+        var isKhqrPath = path.indexOf('/vip/aba-khqr') !== -1
+        var isKhqrReturn =
+          path.indexOf('/vip/payment-return') !== -1 && search.indexOf('hosted=1') === -1
+        if (!isKhqrPath && !isKhqrReturn) return
+        document.documentElement.classList.add('tg-khqr-boot')
+      })()
+    </script>
+    <style id="tg-khqr-boot-style">
+      html.tg-khqr-boot,
+      html.tg-khqr-boot body,
+      html.tg-khqr-boot #root,
+      html.tg-khqr-boot .tg-app-root,
+      html.tg-khqr-boot .tg-swipe-foreground,
+      html.tg-khqr-boot .tg-page-shell,
+      html.tg-khqr-boot .tg-aba-khqr-page.tg-app {
+        background: #ebebeb !important;
+      }
+      html.tg-khqr-boot .tg-aba-khqr-page.tg-app {
+        visibility: hidden !important;
+      }
+      #tg-khqr-boot-shell {
+        --tg-aba-khqr-canvas: #ebebeb;
+        --tg-aba-khqr-display-width: 74vw;
+        --tg-aba-khqr-aspect-ratio: 216 / 448;
+        --tg-aba-khqr-max-height: calc(100dvh - 108px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+        --tg-aba-khqr-merchant-mask-top: 27%;
+        --tg-aba-khqr-merchant-mask-height: 12.5%;
+        --tg-aba-khqr-merchant-mask-inset-left: 10%;
+        --tg-aba-khqr-merchant-mask-inset-right: 14%;
+        --tg-aba-khqr-mask-bleed: 3px;
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: max(8px, env(safe-area-inset-top, 0px)) 13vw max(8px, env(safe-area-inset-bottom, 0px));
+        box-sizing: border-box;
+        background: var(--tg-aba-khqr-canvas);
+        pointer-events: none;
+      }
+      .tg-khqr-boot-shell__qr-wrap {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: min(var(--tg-aba-khqr-display-width), calc(var(--tg-aba-khqr-max-height) * 216 / 448));
+        max-width: var(--tg-aba-khqr-display-width);
+        max-height: var(--tg-aba-khqr-max-height);
+        margin: 0 auto;
+      }
+      .tg-khqr-boot-shell__qr-stack {
+        position: relative;
+        width: 100%;
+        aspect-ratio: var(--tg-aba-khqr-aspect-ratio);
+        max-height: var(--tg-aba-khqr-max-height);
+        container-type: size;
+        isolation: isolate;
+        overflow: hidden;
+        background: var(--tg-aba-khqr-canvas);
+      }
+      .tg-khqr-boot-shell__qr-stack::before {
+        content: '';
+        position: absolute;
+        left: calc(0px - var(--tg-aba-khqr-mask-bleed));
+        right: calc(0px - var(--tg-aba-khqr-mask-bleed));
+        top: calc(0px - var(--tg-aba-khqr-mask-bleed));
+        height: calc(15% + var(--tg-aba-khqr-mask-bleed));
+        background: var(--tg-aba-khqr-canvas);
+        pointer-events: none;
+        z-index: 1;
+      }
+      .tg-khqr-boot-shell__qr-stack::after {
+        content: '';
+        position: absolute;
+        left: calc(0px - var(--tg-aba-khqr-mask-bleed));
+        right: calc(0px - var(--tg-aba-khqr-mask-bleed));
+        bottom: calc(0px - var(--tg-aba-khqr-mask-bleed));
+        height: calc(9% + var(--tg-aba-khqr-mask-bleed));
+        background: var(--tg-aba-khqr-canvas);
+        pointer-events: none;
+        z-index: 1;
+      }
+      .tg-khqr-boot-shell__qr {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: fill;
+        background: var(--tg-aba-khqr-canvas);
+      }
+      .tg-khqr-boot-shell__header-logo {
+        position: absolute;
+        left: 50%;
+        top: 0;
+        z-index: 2;
+        display: block;
+        width: auto;
+        max-width: 88%;
+        height: 15%;
+        transform: translateX(-50%);
+        object-fit: contain;
+        object-position: center;
+        pointer-events: none;
+      }
+      .tg-khqr-boot-shell__merchant-mask {
+        position: absolute;
+        left: calc(var(--tg-aba-khqr-merchant-mask-inset-left) - var(--tg-aba-khqr-mask-bleed));
+        right: calc(var(--tg-aba-khqr-merchant-mask-inset-right) - var(--tg-aba-khqr-mask-bleed));
+        top: calc(var(--tg-aba-khqr-merchant-mask-top) - var(--tg-aba-khqr-mask-bleed));
+        height: calc(var(--tg-aba-khqr-merchant-mask-height) + var(--tg-aba-khqr-mask-bleed) * 2);
+        background: #ffffff;
+        pointer-events: none;
+        z-index: 1;
+      }
+      .tg-khqr-boot-shell__merchant-info {
+        position: absolute;
+        left: calc(var(--tg-aba-khqr-merchant-mask-inset-left) + 2.5%);
+        right: calc(var(--tg-aba-khqr-merchant-mask-inset-right) + 2%);
+        top: var(--tg-aba-khqr-merchant-mask-top);
+        height: var(--tg-aba-khqr-merchant-mask-height);
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        box-sizing: border-box;
+        padding: 0 0 0 3%;
+        pointer-events: none;
+      }
+      .tg-khqr-boot-shell__merchant-name {
+        margin: 0;
+        font-size: 5cqw;
+        line-height: 1.2;
+        font-weight: 400;
+        color: #4b4b4b;
+        letter-spacing: 0.01em;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      .tg-khqr-boot-shell__merchant-amount {
+        margin: 0.8cqw 0 0;
+        line-height: 1.1;
+        color: #1a1a1a;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      .tg-khqr-boot-shell__merchant-amount-value {
+        font-size: 8.2cqw;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .tg-khqr-boot-shell__merchant-amount-currency {
+        font-size: 4.8cqw;
+        font-weight: 400;
+        color: #4b4b4b;
+      }
+      .tg-khqr-boot-shell__scan-hint {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 9%;
+        margin: 0;
+        padding: 0 6px;
+        box-sizing: border-box;
+        text-align: center;
+        font-size: 13px;
+        line-height: 1.35;
+        font-weight: 400;
+        color: #9ca3af;
+        pointer-events: none;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      .tg-khqr-boot-shell__panel {
+        width: var(--tg-aba-khqr-display-width);
+        max-width: var(--tg-aba-khqr-display-width);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .tg-khqr-boot-shell__qr-stack--pending {
+        visibility: hidden;
+      }
+      .tg-khqr-boot-shell__actions {
+        margin: 8px auto 0;
+        text-align: center;
+        flex-shrink: 0;
+      }
+      .tg-khqr-boot-shell__download-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        min-width: 148px;
+        padding: 8px 16px;
+        color: #00bcd4;
+        font-size: 15px;
+        font-weight: 600;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      .tg-khqr-boot-shell__status {
+        min-height: 18px;
+        margin: 8px 0 0;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <script id="tg-khqr-boot-script">
+      (function () {
+        var path = window.location.pathname || ''
+        var search = window.location.search || ''
+        var isKhqrPath = path.indexOf('/vip/aba-khqr') !== -1
+        var isKhqrReturn =
+          path.indexOf('/vip/payment-return') !== -1 && search.indexOf('hosted=1') === -1
+        if (!isKhqrPath && !isKhqrReturn) return
+
+        var SESSION_KEY = 'tg_vip_aba_khqr_session_v1'
+        var IMAGE_KEY = 'tg_vip_aba_khqr_last_image_v1'
+        var HEADER_LOGO = '/aba-pay-header-logo.png'
+        var MERCHANT_NAME = '69KKH NOVEL'
+
+        function readCachedSession() {
+          try {
+            var raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY)
+            if (raw) {
+              var parsed = JSON.parse(raw)
+              if (parsed && parsed.tranId) return parsed
+            }
+          } catch (e) {
+            /* ignore */
+          }
+          return null
+        }
+
+        function readCachedQrImage(session) {
+          if (session && session.qrImage) return String(session.qrImage)
+          try {
+            var cached = localStorage.getItem(IMAGE_KEY)
+            if (cached) return String(cached)
+          } catch (e2) {
+            /* ignore */
+          }
+          return ''
+        }
+
+        function resolveAmount(session) {
+          if (!session) return { value: '—', currency: 'USD' }
+          var n = Number(session.amount)
+          if (isFinite(n) && n > 0) {
+            var value = Number.isInteger(n) ? String(n) : n.toFixed(2)
+            return { value: value, currency: String(session.currency || 'USD') }
+          }
+          var label = String(session.amountLabel || '')
+          var match = label.match(/([0-9]+(?:\.[0-9]{1,2})?)/)
+          if (match) return { value: match[1], currency: 'USD' }
+          return { value: '—', currency: 'USD' }
+        }
+
+        var root = document.getElementById('root')
+        if (!root) return
+        root.style.background = '#ebebeb'
+
+        var session = readCachedSession()
+        var qrImage = readCachedQrImage(session)
+        var amount = resolveAmount(session)
+
+        function waitForImage(img, done) {
+          if (!img) {
+            done()
+            return
+          }
+          var finished = false
+          var finish = function () {
+            if (finished) return
+            finished = true
+            done()
+          }
+          img.onload = finish
+          img.onerror = finish
+          if (img.complete && img.naturalWidth > 0) finish()
+        }
+
+        var shell = document.createElement('div')
+        shell.id = 'tg-khqr-boot-shell'
+        shell.setAttribute('aria-hidden', 'true')
+
+        var panel = document.createElement('div')
+        panel.className = 'tg-khqr-boot-shell__panel'
+
+        var wrap = document.createElement('div')
+        wrap.className = 'tg-khqr-boot-shell__qr-wrap'
+
+        var stack = document.createElement('div')
+        stack.className = 'tg-khqr-boot-shell__qr-stack tg-khqr-boot-shell__qr-stack--pending'
+
+        var qr = null
+        if (qrImage) {
+          qr = document.createElement('img')
+          qr.className = 'tg-khqr-boot-shell__qr'
+          qr.src = qrImage
+          qr.alt = ''
+          qr.decoding = 'sync'
+          stack.appendChild(qr)
+        }
+
+        var headerLogo = document.createElement('img')
+        headerLogo.className = 'tg-khqr-boot-shell__header-logo'
+        headerLogo.src = HEADER_LOGO
+        headerLogo.alt = ''
+        headerLogo.decoding = 'sync'
+        stack.appendChild(headerLogo)
+
+        var merchantMask = document.createElement('span')
+        merchantMask.className = 'tg-khqr-boot-shell__merchant-mask'
+        merchantMask.setAttribute('aria-hidden', 'true')
+        stack.appendChild(merchantMask)
+
+        var merchantInfo = document.createElement('div')
+        merchantInfo.className = 'tg-khqr-boot-shell__merchant-info'
+
+        var merchantName = document.createElement('p')
+        merchantName.className = 'tg-khqr-boot-shell__merchant-name'
+        merchantName.textContent = MERCHANT_NAME
+        merchantInfo.appendChild(merchantName)
+
+        var merchantAmount = document.createElement('p')
+        merchantAmount.className = 'tg-khqr-boot-shell__merchant-amount'
+        var amountValue = document.createElement('span')
+        amountValue.className = 'tg-khqr-boot-shell__merchant-amount-value'
+        amountValue.textContent = amount.value
+        var amountCurrency = document.createElement('span')
+        amountCurrency.className = 'tg-khqr-boot-shell__merchant-amount-currency'
+        amountCurrency.textContent = ' ' + amount.currency
+        merchantAmount.appendChild(amountValue)
+        merchantAmount.appendChild(amountCurrency)
+        merchantInfo.appendChild(merchantAmount)
+        stack.appendChild(merchantInfo)
+
+        var scanHint = document.createElement('p')
+        scanHint.className = 'tg-khqr-boot-shell__scan-hint'
+        scanHint.innerHTML = 'Scan with ABA Mobile or any KHQR<br>supported banking app'
+        stack.appendChild(scanHint)
+
+        wrap.appendChild(stack)
+        panel.appendChild(wrap)
+
+        var actions = document.createElement('div')
+        actions.className = 'tg-khqr-boot-shell__actions'
+        var downloadBtn = document.createElement('span')
+        downloadBtn.className = 'tg-khqr-boot-shell__download-btn'
+        downloadBtn.textContent = 'Download QR'
+        actions.appendChild(downloadBtn)
+        panel.appendChild(actions)
+
+        var status = document.createElement('p')
+        status.className = 'tg-khqr-boot-shell__status'
+        panel.appendChild(status)
+
+        shell.appendChild(panel)
+        root.appendChild(shell)
+
+        var pendingImages = 0
+        function markImageDone() {
+          pendingImages -= 1
+          if (pendingImages <= 0) {
+            stack.classList.remove('tg-khqr-boot-shell__qr-stack--pending')
+          }
+        }
+        function trackImage(img) {
+          if (!img) return
+          pendingImages += 1
+          waitForImage(img, markImageDone)
+        }
+        trackImage(qr)
+        trackImage(headerLogo)
+        if (pendingImages <= 0) {
+          stack.classList.remove('tg-khqr-boot-shell__qr-stack--pending')
+        }
+      })()
+    </script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script type="module" src="/src/main.jsx"></script>
   </body>

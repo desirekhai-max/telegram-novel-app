@@ -1,113 +1,148 @@
 import { Download } from 'lucide-react'
-import { useCallback, useState } from 'react'
-import { formatKhqrUsdSummary, resolveKhqrAmountParts } from '../lib/abaKhqrAmount.js'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { resolveKhqrAmountParts } from '../lib/abaKhqrAmount.js'
+import { ABA_PAY_HEADER_LOGO_SRC } from '../lib/abaKhqrAssets.js'
 import { downloadKhqrQrImage } from '../lib/abaKhqrDownload.js'
-import { ABA_KHQR_MOCK_QR_DATA_URL, isUiMockAbaKhqrSession } from '../lib/abaKhqrUiMock.js'
-import { KHQR_LOGO_HEIGHT, KHQR_LOGO_SRC, KHQR_LOGO_WIDTH } from '../lib/abaKhqrAssets.js'
 
-const KHQR_MERCHANT_LABEL = '69KKH NOVEL'
+const KHQR_CARD_MERCHANT_NAME = '69KKH NOVEL'
+
+/** 从银行返回时首帧 session 可能短暂缺图，保留上一张 QR 避免闪空 */
+let lastKhqrImageSrc = ''
 
 /**
- * KHQR 支付页 — template3 样式卡片 + 动态金额/二维码。
+ * KHQR 支付页 — PayWay qrImage 为唯一主视觉（图片内已含金额/商户/KHQR 信息）。
  */
 export default function AbaKhqrPaymentScreen({
   session,
+  statusNote = '',
   onSimulatePaid,
+  onQrReady,
   showDemoActions = false,
 }) {
-  const amountParts = resolveKhqrAmountParts(session)
-  const amountSummary = formatKhqrUsdSummary(amountParts)
-  const qrSrc = isUiMockAbaKhqrSession(session)
-    ? ABA_KHQR_MOCK_QR_DATA_URL
-    : String(session?.qrImage || '').trim() || ABA_KHQR_MOCK_QR_DATA_URL
+  const nextQrImage = String(session?.qrImage || '').trim()
+  if (nextQrImage) lastKhqrImageSrc = nextQrImage
+  const qrImage = nextQrImage || lastKhqrImageSrc
+  const qrReadyNotifiedRef = useRef(false)
+  const qrLoadedRef = useRef(false)
+  const headerLoadedRef = useRef(false)
+  const qrImgRef = useRef(null)
+  const headerImgRef = useRef(null)
   const [downloadPending, setDownloadPending] = useState(false)
 
+  const tryHandoffBootShell = useCallback(() => {
+    if (qrReadyNotifiedRef.current || !onQrReady || !qrImage) return
+    if (!qrLoadedRef.current || !headerLoadedRef.current) return
+    qrReadyNotifiedRef.current = true
+    onQrReady()
+  }, [onQrReady, qrImage])
+
+  const markQrLoaded = useCallback(() => {
+    qrLoadedRef.current = true
+    tryHandoffBootShell()
+  }, [tryHandoffBootShell])
+
+  const markHeaderLoaded = useCallback(() => {
+    headerLoadedRef.current = true
+    tryHandoffBootShell()
+  }, [tryHandoffBootShell])
+
+  useLayoutEffect(() => {
+    if (!qrImage) return undefined
+    const qrEl = qrImgRef.current
+    const headerEl = headerImgRef.current
+    if (qrEl?.complete && qrEl.naturalWidth > 0) qrLoadedRef.current = true
+    if (headerEl?.complete && headerEl.naturalWidth > 0) headerLoadedRef.current = true
+    tryHandoffBootShell()
+    return undefined
+  }, [qrImage, tryHandoffBootShell])
+
+  const amountParts = useMemo(() => resolveKhqrAmountParts(session), [session])
+  const amountValue = useMemo(() => {
+    const n = Number(amountParts.value)
+    return Number.isFinite(n) ? n.toFixed(2) : amountParts.value
+  }, [amountParts.value])
+
   const handleDownloadQr = useCallback(async () => {
-    if (downloadPending) return
+    if (downloadPending || !qrImage) return
     setDownloadPending(true)
     try {
-      await downloadKhqrQrImage(qrSrc)
+      await downloadKhqrQrImage(qrImage)
     } finally {
       setDownloadPending(false)
     }
-  }, [downloadPending, qrSrc])
+  }, [downloadPending, qrImage])
 
   return (
     <div className="tg-aba-khqr-page__panel">
-      <article className="tg-aba-khqr-card tg-aba-khqr-card--template3">
-        <div className="tg-aba-khqr-card__header">
-          <img
-            src={KHQR_LOGO_SRC}
-            alt="KHQR"
-            className="tg-aba-khqr-card__khqr-logo"
-            width={KHQR_LOGO_WIDTH}
-            height={KHQR_LOGO_HEIGHT}
-            decoding="sync"
-            fetchPriority="high"
-            draggable={false}
-          />
-        </div>
-        <div className="tg-aba-khqr-card__body">
-          <div className="tg-aba-khqr-card__info">
-            <p className="tg-aba-khqr-card__merchant" lang="en">
-              {KHQR_MERCHANT_LABEL}
-            </p>
-            <p className="tg-aba-khqr-card__amount" lang="en">
-              <span className="tg-aba-khqr-card__amount-value">{amountParts.value}</span>
-              <span className="tg-aba-khqr-card__amount-currency"> {amountParts.currency}</span>
-            </p>
-          </div>
-          <div className="tg-aba-khqr-card__divider" aria-hidden />
-          <div className="tg-aba-khqr-card__qr-wrap">
+      <div className="tg-aba-khqr-page__qr-wrap">
+        {qrImage ? (
+          <div className="tg-aba-khqr-page__qr-stack">
             <img
-              src={qrSrc}
+              ref={qrImgRef}
+              src={qrImage}
               alt="KHQR"
-              className="tg-aba-khqr-card__qr"
-              decoding="async"
+              className="tg-aba-khqr-page__qr"
+              decoding="sync"
+              fetchPriority="high"
               draggable={false}
+              onLoad={markQrLoaded}
             />
+            <img
+              ref={headerImgRef}
+              src={ABA_PAY_HEADER_LOGO_SRC}
+              alt=""
+              className="tg-aba-khqr-page__header-logo"
+              decoding="sync"
+              fetchPriority="high"
+              draggable={false}
+              aria-hidden
+              onLoad={markHeaderLoaded}
+            />
+            <span className="tg-aba-khqr-page__merchant-mask" aria-hidden />
+            <div className="tg-aba-khqr-page__merchant-info">
+              <p className="tg-aba-khqr-page__merchant-name" lang="en">
+                {KHQR_CARD_MERCHANT_NAME}
+              </p>
+              <p className="tg-aba-khqr-page__merchant-amount" lang="en">
+                <span className="tg-aba-khqr-page__merchant-amount-value">{amountValue}</span>
+                <span className="tg-aba-khqr-page__merchant-amount-currency">
+                  {' '}
+                  {amountParts.currency}
+                </span>
+              </p>
+            </div>
+            <p className="tg-aba-khqr-page__scan-hint" lang="en">
+              Scan with ABA Mobile or any KHQR
+              <br />
+              supported banking app
+            </p>
           </div>
-        </div>
-      </article>
-
-      <div className="tg-aba-khqr-page__scan-block">
-        <p className="tg-aba-khqr-page__scan-title" lang="en">
-          Scan to Pay
-        </p>
-        <p className="tg-aba-khqr-page__scan-or" lang="en">
-          or
-        </p>
-        <button
-          type="button"
-          className="tg-aba-khqr-page__download-btn"
-          disabled={downloadPending}
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            void handleDownloadQr()
-          }}
-        >
-          <Download size={18} strokeWidth={2.25} aria-hidden />
-          <span lang="en">Download QR</span>
-        </button>
-        <p className="tg-aba-khqr-page__scan-hint" lang="en">
-          and upload to Mobile Banking app
-          <br />
-          supporting KHQR
-        </p>
+        ) : (
+          <div className="tg-aba-khqr-page__qr-stack tg-aba-khqr-page__qr-stack--placeholder" aria-hidden />
+        )}
       </div>
 
-      <div className="tg-aba-khqr-page__summary" aria-label="Payment summary">
-        <div className="tg-aba-khqr-page__summary-row">
-          <span lang="en">Subtotal:</span>
-          <span lang="en">{amountSummary}</span>
+      {qrImage ? (
+        <div className="tg-aba-khqr-page__actions">
+          <button
+            type="button"
+            className="tg-aba-khqr-page__download-btn"
+            disabled={downloadPending}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              void handleDownloadQr()
+            }}
+          >
+            <Download size={18} strokeWidth={2.25} aria-hidden />
+            <span lang="en">Download QR</span>
+          </button>
         </div>
-        <div className="tg-aba-khqr-page__summary-divider" aria-hidden />
-        <div className="tg-aba-khqr-page__summary-row tg-aba-khqr-page__summary-row--total">
-          <span lang="en">TOTAL:</span>
-          <span lang="en">{amountSummary}</span>
-        </div>
-      </div>
+      ) : null}
+
+      <p className="tg-aba-khqr-page__status" lang="km">
+        {statusNote}
+      </p>
 
       {showDemoActions ? (
         <div className="tg-aba-khqr-page__demo-actions">

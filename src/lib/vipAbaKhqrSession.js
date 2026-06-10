@@ -1,4 +1,7 @@
 export const VIP_ABA_KHQR_SESSION_KEY = 'tg_vip_aba_khqr_session_v1'
+export const VIP_ABA_KHQR_LAST_IMAGE_KEY = 'tg_vip_aba_khqr_last_image_v1'
+
+let khqrBootHandoffDone = false
 
 /**
  * @typedef {{
@@ -23,6 +26,14 @@ export const VIP_ABA_KHQR_SESSION_KEY = 'tg_vip_aba_khqr_session_v1'
 export function saveVipAbaKhqrSession(payload) {
   try {
     sessionStorage.setItem(VIP_ABA_KHQR_SESSION_KEY, JSON.stringify(payload))
+    const qrImage = String(payload?.qrImage || '').trim()
+    if (qrImage) {
+      try {
+        localStorage.setItem(VIP_ABA_KHQR_LAST_IMAGE_KEY, qrImage)
+      } catch {
+        /* ignore */
+      }
+    }
     return true
   } catch {
     return false
@@ -65,4 +76,19 @@ export function clearVipAbaKhqrSession() {
   } catch {
     /* ignore */
   }
+}
+
+/** @returns {boolean} */
+export function hasKhqrBootShell() {
+  if (typeof document === 'undefined') return false
+  return Boolean(document.getElementById('tg-khqr-boot-shell'))
+}
+
+/** React QR ready — hand off from index.html boot shell without flash. */
+export function handoffKhqrBootShell() {
+  if (typeof document === 'undefined' || khqrBootHandoffDone) return
+  if (!hasKhqrBootShell()) return
+  khqrBootHandoffDone = true
+  document.documentElement.classList.remove('tg-khqr-boot')
+  document.getElementById('tg-khqr-boot-shell')?.remove()
 }

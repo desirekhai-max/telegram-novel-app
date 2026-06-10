@@ -33,9 +33,11 @@ export default function VipPage() {
   const [purchaseNotice, setPurchaseNotice] = useState('')
   const [purchaseError, setPurchaseError] = useState('')
   const scrollRef = useRef(null)
+  const plansSectionRef = useRef(null)
   const paymentSectionRef = useRef(null)
   const refundFooterRef = useRef(null)
   const consentRef = useRef(null)
+  const prevTermsAcceptedRef = useRef(false)
   const [consentShaking, setConsentShaking] = useState(false)
   const [loginPromptOpen, setLoginPromptOpen] = useState(false)
 
@@ -192,6 +194,37 @@ export default function VipPage() {
     return () => window.clearTimeout(t)
   }, [consentShaking])
 
+  const scrollToRevealPlans = useCallback(() => {
+    const root = scrollRef.current
+    const plans = plansSectionRef.current
+    if (!root || !plans) return
+
+    window.requestAnimationFrame(() => {
+      const rootRect = root.getBoundingClientRect()
+      const plansRect = plans.getBoundingClientRect()
+      const bottomInset = 16
+      const overflow = plansRect.bottom - (rootRect.bottom - bottomInset)
+
+      if (overflow > 0) {
+        root.scrollBy({ top: overflow, behavior: 'smooth' })
+        return
+      }
+
+      if (plansRect.top < rootRect.top + 12) {
+        plans.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    const wasAccepted = prevTermsAcceptedRef.current
+    prevTermsAcceptedRef.current = termsAccepted
+    if (!termsAccepted || wasAccepted) return undefined
+
+    const t = window.setTimeout(scrollToRevealPlans, 100)
+    return () => window.clearTimeout(t)
+  }, [scrollToRevealPlans, termsAccepted])
+
   const handlePlanCtaClick = useCallback(
     (planId) => {
       if (abaKhqrPending) return
@@ -274,84 +307,86 @@ export default function VipPage() {
             </p>
           ) : null}
 
-          {plans.map((plan) => {
-            const isSelected = termsAccepted && selectedPlanId === plan.planId
-            const ctaBlocked = abaKhqrPending
-            const ctaNeedsTerms = !termsAccepted
-            return (
-              <article
-                key={plan.planId}
-                className={[
-                  'tg-vip-plan-card shrink-0',
-                  getVipPlanTierClass(plan.planId),
-                  plan.featured ? 'tg-vip-plan-card--featured' : '',
-                  !termsAccepted ? 'tg-vip-plan-card--locked' : '',
-                  isSelected ? 'tg-vip-plan-card--selected' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                <div className="tg-vip-plan-card__glow" aria-hidden />
-                <div className="tg-vip-plan-card__lamplight" aria-hidden />
-                <div className="tg-vip-plan-card__body tg-vip-plan-card__body--text-only">
-                  <div className="tg-vip-plan-card__main">
-                    <div className="tg-vip-plan-card__top">
-                      <div className="tg-vip-plan-card__titles min-w-0" lang="km">
-                        <p className="tg-vip-plan-card__title">{plan.titleKm}</p>
-                        <p className="tg-vip-plan-card__flag">{plan.flagKm}</p>
-                      </div>
-                      {isSelected ? (
-                        <span className="tg-vip-plan-selected-badge" lang="km" aria-label="បានជ្រើស">
-                          <Check size={13} strokeWidth={2.5} className="tg-vip-plan-selected-badge__icon" aria-hidden />
-                          <span>បានជ្រើស</span>
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          lang="km"
-                          disabled={ctaBlocked}
-                          aria-disabled={ctaBlocked}
-                          title={
-                            !termsAccepted
-                              ? 'សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ'
-                              : !tgUser?.id
-                                ? 'សូមចូលគណនី Telegram'
-                                : ''
-                          }
-                          onClick={() => handlePlanCtaClick(plan.planId)}
-                          className={[
-                            'tg-vip-plan-card__cta',
-                            ctaNeedsTerms ? 'tg-vip-plan-card__cta--needs-consent' : '',
-                            ctaBlocked ? 'tg-vip-plan-card__cta--disabled' : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                        >
-                          <BookOpen size={11} strokeWidth={2.2} className="tg-vip-plan-card__cta-icon" aria-hidden />
-                          <span className="tg-vip-plan-card__cta-label">
-                            {termsAccepted ? 'ជ្រើសរើសកញ្ចប់' : plan.buyButtonKm || 'ទិញកម្រិតនេះ'}
+          <div ref={plansSectionRef} className="tg-vip-page__plans flex flex-col gap-3">
+            {plans.map((plan) => {
+              const isSelected = termsAccepted && selectedPlanId === plan.planId
+              const ctaBlocked = abaKhqrPending
+              const ctaNeedsTerms = !termsAccepted
+              return (
+                <article
+                  key={plan.planId}
+                  className={[
+                    'tg-vip-plan-card shrink-0',
+                    getVipPlanTierClass(plan.planId),
+                    plan.featured ? 'tg-vip-plan-card--featured' : '',
+                    !termsAccepted ? 'tg-vip-plan-card--locked' : '',
+                    isSelected ? 'tg-vip-plan-card--selected' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
+                  <div className="tg-vip-plan-card__glow" aria-hidden />
+                  <div className="tg-vip-plan-card__lamplight" aria-hidden />
+                  <div className="tg-vip-plan-card__body tg-vip-plan-card__body--text-only">
+                    <div className="tg-vip-plan-card__main">
+                      <div className="tg-vip-plan-card__top">
+                        <div className="tg-vip-plan-card__titles min-w-0" lang="km">
+                          <p className="tg-vip-plan-card__title">{plan.titleKm}</p>
+                          <p className="tg-vip-plan-card__flag">{plan.flagKm}</p>
+                        </div>
+                        {isSelected ? (
+                          <span className="tg-vip-plan-selected-badge" lang="km" aria-label="បានជ្រើស">
+                            <Check size={13} strokeWidth={2.5} className="tg-vip-plan-selected-badge__icon" aria-hidden />
+                            <span>បានជ្រើស</span>
                           </span>
-                          <ChevronRight size={14} strokeWidth={2.5} className="tg-vip-plan-card__cta-chevron" aria-hidden />
-                        </button>
-                      )}
+                        ) : (
+                          <button
+                            type="button"
+                            lang="km"
+                            disabled={ctaBlocked}
+                            aria-disabled={ctaBlocked}
+                            title={
+                              !termsAccepted
+                                ? 'សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ'
+                                : !tgUser?.id
+                                  ? 'សូមចូលគណនី Telegram'
+                                  : ''
+                            }
+                            onClick={() => handlePlanCtaClick(plan.planId)}
+                            className={[
+                              'tg-vip-plan-card__cta',
+                              ctaNeedsTerms ? 'tg-vip-plan-card__cta--needs-consent' : '',
+                              ctaBlocked ? 'tg-vip-plan-card__cta--disabled' : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                          >
+                            <BookOpen size={11} strokeWidth={2.2} className="tg-vip-plan-card__cta-icon" aria-hidden />
+                            <span className="tg-vip-plan-card__cta-label">
+                              {termsAccepted ? 'ជ្រើសរើសកញ្ចប់' : plan.buyButtonKm || 'ទិញកម្រិតនេះ'}
+                            </span>
+                            <ChevronRight size={14} strokeWidth={2.5} className="tg-vip-plan-card__cta-chevron" aria-hidden />
+                          </button>
+                        )}
+                      </div>
+                      <div className="tg-vip-plan-card__price-row">
+                        <span className="tg-vip-plan-card__price">{plan.priceUsdLabel}</span>
+                        <span className="tg-vip-plan-card__price-hint" lang="km">
+                          {plan.priceHintKm}
+                        </span>
+                      </div>
+                      <p className="tg-vip-plan-card__duration" lang="km">
+                        {plan.durationKm}
+                      </p>
+                      <p className="tg-vip-plan-card__footer" lang="km">
+                        {VIP_MEMBER_FOOTER_KM}
+                      </p>
                     </div>
-                    <div className="tg-vip-plan-card__price-row">
-                      <span className="tg-vip-plan-card__price">{plan.priceUsdLabel}</span>
-                      <span className="tg-vip-plan-card__price-hint" lang="km">
-                        {plan.priceHintKm}
-                      </span>
-                    </div>
-                    <p className="tg-vip-plan-card__duration" lang="km">
-                      {plan.durationKm}
-                    </p>
-                    <p className="tg-vip-plan-card__footer" lang="km">
-                      {VIP_MEMBER_FOOTER_KM}
-                    </p>
                   </div>
-                </div>
-              </article>
-            )
-          })}
+                </article>
+              )
+            })}
+          </div>
 
           {selectedPlanId && termsAccepted && tgUser?.id ? (
             <section

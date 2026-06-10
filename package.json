@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:api": "node server/presence-server.js",
+    "dev:api": "node scripts/run-with-env.mjs node server/presence-server.js",
     "start": "node server/presence-server.js",
     "build": "vite build",
     "export:novels-catalog": "node scripts/export-novels-catalog.mjs",
@@ -20,6 +20,10 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.14.0"
+  },
+  "overrides": {
+    "@emnapi/core": "1.11.0",
+    "@emnapi/runtime": "1.11.0"
   },
   "overrides": {
     "@emnapi/core": "1.11.0",

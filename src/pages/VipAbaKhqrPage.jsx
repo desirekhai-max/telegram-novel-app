@@ -10,15 +10,32 @@ import {
 } from '../lib/abaKhqrUiMock.js'
 import { readVipPaymentFulfillmentHint } from '../lib/vipPaymentResultState.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
-import { clearVipAbaKhqrSession, loadVipAbaKhqrSession, saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
-import { saveVipPaymentSuccessPayload } from '../lib/vipPaymentSuccessState.js'
+import {
+  clearVipAbaKhqrSession,
+  loadVipAbaKhqrSession,
+  handoffKhqrBootShell,
+  saveVipAbaKhqrSession,
+} from '../lib/vipAbaKhqrSession.js'
 import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
+import { navigateToVipPaymentSuccess } from '../lib/vipPaymentSuccessNavigation.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
+import { useDisablePageZoom } from '../hooks/useDisablePageZoom.js'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
+
+const SUCCESS_NAV_DELAY_MS = 2000
 
 function resolvePlanDurationHours(planId, role) {
   const hours = Number(getVipPlanForPurchase(planId, role)?.durationHours)
   return Number.isFinite(hours) && hours > 0 ? hours : 0
+}
+
+function readQrSession(planIdParam, uiMockQuery, role) {
+  const stored = loadVipAbaKhqrSession()
+  if (stored) return withFreshMockKhqrImage(stored)
+  if (uiMockQuery && planIdParam) {
+    return buildAbaKhqrUiMockSession(planIdParam, role)
+  }
+  return null
 }
 
 export default function VipAbaKhqrPage() {
@@ -30,22 +47,24 @@ export default function VipAbaKhqrPage() {
   const tranIdParam = String(searchParams.get('tran_id') || '').trim()
   const fulfillmentHint = readVipPaymentFulfillmentHint(searchParams)
 
-  const sessionFromStorage = useMemo(() => loadVipAbaKhqrSession(), [])
-  const session = useMemo(() => {
-    if (sessionFromStorage) return withFreshMockKhqrImage(sessionFromStorage)
-    if (uiMockQuery && planIdParam) {
-      return buildAbaKhqrUiMockSession(planIdParam, viewerProfile.role)
-    }
-    return null
-  }, [planIdParam, sessionFromStorage, uiMockQuery, viewerProfile.role])
+  const qrSessionRef = useRef(readQrSession(planIdParam, uiMockQuery, viewerProfile.role))
+  const qrSession = qrSessionRef.current
 
-  const isUiMock = isUiMockAbaKhqrSession(session) || uiMockQuery
-  const tranId = String(session?.tranId || tranIdParam || '').trim()
-  const planId = String(session?.planId || planIdParam || '').trim()
+  const isUiMock = isUiMockAbaKhqrSession(qrSession) || uiMockQuery
+  const tranId = String(qrSession?.tranId || tranIdParam || '').trim()
+  const planId = String(qrSession?.planId || planIdParam || '').trim()
 
-  const [statusNote, setStatusNote] = useState('')
+  const [statusNote, setStatusNote] = useState(() =>
+    isUiMockAbaKhqrSession(qrSession) || uiMockQuery
+      ? ''
+      : 'កំពុងរង់ចាំការបញ្ជាក់ការទូទាត់…',
+  )
   const [resultModal, setResultModal] = useState(null)
   const pollRef = useRef(0)
+  const successNavRef = useRef(false)
+  const pendingSuccessRef = useRef(false)
+  const successDelayTimerRef = useRef(0)
+  const redirectCheckedRef = useRef(false)
   const edgeSwipeHandlers = useEdgeSwipeBack()
   const pageSwipeHandlers = resultModal ? {} : edgeSwipeHandlers
 
@@ -54,66 +73,112 @@ export default function VipAbaKhqrPage() {
     [planId, viewerProfile.role],
   )
 
-  useEffect(() => {
+  useDisablePageZoom(Boolean(qrSession))
+
+  const stopPolling = useCallback(() => {
+    if (!pollRef.current) return
+    window.clearInterval(pollRef.current)
+    pollRef.current = 0
+  }, [])
+
+  const goSuccess = useCallback(() => {
+    if (successNavRef.current) return
+    successNavRef.current = true
+    pendingSuccessRef.current = false
+    if (successDelayTimerRef.current) {
+      window.clearTimeout(successDelayTimerRef.current)
+      successDelayTimerRef.current = 0
+    }
+    stopPolling()
+
+    const activeSession = qrSessionRef.current
+    clearVipAbaKhqrSession()
+    navigateToVipPaymentSuccess(
+      navigate,
+      {
+        planId,
+        priceLabel: String(activeSession?.amountLabel || '').trim(),
+        durationHours,
+        purchasedAt: new Date().toISOString(),
+      },
+      { replace: true, slideEnter: false },
+    )
+    void refreshViewerProfile()
     void preloadVipPaymentSuccessAssets()
-  }, [])
+  }, [durationHours, navigate, planId, refreshViewerProfile, stopPolling])
 
-  const openSuccessModal = useCallback(() => {
-    if (pollRef.current) {
-      window.clearInterval(pollRef.current)
-      pollRef.current = 0
+  const startSuccessCountdown = useCallback(() => {
+    if (successNavRef.current || successDelayTimerRef.current) return
+    if (document.visibilityState !== 'visible') return
+
+    setStatusNote('ការបង់ប្រាក់បានជោគជ័យ កំពុងបញ្ជាក់…')
+    void preloadVipPaymentSuccessAssets()
+
+    successDelayTimerRef.current = window.setTimeout(() => {
+      successDelayTimerRef.current = 0
+      goSuccess()
+    }, SUCCESS_NAV_DELAY_MS)
+  }, [goSuccess])
+
+  const markPaymentSuccess = useCallback(() => {
+    if (successNavRef.current || pendingSuccessRef.current) return
+    pendingSuccessRef.current = true
+    stopPolling()
+
+    if (document.visibilityState === 'visible') {
+      startSuccessCountdown()
     }
-    saveVipPaymentSuccessPayload({
-      planId,
-      priceLabel: String(session?.amountLabel || '').trim(),
-      durationHours,
-      purchasedAt: new Date().toISOString(),
-    })
-    clearVipAbaKhqrSession()
-    setResultModal(fulfillmentHint === 'manual' ? 'manual_success' : 'auto_success')
-  }, [durationHours, fulfillmentHint, planId, session?.amountLabel])
-
-  const closeResultModal = useCallback(() => {
-    setResultModal(null)
-  }, [])
-
-  const goSuccess = useCallback(async () => {
-    if (pollRef.current) {
-      window.clearInterval(pollRef.current)
-      pollRef.current = 0
-    }
-    saveVipPaymentSuccessPayload({
-      planId,
-      priceLabel: String(session?.amountLabel || '').trim(),
-      durationHours,
-      purchasedAt: new Date().toISOString(),
-    })
-    clearVipAbaKhqrSession()
-    await preloadVipPaymentSuccessAssets()
-    navigate(`/vip/payment-success?plan_id=${encodeURIComponent(planId || 'vip_entry')}`)
-  }, [durationHours, navigate, planId, session?.amountLabel])
+  }, [startSuccessCountdown, stopPolling])
 
   const pollPayment = useCallback(async () => {
-    if (!tranId || isUiMock) return
+    if (!tranId || isUiMock || successNavRef.current || pendingSuccessRef.current) return
     const result = await confirmViewerVipPayment({ tranId, planId })
+    if (successNavRef.current || pendingSuccessRef.current) return
     if (result.ok && result.profile?.vipActive) {
-      await refreshViewerProfile()
-      openSuccessModal()
+      markPaymentSuccess()
       return
     }
     if (result.error === 'payment_not_confirmed') {
       setStatusNote('កំពុងរង់ចាំការបញ្ជាក់ការទូទាត់…')
     }
-  }, [isUiMock, openSuccessModal, planId, refreshViewerProfile, tranId])
+  }, [isUiMock, markPaymentSuccess, planId, tranId])
+
+  const pollPaymentRef = useRef(pollPayment)
+  const startSuccessCountdownRef = useRef(startSuccessCountdown)
+  pollPaymentRef.current = pollPayment
+  startSuccessCountdownRef.current = startSuccessCountdown
 
   useEffect(() => {
-    if (!session || !tranId) {
-      navigate('/vip', { replace: true })
-      return undefined
+    const qrImage = String(qrSessionRef.current?.qrImage || '').trim()
+    if (!qrImage || typeof Image === 'undefined') return undefined
+    const img = new Image()
+    img.decoding = 'sync'
+    img.src = qrImage
+    return undefined
+  }, [])
+
+  useEffect(() => {
+    void preloadVipPaymentSuccessAssets()
+  }, [])
+
+  useEffect(() => {
+    if (redirectCheckedRef.current) return
+    redirectCheckedRef.current = true
+
+    if (!qrSessionRef.current) {
+      qrSessionRef.current = readQrSession(planIdParam, uiMockQuery, viewerProfile.role)
     }
+    const activeTranId = String(qrSessionRef.current?.tranId || tranIdParam || '').trim()
+    if (!activeTranId) {
+      navigate('/vip', { replace: true })
+    }
+  }, [navigate, planIdParam, tranIdParam, uiMockQuery, viewerProfile.role])
+
+  useEffect(() => {
+    if (!tranId) return undefined
 
     if (isUiMock) {
-      saveVipAbaKhqrSession(session)
+      if (qrSessionRef.current) saveVipAbaKhqrSession(qrSessionRef.current)
       if (fulfillmentHint === 'rejected') {
         setResultModal('rejected')
       }
@@ -125,40 +190,79 @@ export default function VipAbaKhqrPage() {
       return undefined
     }
 
-    void pollPayment()
+    void pollPaymentRef.current()
+
     pollRef.current = window.setInterval(() => {
-      void pollPayment()
+      if (document.visibilityState !== 'visible') return
+      if (pendingSuccessRef.current || successNavRef.current) return
+      void pollPaymentRef.current()
     }, 4000)
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void pollPayment()
+      if (document.visibilityState !== 'visible') return
+
+      if (!qrSessionRef.current) {
+        qrSessionRef.current = readQrSession(planIdParam, uiMockQuery, viewerProfile.role)
+      }
+
+      if (pendingSuccessRef.current) {
+        startSuccessCountdownRef.current()
+        return
+      }
+
+      void pollPaymentRef.current()
     }
+
     document.addEventListener('visibilitychange', onVisible)
 
     return () => {
-      if (pollRef.current) window.clearInterval(pollRef.current)
+      stopPolling()
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [fulfillmentHint, isUiMock, navigate, planId, pollPayment, session, tranId])
+  }, [fulfillmentHint, isUiMock, planIdParam, stopPolling, tranId, uiMockQuery, viewerProfile.role])
 
-  if (!session || !tranId) {
-    return null
-  }
+  useEffect(
+    () => () => {
+      if (successDelayTimerRef.current) {
+        window.clearTimeout(successDelayTimerRef.current)
+        successDelayTimerRef.current = 0
+      }
+    },
+    [],
+  )
+
+  const closeResultModal = useCallback(() => {
+    setResultModal(null)
+  }, [])
+
+  const displaySession =
+    qrSession ||
+    ({
+      tranId: tranIdParam,
+      planId: planIdParam,
+      amountLabel: '',
+      amount: 0,
+      currency: 'USD',
+      merchantLabel: 'VIP-Subscription',
+      qrImage: '',
+      qrString: '',
+      abapayDeeplink: '',
+      appStore: '',
+      playStore: '',
+      returnUrl: '',
+    })
 
   return (
     <div className="tg-app tg-app--account tg-aba-khqr-page" {...pageSwipeHandlers}>
       <main className="tg-list-wrap tg-aba-khqr-page__main flex min-h-0 flex-1 flex-col">
         <div className="tg-aba-khqr-page__shell">
           <AbaKhqrPaymentScreen
-            session={session}
+            session={displaySession}
+            statusNote={statusNote}
             showDemoActions={isUiMock}
-            onSimulatePaid={goSuccess}
+            onSimulatePaid={markPaymentSuccess}
+            onQrReady={handoffKhqrBootShell}
           />
-          {statusNote ? (
-            <p className="tg-aba-khqr-page__status" lang="km">
-              {statusNote}
-            </p>
-          ) : null}
         </div>
       </main>
 
