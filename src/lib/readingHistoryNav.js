@@ -1,19 +1,12 @@
-import { getCatalogNovelsSync, getNovelSummaryById } from './novelsRuntime.js'
+import {
+  getListedNovelSummaryById,
+  isNovelListedInCatalog,
+  resolveListedNovelIdFromHistoryItem,
+} from './novelsRuntime.js'
 
 /** 从阅读记录解析小说 ID（优先 novelId；否则按书名匹配目录/内置） */
 export function resolveNovelIdFromHistoryItem(item) {
-  const nid = String(item?.novelId || '').trim()
-  if (nid) return nid
-  const title = String(item?.shelfTitle || '').trim()
-  if (!title) return ''
-  const pool = getCatalogNovelsSync()
-  const exact = pool.find((n) => String(n?.title || '').trim() === title)
-  if (exact?.id) return String(exact.id)
-  const loose = pool.find((n) => {
-    const t = String(n?.title || '').trim()
-    return t && (title.includes(t) || t.includes(title))
-  })
-  return loose?.id ? String(loose.id) : ''
+  return resolveListedNovelIdFromHistoryItem(item)
 }
 
 /**
@@ -50,8 +43,8 @@ export function resolveChapterIndexFromHistoryItem(novel, item) {
  */
 export function buildReadingHistoryNavigateTarget(item) {
   const novelId = resolveNovelIdFromHistoryItem(item)
-  if (!novelId) return null
-  const novel = getNovelSummaryById(novelId)
+  if (!novelId || !isNovelListedInCatalog(novelId)) return null
+  const novel = getListedNovelSummaryById(novelId)
   const openChapterIndex = novel
     ? resolveChapterIndexFromHistoryItem(novel, item)
     : Number.isFinite(Number(item?.chapterIndex)) && Number(item.chapterIndex) >= 0

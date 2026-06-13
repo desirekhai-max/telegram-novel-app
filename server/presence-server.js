@@ -1187,6 +1187,96 @@ function cascadeDeleteNovelRelations(novelId, novelTitle) {
   persistMembers()
 }
 
+function isReadRecordForLiveNovel(it) {
+  const rid = String(it?.novelId || '').trim()
+  if (rid) return Boolean(getStoredNovelById(rid))
+  const shelf = String(it?.shelfTitle || '').trim()
+  if (!shelf) return false
+  return listNovelTitles().some((row) => String(row?.title || '').trim() === shelf)
+}
+
+function isNovelIdLive(novelId) {
+  const id = String(novelId || '').trim()
+  return id ? Boolean(getStoredNovelById(id)) : false
+}
+
+function pruneOrphanReadRecordsInPlace() {
+  const before = readRecords.length
+  readRecords = readRecords.filter((it) => isReadRecordForLiveNovel(it))
+  if (readRecords.length !== before) persistMembers()
+}
+
+/** 启动时清理已下架书本残留的收藏、阅读记录与互动数据 */
+function pruneOrphanNovelRelations() {
+  const liveTitles = listNovelTitles()
+  const liveIds = new Set(liveTitles.map((row) => String(row?.id || '').trim()).filter(Boolean))
+  const liveTitleSet = new Set(
+    liveTitles.map((row) => String(row?.title || '').trim()).filter(Boolean),
+  )
+  let changed = false
+
+  for (const novelId of [...novelFavorites.keys()]) {
+    if (!liveIds.has(String(novelId))) {
+      novelFavorites.delete(novelId)
+      changed = true
+    }
+  }
+  for (const novelId of [...novelReports.keys()]) {
+    if (!liveIds.has(String(novelId))) {
+      novelReports.delete(novelId)
+      changed = true
+    }
+  }
+  for (const novelId of [...novelReviews.keys()]) {
+    if (!liveIds.has(String(novelId))) {
+      novelReviews.delete(novelId)
+      changed = true
+    }
+  }
+  for (const novelId of [...novelReplies.keys()]) {
+    if (!liveIds.has(String(novelId))) {
+      novelReplies.delete(novelId)
+      changed = true
+    }
+  }
+  for (const novelId of [...novelLikes.keys()]) {
+    if (!liveIds.has(String(novelId))) {
+      novelLikes.delete(novelId)
+      changed = true
+    }
+  }
+  for (const novelId of [...novelViews.keys()]) {
+    if (!liveIds.has(String(novelId))) {
+      novelViews.delete(novelId)
+      changed = true
+    }
+  }
+  for (const novelId of [...novelReviewVotes.keys()]) {
+    if (!liveIds.has(String(novelId))) {
+      novelReviewVotes.delete(novelId)
+      changed = true
+    }
+  }
+  for (const novelId of [...novelReviewVoteProfiles.keys()]) {
+    if (!liveIds.has(String(novelId))) {
+      novelReviewVoteProfiles.delete(novelId)
+      changed = true
+    }
+  }
+
+  const beforeRead = readRecords.length
+  readRecords = readRecords.filter((it) => {
+    const rid = String(it?.novelId || '').trim()
+    if (rid) return liveIds.has(rid)
+    const shelf = String(it?.shelfTitle || '').trim()
+    if (!shelf) return false
+    return liveTitleSet.has(shelf)
+  })
+  if (readRecords.length !== beforeRead) changed = true
+
+  if (changed) persistMembers()
+}
+
 function buildAdminReports() {
   const out = []
   for (const [novelId, row] of novelReports.entries()) {
@@ -2242,6 +2332,20 @@ const server = http.createServer(async (req, res) => {
     const body = await parseJsonBody(req)
     const rec = normalizeReadRecordIn(body)
     if (!rec) return sendJson(res, 400, { ok: false, error: 'invalid record' })
+    if (!isReadRecordForLiveNovel(rec)) {
+      return sendJson(res, 404, { ok: false, error: 'novel not found' })
+    }
+    readRecords = readRecords.filter((it) => {
+      const rid = String(it?.novelId || '').trim()
+      const recId = String(rec.novelId || '').trim()
+      if (rid && recId && rid === recId) return false
+      if (!recId) {
+        const shelf = String(it?.shelfTitle || '').trim()
+        const recShelf = String(rec.shelfTitle || '').trim()
+        if (shelf && recShelf && shelf === recShelf) return false
+      }
+      return true
+    })
     readRecords.unshift(rec)
     readRecords = readRecords.slice(0, READ_RECORDS_CAP)
     pruneExpiredReadRecords()
@@ -2423,7 +2527,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/novel-favorites/by-user') {
     const userId = String(url.searchParams.get('userId') || '').trim()
     if (!userId) return sendJson(res, 400, { ok: false, error: 'userId required' })
-    const items = resolveUserFavoritedNovels(userId)
+    const items = resolveUserFavoritedNovels(userId).filter((it) => isNovelIdLive(it.novelId))
     return sendJson(res, 200, {
       ok: true,
       userId,
@@ -2555,8 +2659,10 @@ const server = http.createServer(async (req, res) => {
         .filter(Boolean),
     )
     pruneExpiredReadRecords()
+    pruneOrphanReadRecordsInPlace()
     const items = readRecords
       .filter((it) => memberKeys.has(String(it?.memberId || '').trim()))
+      .filter((it) => isReadRecordForLiveNovel(it))
       .sort((a, b) => Number(b?.ts || 0) - Number(a?.ts || 0))
     return sendJson(res, 200, { ok: true, memberId, items })
   }
@@ -2632,6 +2738,7 @@ loadPersistedMembers()
 initNovelCoverUpload()
 initNovelsStore()
   .then(() => {
+    pruneOrphanNovelRelations()
     server.listen(PORT, HOST, () => {
       // eslint-disable-next-line no-console
       console.log(`[presence] listening at http://${HOST}:${PORT}`)

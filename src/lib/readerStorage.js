@@ -153,3 +153,68 @@ export function mergeReadingHistoryLists(serverItems, localItems) {
   for (const it of localItems || []) ingest(it)
   return [...map.values()].sort((a, b) => b.ts - a.ts)
 }
+
+/**
+ * 账户阅读历史：只保留仍在架的书，按 novelId 去重（每本保留最新一条）。
+ * @param {object[]} items
+ * @param {{ resolveListedId: (item: object) => string, getListedSummary?: (id: string) => object|null, catalogReady?: boolean }} helpers
+ */
+export function buildListedReadingHistory(items, helpers = {}) {
+  const resolveListedId = helpers.resolveListedId
+  const getListedSummary = helpers.getListedSummary
+  const catalogReady = helpers.catalogReady !== false
+  if (!catalogReady || typeof resolveListedId !== 'function') return []
+
+  const byNovelId = new Map()
+  for (const it of items || []) {
+    if (!it || typeof it !== 'object') continue
+    const novelId = String(resolveListedId(it) || '').trim()
+    if (!novelId) continue
+    const ts = Number(it.ts)
+    if (!Number.isFinite(ts) || ts <= 0) continue
+    const readChapter = String(it.readChapter || '').trim()
+    if (!readChapter) continue
+    const listed = typeof getListedSummary === 'function' ? getListedSummary(novelId) : null
+    const shelfTitle = String(listed?.title || it.shelfTitle || '').trim()
+    if (!shelfTitle) continue
+    const row = {
+      novelId,
+      shelfTitle,
+      readChapter,
+      readAt: typeof it.readAt === 'string' ? it.readAt : '',
+      ts,
+      ...(Number.isFinite(Number(it.chapterIndex)) && Number(it.chapterIndex) >= 0
+        ? { chapterIndex: Math.floor(Number(it.chapterIndex)) }
+        : {}),
+    }
+    const prev = byNovelId.get(novelId)
+    if (!prev || ts > Number(prev.ts)) byNovelId.set(novelId, row)
+  }
+  return [...byNovelId.values()].sort((a, b) => b.ts - a.ts)
+}
+
+/** 将本地阅读历史同步为仅含在架书本（与展示列表一致） */
+export function syncReadingHistoryLocalListed(items) {
+  try {
+    const rows = Array.isArray(items) ? items : []
+    localStorage.setItem(READING_HISTORY_KEY, JSON.stringify(rows.slice(0, READING_HISTORY_MAX)))
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * 删除已下架书本对应的本地阅读记录。
+ * @param {(item: object) => string} resolveListedId 解析仍在架的书 id，无则返回空串
+ */
+export function pruneReadingHistoryNotListed(resolveListedId) {
+  if (typeof resolveListedId !== 'function') return
+  try {
+    const list = loadReadingHistoryLocal()
+    const next = list.filter((it) => Boolean(resolveListedId(it)))
+    if (next.length === list.length) return
+    localStorage.setItem(READING_HISTORY_KEY, JSON.stringify(next))
+  } catch {
+    /* ignore */
+  }
+}

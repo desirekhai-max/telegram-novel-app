@@ -4,6 +4,8 @@ import { logApiRequestDuration } from './novelLoadPerf.js'
 
 let catalogNovels = null
 let catalogPromise = null
+/** API 目录已成功拉取（含空列表）时为 true；仅网络失败时才回退内置演示书 */
+let catalogLoadedFromApi = false
 
 /** staleTime: 5 分钟内视为新鲜，直接返回缓存 */
 export const NOVEL_STALE_TIME_MS = 5 * 60 * 1000
@@ -16,21 +18,10 @@ const fullNovelCache = new Map()
 const inflightFull = new Map()
 
 function mapCatalogToHomeNovel(entry) {
-  const bundled = getBundledNovelById(entry?.id)
   return {
-    ...(bundled && typeof bundled === 'object' ? bundled : {}),
     ...entry,
-    synopsis: entry.synopsisPreview || entry.synopsis || bundled?.synopsis || '',
+    synopsis: entry.synopsisPreview || entry.synopsis || '',
     chapters: [],
-    viewsWan: entry.viewsWan ?? bundled?.viewsWan,
-    favoritesK: entry.favoritesK ?? bundled?.favoritesK,
-    likeCount: entry.likeCount ?? bundled?.likeCount,
-    viewCount: entry.viewCount ?? bundled?.viewCount,
-    favoriteCount: entry.favoriteCount ?? bundled?.favoriteCount,
-    listThemes: entry.listThemes ?? bundled?.listThemes,
-    lastChapterMinutesAgo: entry.lastChapterMinutesAgo ?? bundled?.lastChapterMinutesAgo,
-    updatedAtMs: entry.updatedAtMs ?? bundled?.updatedAtMs,
-    wordCountWan: entry.wordCountWan ?? bundled?.wordCountWan,
   }
 }
 
@@ -92,9 +83,15 @@ export function resolveInitialNovel(id) {
   return { novel: null, loadStatus: 'loading' }
 }
 
-export async function loadCatalogNovels() {
-  if (catalogNovels) return catalogNovels
-  if (catalogPromise) return catalogPromise
+export async function loadCatalogNovels(options = {}) {
+  const force = Boolean(options?.force)
+  if (force) {
+    catalogNovels = null
+    catalogPromise = null
+    catalogLoadedFromApi = false
+  }
+  if (catalogNovels && !force) return catalogNovels
+  if (catalogPromise && !force) return catalogPromise
 
   catalogPromise = (async () => {
     try {
@@ -102,22 +99,57 @@ export async function loadCatalogNovels() {
       if (!res.ok) throw new Error(`catalog ${res.status}`)
       const data = await res.json()
       const list = Array.isArray(data?.novels) ? data.novels : []
-      if (list.length) {
-        catalogNovels = list.map(mapCatalogToHomeNovel)
-        return catalogNovels
-      }
+      catalogLoadedFromApi = true
+      catalogNovels = list.map(mapCatalogToHomeNovel)
+      return catalogNovels
     } catch {
-      // fall through
+      catalogLoadedFromApi = false
+      catalogNovels = import.meta.env.DEV ? bundledNovels : []
+      return catalogNovels
     }
-    catalogNovels = bundledNovels
-    return catalogNovels
   })()
 
   return catalogPromise
 }
 
+/** 账户阅读历史等场景：强制拉最新目录，避免删书后仍用内存缓存 */
+export async function refreshCatalogNovels() {
+  return loadCatalogNovels({ force: true })
+}
+
 export function getCatalogNovelsSync() {
-  return catalogNovels || bundledNovels
+  if (catalogLoadedFromApi) return catalogNovels ?? []
+  if (catalogNovels) return catalogNovels
+  return import.meta.env.DEV ? bundledNovels : []
+}
+
+export function isCatalogLoadedFromApi() {
+  return catalogLoadedFromApi
+}
+
+/** 账户页收藏/阅读历史：仅认后台目录中的书，不含内置演示兜底 */
+export function isNovelListedInCatalog(id) {
+  if (!catalogLoadedFromApi) return false
+  const key = String(id || '').trim()
+  if (!key) return false
+  return (catalogNovels || []).some((n) => String(n?.id) === key)
+}
+
+export function getListedNovelSummaryById(id) {
+  const key = String(id || '').trim()
+  if (!key || !isNovelListedInCatalog(key)) return null
+  return (catalogNovels || []).find((n) => String(n?.id) === key) ?? null
+}
+
+/** 阅读记录：优先 novelId，否则按书名匹配仍在架的书 */
+export function resolveListedNovelIdFromHistoryItem(item) {
+  const nid = String(item?.novelId || '').trim()
+  if (nid && isNovelListedInCatalog(nid)) return nid
+  if (!catalogLoadedFromApi) return ''
+  const title = String(item?.shelfTitle || '').trim()
+  if (!title) return ''
+  const hit = (catalogNovels || []).find((n) => String(n?.title || '').trim() === title)
+  return hit?.id ? String(hit.id) : ''
 }
 
 /** 列表/收藏/阅读历史用：目录 + 缓存 + 内置书，按 id 解析摘要（可无 chapters 正文） */
@@ -134,6 +166,7 @@ export function getNovelSummaryById(id) {
 export function invalidateNovelsRuntimeCache() {
   catalogNovels = null
   catalogPromise = null
+  catalogLoadedFromApi = false
   fullNovelCache.clear()
   inflightFull.clear()
 }

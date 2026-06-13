@@ -17,7 +17,7 @@ import {
   getCachedHomeLikeCounts,
   getCachedHomeStats,
 } from '../lib/homeStatsCache.js'
-import { getCatalogNovelsSync, loadCatalogNovels } from '../lib/novelsRuntime.js'
+import { getCatalogNovelsSync, isCatalogLoadedFromApi, loadCatalogNovels } from '../lib/novelsRuntime.js'
 import { useAppChrome } from '../contexts/useAppChrome.js'
 import {
   applyThemeLabelToCriteria,
@@ -96,7 +96,10 @@ export default function HomePage() {
   const location = useLocation()
   const navigate = useNavigate()
   const tgUser = useTelegramUser()
-  const [novelList, setNovelList] = useState(() => getCatalogNovelsSync())
+  const [novelList, setNovelList] = useState(() =>
+    isCatalogLoadedFromApi() ? getCatalogNovelsSync() : [],
+  )
+  const [catalogReady, setCatalogReady] = useState(() => isCatalogLoadedFromApi())
   const unreadNotificationCount = useUnreadNotificationCount(tgUser)
   /** 顶栏搜索框文案（可随时编辑） */
   const [searchDraft, setSearchDraft] = useState('')
@@ -164,16 +167,9 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false
     void loadCatalogNovels().then((list) => {
-      if (cancelled || !Array.isArray(list) || !list.length) return
-      setNovelList((prev) => {
-        if (
-          prev.length === list.length &&
-          prev.every((n, i) => String(n?.id) === String(list[i]?.id))
-        ) {
-          return prev
-        }
-        return list
-      })
+      if (cancelled) return
+      setCatalogReady(true)
+      setNovelList(Array.isArray(list) ? list : [])
     })
     return () => {
       cancelled = true
@@ -673,6 +669,10 @@ export default function HomePage() {
               ))}
             </ul>
           )
+        ) : !catalogReady ? (
+          <p className="tg-home-novel-list__empty" lang="km">
+            កំពុងផ្ទុក…
+          </p>
         ) : filterHadNoResults ? (
           <p className="tg-home-novel-list__empty">មិនមានរឿងដែលត្រូវនឹងលក្ខខណ្ឌចម្រាញ់របស់អ្នកទេ សូមព្យាយាមបន្ធូរបន្ថយលក្ខខណ្ឌម្តងទៀត។</p>
         ) : (

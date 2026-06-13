@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { bindNovelNavPrefetchHandlers } from '../lib/prefetchNovelOnNav.js'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
@@ -6,7 +6,18 @@ import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { fetchReadingRecordsByMemberId, getPresenceMemberId } from '../lib/miniAppPresence.js'
 import { buildReadingHistoryNavigateTarget } from '../lib/readingHistoryNav.js'
-import { loadReadingHistoryLocal, mergeReadingHistoryLists } from '../lib/readerStorage.js'
+import {
+  buildListedReadingHistory,
+  loadReadingHistoryLocal,
+  mergeReadingHistoryLists,
+  syncReadingHistoryLocalListed,
+} from '../lib/readerStorage.js'
+import {
+  getListedNovelSummaryById,
+  isCatalogLoadedFromApi,
+  refreshCatalogNovels,
+  resolveListedNovelIdFromHistoryItem,
+} from '../lib/novelsRuntime.js'
 
 function formatChapterLabelKh(raw) {
   const text = String(raw || '').trim()
@@ -47,12 +58,44 @@ function formatChapterLabelKh(raw) {
   return tail ? `ភាគទី${no} ${tail}` : `ភាគទី${no}`
 }
 
+const historyHelpers = {
+  resolveListedId: resolveListedNovelIdFromHistoryItem,
+  getListedSummary: getListedNovelSummaryById,
+  get catalogReady() {
+    return isCatalogLoadedFromApi()
+  },
+}
+
 export default function ReadingHistoryPage() {
   const swipeHandlers = useEdgeSwipeBack()
   const tgUser = useTelegramUser()
-  const [items, setItems] = useState(() => mergeReadingHistoryLists([], loadReadingHistoryLocal()))
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const applyListedHistory = useCallback((mergedRows) => {
+    const listed = buildListedReadingHistory(mergedRows, historyHelpers)
+    syncReadingHistoryLocalListed(listed)
+    setItems(listed)
+  }, [])
 
   useEffect(() => {
+    let active = true
+    const run = async () => {
+      setLoading(true)
+      await refreshCatalogNovels()
+      if (!active) return
+      const local = loadReadingHistoryLocal()
+      applyListedHistory(mergeReadingHistoryLists([], local))
+      setLoading(false)
+    }
+    void run()
+    return () => {
+      active = false
+    }
+  }, [applyListedHistory])
+
+  useEffect(() => {
+    if (loading) return
     const rawPresenceId = String(getPresenceMemberId() || '').trim()
     const numericId = tgUser?.id != null
       ? String(tgUser.id)
@@ -68,12 +111,12 @@ export default function ReadingHistoryPage() {
       .then((rowsList) => {
         if (!active) return
         const serverFlat = rowsList.flat().filter((it) => it && typeof it === 'object')
-        setItems(mergeReadingHistoryLists(serverFlat, local))
+        applyListedHistory(mergeReadingHistoryLists(serverFlat, local))
       })
     return () => {
       active = false
     }
-  }, [tgUser?.id])
+  }, [tgUser?.id, loading, applyListedHistory])
 
   return (
     <div className="tg-app tg-app--account">
@@ -82,7 +125,13 @@ export default function ReadingHistoryPage() {
         className="tg-list-wrap tg-account-scroll flex flex-1 flex-col px-6 py-8"
         {...swipeHandlers}
       >
-        {items.length === 0 ? (
+        {loading ? (
+          <div className="flex flex-1 items-center justify-center">
+            <p className="mx-auto w-full max-w-md text-center text-sm text-white/60" lang="km">
+              កំពុងផ្ទុក…
+            </p>
+          </div>
+        ) : items.length === 0 ? (
           <div className="flex flex-1 items-center justify-center">
             <p className="mx-auto w-full max-w-md text-center text-sm text-white/60" lang="km">
               មិនទាន់មានប្រវត្តិអាននៅឡើយទេ
@@ -90,37 +139,23 @@ export default function ReadingHistoryPage() {
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-md flex-col gap-3">
-            {items.map((it, idx) => {
+            {items.map((it) => {
               const navTarget = buildReadingHistoryNavigateTarget(it)
+              if (!navTarget) return null
               const cardClass =
-                'group block rounded-2xl border border-white/10 bg-white/[0.05] p-3 transition-colors active:bg-white/[0.08] ' +
-                (navTarget ? 'cursor-pointer hover:bg-white/[0.07]' : 'cursor-default opacity-70')
-              const cardBody = (
-                <>
-                  <p className="truncate text-[15px] font-semibold text-white">{it.shelfTitle || '—'}</p>
-                  <p className="mt-1 truncate text-sm text-white/65">{formatChapterLabelKh(it.readChapter)}</p>
-                  <p className="mt-1 truncate text-xs text-white/45">{it.readAt || ''}</p>
-                </>
-              )
-              return navTarget ? (
+                'group block rounded-2xl border border-white/10 bg-white/[0.05] p-3 transition-colors active:bg-white/[0.08] cursor-pointer hover:bg-white/[0.07]'
+              return (
                 <Link
-                  key={`${it.ts || idx}-${it.shelfTitle || ''}-${it.novelId || ''}-${idx}`}
+                  key={`${it.novelId}-${it.ts}`}
                   to={navTarget.pathname}
                   state={navTarget.state}
                   className={cardClass}
-                  {...bindNovelNavPrefetchHandlers(it.novelId || navTarget.pathname.replace(/^\/read\//, ''))}
+                  {...bindNovelNavPrefetchHandlers(it.novelId)}
                 >
-                  {cardBody}
+                  <p className="truncate text-[15px] font-semibold text-white">{it.shelfTitle || '—'}</p>
+                  <p className="mt-1 truncate text-sm text-white/65">{formatChapterLabelKh(it.readChapter)}</p>
+                  <p className="mt-1 truncate text-xs text-white/45">{it.readAt || ''}</p>
                 </Link>
-              ) : (
-                <article
-                  key={`${it.ts || idx}-${it.shelfTitle || ''}-${idx}`}
-                  className={cardClass}
-                  aria-disabled="true"
-                  title="មិនអាចបើករឿងនេះបាន"
-                >
-                  {cardBody}
-                </article>
               )
             })}
           </div>

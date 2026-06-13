@@ -2,12 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { bindNovelNavPrefetchHandlers } from '../lib/prefetchNovelOnNav.js'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
-import { getCatalogNovelsSync, getNovelSummaryById, loadCatalogNovels } from '../lib/novelsRuntime.js'
 import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { fetchFavoritedNovelsByUser, getPresenceMemberId } from '../lib/miniAppPresence.js'
 import { getNovelGenreLabel, getNovelCardTags } from '../lib/novelDisplay.js'
+import {
+  getListedNovelSummaryById,
+  isCatalogLoadedFromApi,
+  isNovelListedInCatalog,
+  loadCatalogNovels,
+} from '../lib/novelsRuntime.js'
 
 const DETAIL_INTERACTIONS_STORAGE_KEY = 'tg_novel_detail_interactions_v1'
 const serverFavoritesMemoryCache = new Map()
@@ -30,21 +35,34 @@ function readSavedNovelRows() {
   }
 }
 
-function resolveSavedNovelCard(novelId, snapshot) {
-  const fromCatalog = getNovelSummaryById(novelId)
-  if (fromCatalog?.title) return fromCatalog
-  if (snapshot?.title) {
-    return {
-      id: novelId,
-      title: String(snapshot.title || ''),
-      author: String(snapshot.author || ''),
-      coverUrl: String(snapshot.coverUrl || ''),
-      accent: snapshot.accent === 'teal' || snapshot.accent === 'rose' ? snapshot.accent : 'violet',
-      tags: Array.isArray(snapshot.tags) ? snapshot.tags : [],
-      genreId: String(snapshot.genreId || ''),
+function pruneLocalFavoritesNotListed(isListed) {
+  if (typeof isListed !== 'function') return
+  try {
+    const raw = localStorage.getItem(DETAIL_INTERACTIONS_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    if (!parsed || typeof parsed !== 'object') return
+    let changed = false
+    for (const [novelId, row] of Object.entries(parsed)) {
+      if (!row || typeof row !== 'object' || row.favorited !== true) continue
+      if (isListed(String(novelId))) continue
+      const nextRow = { ...row }
+      delete nextRow.favorited
+      delete nextRow.favoritedAtMs
+      if (Object.keys(nextRow).length === 0) {
+        delete parsed[novelId]
+      } else {
+        parsed[novelId] = nextRow
+      }
+      changed = true
     }
+    if (changed) localStorage.setItem(DETAIL_INTERACTIONS_STORAGE_KEY, JSON.stringify(parsed))
+  } catch {
+    /* ignore */
   }
-  return null
+}
+
+function resolveSavedNovelCard(novelId) {
+  return getListedNovelSummaryById(novelId)
 }
 
 function mergeFavoritedAtMs(serverMs, localMs) {
@@ -65,7 +83,11 @@ export default function SavedPage() {
   const [catalogTick, setCatalogTick] = useState(0)
 
   useEffect(() => {
-    void loadCatalogNovels().then(() => setCatalogTick((t) => t + 1))
+    void loadCatalogNovels().then(() => {
+      pruneLocalFavoritesNotListed(isNovelListedInCatalog)
+      setSavedRows(readSavedNovelRows())
+      setCatalogTick((t) => t + 1)
+    })
   }, [])
 
   useEffect(() => {
@@ -90,6 +112,7 @@ export default function SavedPage() {
 
   const savedNovels = useMemo(() => {
     void catalogTick
+    if (!isCatalogLoadedFromApi()) return []
     const localById = new Map(savedRows.map((row) => [String(row.novelId), row]))
     const serverById = new Map(serverRows.map((row) => [String(row.novelId), row]))
     const mergedIds = new Set([
@@ -97,9 +120,10 @@ export default function SavedPage() {
       ...savedRows.map((row) => String(row.novelId)),
     ])
     return [...mergedIds]
+      .filter((novelId) => isNovelListedInCatalog(novelId))
       .map((novelId) => {
         const local = localById.get(novelId)
-        const novel = resolveSavedNovelCard(novelId, local?.snapshot)
+        const novel = resolveSavedNovelCard(novelId)
         if (!novel) return null
         const favoritedAtMs = mergeFavoritedAtMs(
           serverById.get(novelId)?.favoritedAtMs,
