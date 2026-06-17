@@ -23,6 +23,7 @@ import {
   NOVELS_BUNDLED_UPDATED_EVENT,
 } from '../lib/novelsRuntime.js'
 import { canDevGuestReadNovel } from '../lib/devGuestRead.js'
+import { resolveNovelCoverUrl } from '../lib/resolveNovelCoverUrl.js'
 import ReaderDetailSkeleton from '../components/ReaderDetailSkeleton.jsx'
 import ReaderArticleSkeleton from '../components/ReaderArticleSkeleton.jsx'
 import {
@@ -1379,7 +1380,7 @@ export default function ReaderPage() {
         <section className="tg-reader-detail__head">
           <div className={`tg-reader-detail__cover-wrap tg-reader-detail__cover-wrap--${novel.accent}`}>
             {novel.coverUrl ? (
-              <img src={novel.coverUrl} alt="" className="tg-reader-detail__cover" />
+              <img src={resolveNovelCoverUrl(novel.coverUrl)} alt="" className="tg-reader-detail__cover" />
             ) : (
               <div className="tg-reader-detail__cover-ph">{novel.title.slice(0, 1)}</div>
             )}

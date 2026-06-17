@@ -29,3 +29,8 @@ export function apiUrl(path) {
   return API_BASE ? `${API_BASE}${normalized}` : normalized
 }
 
+/** 由 API 托管的静态资源（封面图等），生产环境返回绝对 URL */
+export function apiAssetUrl(path) {
+  return apiUrl(path)
+}
+

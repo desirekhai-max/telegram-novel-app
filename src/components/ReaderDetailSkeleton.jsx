@@ -1,6 +1,8 @@
 /**
  * 详情页加载占位：封面 / 标题 / 简介等 Skeleton，禁止空白深蓝屏。
  */
+import { resolveNovelCoverUrl } from '../lib/resolveNovelCoverUrl.js'
+
 export default function ReaderDetailSkeleton({ partialNovel = null }) {
   const accent = partialNovel?.accent || 'violet'
   const hasCover = Boolean(partialNovel?.coverUrl)
@@ -11,7 +13,7 @@ export default function ReaderDetailSkeleton({ partialNovel = null }) {
       <section className="tg-reader-detail__head">
         <div className={`tg-reader-detail__cover-wrap tg-reader-detail__cover-wrap--${accent}`}>
           {hasCover ? (
-            <img src={partialNovel.coverUrl} alt="" className="tg-reader-detail__cover" />
+            <img src={resolveNovelCoverUrl(partialNovel.coverUrl)} alt="" className="tg-reader-detail__cover" />
           ) : (
             <div className="tg-skeleton tg-skeleton--cover" aria-hidden />
           )}

@@ -1,6 +1,7 @@
 import { Eye, Heart } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { bindNovelNavPrefetchHandlers, prefetchNovelNav } from '../lib/prefetchNovelOnNav.js'
+import { resolveNovelCoverUrl } from '../lib/resolveNovelCoverUrl.js'
 import { READER_NO_CHAPTER_YET_KM } from '../lib/errorMessagesKm.js'
 import {
   formatLatestChapterRelativeLabel,
@@ -98,7 +99,7 @@ export default function HomeNovelCard({
       <div className="tg-novel-card__content">
         <div className={`tg-novel-card__cover-wrap tg-novel-card__cover-wrap--${n.accent}`}>
           {n.coverUrl ? (
-            <img src={n.coverUrl} alt="" className="tg-novel-card__cover-img" width="120" height="168" loading="lazy" />
+            <img src={resolveNovelCoverUrl(n.coverUrl)} alt="" className="tg-novel-card__cover-img" width="120" height="168" loading="lazy" />
           ) : (
             <div className="tg-novel-card__cover-ph" aria-hidden>
               <span className="tg-novel-card__cover-ph-text">{n.title.slice(0, 1)}</span>

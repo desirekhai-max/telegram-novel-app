@@ -25,6 +25,8 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': 'http://127.0.0.1:8787',
+      '/covers': 'http://127.0.0.1:8787',
+      '/uploads/novel-covers': 'http://127.0.0.1:8787',
     },
   }
 })

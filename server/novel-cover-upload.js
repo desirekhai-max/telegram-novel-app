@@ -7,6 +7,8 @@ import { PERSISTENT_DATA_DIR } from './persistent-data-dir.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export const COVERS_DIR = path.join(PERSISTENT_DATA_DIR, 'uploads', 'novel-covers')
 export const COVERS_URL_PREFIX = '/uploads/novel-covers/'
+export const BUNDLED_COVERS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'covers')
+export const BUNDLED_COVERS_URL_PREFIX = '/covers/'
 export const MAX_COVER_BYTES = 1024 * 1024
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
@@ -156,14 +158,22 @@ export function saveCoverImage(req, { dataUrl, mimeType, base64, previousCoverUr
 }
 
 export function serveNovelCoverFile(res, filename) {
+  serveCoverImageFile(res, COVERS_DIR, filename)
+}
+
+export function serveBundledCoverFile(res, filename) {
+  serveCoverImageFile(res, BUNDLED_COVERS_DIR, filename)
+}
+
+function serveCoverImageFile(res, baseDir, filename) {
   const safe = String(filename || '').trim()
   if (!safe || !/^[a-zA-Z0-9._-]+$/.test(safe)) {
     res.writeHead(400)
     res.end()
     return
   }
-  const filePath = path.join(COVERS_DIR, safe)
-  if (!filePath.startsWith(COVERS_DIR) || !fs.existsSync(filePath)) {
+  const filePath = path.join(baseDir, safe)
+  if (!filePath.startsWith(baseDir) || !fs.existsSync(filePath)) {
     res.writeHead(404)
     res.end()
     return

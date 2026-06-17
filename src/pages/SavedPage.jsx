@@ -13,6 +13,7 @@ import {
   isNovelListedInCatalog,
   loadCatalogNovels,
 } from '../lib/novelsRuntime.js'
+import { resolveNovelCoverUrl } from '../lib/resolveNovelCoverUrl.js'
 
 const DETAIL_INTERACTIONS_STORAGE_KEY = 'tg_novel_detail_interactions_v1'
 const serverFavoritesMemoryCache = new Map()
@@ -167,7 +168,7 @@ export default function SavedPage() {
                 >
                   <div className={`tg-saved-card__cover-wrap tg-saved-card__cover-wrap--${accent}`}>
                     {novel.coverUrl ? (
-                      <img src={novel.coverUrl} alt="" className="tg-saved-card__cover-img" loading="lazy" />
+                      <img src={resolveNovelCoverUrl(novel.coverUrl)} alt="" className="tg-saved-card__cover-img" loading="lazy" />
                     ) : (
                       <div className="tg-saved-card__cover-ph" aria-hidden>
                         <span className="tg-saved-card__cover-ph-text">{novel.title.slice(0, 1)}</span>

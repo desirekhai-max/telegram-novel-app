@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Bell, Heart, MessageCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { bindNovelNavPrefetchHandlers, prefetchNovelNav } from '../lib/prefetchNovelOnNav.js'
+import { resolveNovelCoverUrl } from '../lib/resolveNovelCoverUrl.js'
 import { novels } from '../data/novels.js'
 import { formatTelegramDisplayName, useTelegramUser } from '../hooks/useTelegramUser.js'
 import { fetchNovelReplies, fetchNovelReviews } from '../lib/miniAppPresence.js'
@@ -301,7 +302,7 @@ export default function NotificationsPage() {
                   ) : (
                     <div className="h-14 w-10 shrink-0 overflow-hidden rounded-md border border-white/15 bg-white/5">
                       {it.coverUrl ? (
-                        <img src={it.coverUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+                        <img src={resolveNovelCoverUrl(it.coverUrl)} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
                       ) : null}
                     </div>
                   )}

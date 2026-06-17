@@ -50,6 +50,7 @@ import {
   saveCoverImage,
   deleteManagedCoverFile,
   serveNovelCoverFile,
+  serveBundledCoverFile,
   readJsonBody as readCoverJsonBody,
 } from './novel-cover-upload.js'
 import {
@@ -1681,6 +1682,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   /** 首页筛选面板配置：放置 `server/home-filter-panel-config.json`，后台任意改标题/分组/选项即生效（重启可选：当前每次 GET 读盘） */
+  const bundledCoverMatch = url.pathname.match(/^\/covers\/([^/]+)$/)
+  if (req.method === 'GET' && bundledCoverMatch) {
+    serveBundledCoverFile(res, decodeURIComponent(bundledCoverMatch[1]))
+    return
+  }
+
   const coverStaticMatch = url.pathname.match(/^\/uploads\/novel-covers\/([^/]+)$/)
   if (req.method === 'GET' && coverStaticMatch) {
     serveNovelCoverFile(res, decodeURIComponent(coverStaticMatch[1]))
