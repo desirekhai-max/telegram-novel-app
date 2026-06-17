@@ -2,6 +2,8 @@ import { apiUrl } from './apiBase.js'
 import { novels as bundledNovels, getNovelById as getBundledNovelById } from '../data/novels.js'
 import { logApiRequestDuration } from './novelLoadPerf.js'
 
+export const NOVELS_BUNDLED_UPDATED_EVENT = 'tg-novels-bundled-updated'
+
 let catalogNovels = null
 let catalogPromise = null
 /** API 目录已成功拉取（含空列表）时为 true；仅网络失败时才回退内置演示书 */
@@ -171,6 +173,21 @@ export function invalidateNovelsRuntimeCache() {
   inflightFull.clear()
 }
 
+export function notifyNovelsBundledUpdated() {
+  if (typeof window === 'undefined') return
+  invalidateNovelsRuntimeCache()
+  // 等待本地 dev:api 监听到 novels.js 变更后再拉目录/正文
+  window.setTimeout(() => {
+    window.dispatchEvent(new CustomEvent(NOVELS_BUNDLED_UPDATED_EVENT))
+  }, 350)
+}
+
+if (import.meta.hot) {
+  import.meta.hot.accept('../data/novels.js', () => {
+    notifyNovelsBundledUpdated()
+  })
+}
+
 export function prefetchNovelFull(id) {
   return fetchNovelFull(id)
 }
@@ -180,7 +197,7 @@ export async function fetchNovelFull(id, options = {}) {
   if (!key) return null
 
   const { force = false, background = false } = options
-  const cachedEntry = getCacheEntry(key)
+  const cachedEntry = import.meta.env.DEV ? null : getCacheEntry(key)
 
   if (cachedEntry && !force) {
     const age = Date.now() - cachedEntry.fetchedAt

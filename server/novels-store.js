@@ -12,6 +12,9 @@ export function getNovelsDataFilePath() {
 }
 const BUNDLED_NOVELS_PATH = path.join(__dirname, '..', 'src', 'data', 'novels.js')
 const SYNOPSIS_PREVIEW_MAX = 320
+const IS_DEV_RUNTIME = process.env.NODE_ENV !== 'production'
+
+let bundledWatchTimer = null
 
 /** @type {Map<string, object>} */
 let novelsById = new Map()
@@ -192,6 +195,71 @@ async function seedFromBundledIfEmpty() {
   }
 }
 
+async function importBundledNovelsFresh() {
+  const href = `${pathToFileURL(BUNDLED_NOVELS_PATH).href}?t=${Date.now()}`
+  const mod = await import(href)
+  return Array.isArray(mod.novels) ? mod.novels : []
+}
+
+/** 已有持久化数据时，仅补全 bundle 中缺失的演示书 id，不覆盖已有书目。 */
+async function mergeBundledMissingNovels() {
+  try {
+    if (!fs.existsSync(BUNDLED_NOVELS_PATH)) return 0
+    const list = await importBundledNovelsFresh()
+    let added = 0
+    list.forEach((raw) => {
+      const novel = normalizeNovel(raw)
+      if (!novel.id || !novel.title) return
+      if (novelsById.has(novel.id)) return
+      novelsById.set(novel.id, novel)
+      added += 1
+    })
+    if (added > 0) persist()
+    return added
+  } catch (err) {
+    console.warn('[novels-store] merge bundled missing failed', err?.message || err)
+    return 0
+  }
+}
+
+/** 本地开发：用 bundle 覆盖同 id 演示书（不写盘），便于改 novels.js 后立即从 API 看到。 */
+async function reloadBundledNovelsInDev() {
+  if (!IS_DEV_RUNTIME) return 0
+  try {
+    if (!fs.existsSync(BUNDLED_NOVELS_PATH)) return 0
+    const list = await importBundledNovelsFresh()
+    let updated = 0
+    list.forEach((raw) => {
+      const novel = normalizeNovel(raw)
+      if (!novel.id || !novel.title) return
+      novelsById.set(novel.id, novel)
+      updated += 1
+    })
+    if (updated > 0) {
+      console.log(`[novels-store] dev hot-reload bundled novels (${updated})`)
+    }
+    return updated
+  } catch (err) {
+    console.warn('[novels-store] dev bundled reload failed', err?.message || err)
+    return 0
+  }
+}
+
+export function watchBundledNovelsInDev() {
+  if (!IS_DEV_RUNTIME || !fs.existsSync(BUNDLED_NOVELS_PATH)) return
+  try {
+    fs.watch(BUNDLED_NOVELS_PATH, { persistent: false }, () => {
+      clearTimeout(bundledWatchTimer)
+      bundledWatchTimer = setTimeout(() => {
+        void reloadBundledNovelsInDev()
+      }, 250)
+    })
+    console.log('[novels-store] watching src/data/novels.js for dev hot reload')
+  } catch (err) {
+    console.warn('[novels-store] bundled watch failed', err?.message || err)
+  }
+}
+
 export function getNovelsCount() {
   return novelsById.size
 }
@@ -212,7 +280,12 @@ export async function initNovelsStore() {
       console.log(
         `[novels-store] loaded ${novelsById.size} novel(s) from ${DATA_FILE} (dir=${PERSISTENT_DATA_DIR})`,
       )
-      return
+      const merged = await mergeBundledMissingNovels()
+      if (merged > 0) {
+        console.log(
+          `[novels-store] merged ${merged} missing bundled novel(s) into ${DATA_FILE} (total=${novelsById.size})`,
+        )
+      }
     } catch (err) {
       console.error(
         '[novels-store] load failed — file kept on disk, will NOT re-seed or auto-delete:',
@@ -220,11 +293,16 @@ export async function initNovelsStore() {
       )
       return
     }
+  } else {
+    await seedFromBundledIfEmpty()
+    if (novelsById.size > 0) {
+      console.log(`[novels-store] seeded ${novelsById.size} novel(s) into ${DATA_FILE}`)
+    }
   }
 
-  await seedFromBundledIfEmpty()
-  if (novelsById.size > 0) {
-    console.log(`[novels-store] seeded ${novelsById.size} novel(s) into ${DATA_FILE}`)
+  if (IS_DEV_RUNTIME) {
+    await reloadBundledNovelsInDev()
+    watchBundledNovelsInDev()
   }
 }
 

@@ -17,7 +17,7 @@ import {
   getCachedHomeLikeCounts,
   getCachedHomeStats,
 } from '../lib/homeStatsCache.js'
-import { getCatalogNovelsSync, isCatalogLoadedFromApi, loadCatalogNovels } from '../lib/novelsRuntime.js'
+import { getCatalogNovelsSync, isCatalogLoadedFromApi, loadCatalogNovels, NOVELS_BUNDLED_UPDATED_EVENT } from '../lib/novelsRuntime.js'
 import { useAppChrome } from '../contexts/useAppChrome.js'
 import {
   applyThemeLabelToCriteria,
@@ -174,6 +174,17 @@ export default function HomePage() {
     return () => {
       cancelled = true
     }
+  }, [])
+
+  useEffect(() => {
+    const refreshCatalog = () => {
+      void loadCatalogNovels({ force: true }).then((list) => {
+        setCatalogReady(true)
+        setNovelList(Array.isArray(list) ? list : [])
+      })
+    }
+    window.addEventListener(NOVELS_BUNDLED_UPDATED_EVENT, refreshCatalog)
+    return () => window.removeEventListener(NOVELS_BUNDLED_UPDATED_EVENT, refreshCatalog)
   }, [])
 
   const effectiveMaxTags = useMemo(

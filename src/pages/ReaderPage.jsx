@@ -20,7 +20,9 @@ import {
   chapterRequiresVip,
   novelHasFullContent,
   resolveInitialNovel,
+  NOVELS_BUNDLED_UPDATED_EVENT,
 } from '../lib/novelsRuntime.js'
+import { canDevGuestReadNovel } from '../lib/devGuestRead.js'
 import ReaderDetailSkeleton from '../components/ReaderDetailSkeleton.jsx'
 import ReaderArticleSkeleton from '../components/ReaderArticleSkeleton.jsx'
 import {
@@ -343,6 +345,8 @@ export default function ReaderPage() {
   const [highlightTargetId, setHighlightTargetId] = useState('')
   const [expandedReplyMap, setExpandedReplyMap] = useState({})
   const isMiniAppLoggedIn = Boolean(tgUser)
+  const devGuestRead = canDevGuestReadNovel(id)
+  const effectiveVipReader = isVipReader || devGuestRead
 
   useEffect(() => {
     const t0 = performance.now()
@@ -395,8 +399,25 @@ export default function ReaderPage() {
     }
   }, [id])
 
+  useEffect(() => {
+    const onBundledUpdated = () => {
+      void fetchNovelFull(id, { force: true }).then((loaded) => {
+        if (!loaded) return
+        setNovel(loaded)
+        setLoadStatus('ready')
+      })
+    }
+    window.addEventListener(NOVELS_BUNDLED_UPDATED_EVENT, onBundledUpdated)
+    return () => window.removeEventListener(NOVELS_BUNDLED_UPDATED_EVENT, onBundledUpdated)
+  }, [id])
+
   const ensureMiniAppLoggedIn = () => {
     if (isMiniAppLoggedIn) return true
+    setStartReadPageOpen(true)
+    return false
+  }
+  const ensureCanOpenChapter = () => {
+    if (isMiniAppLoggedIn || devGuestRead) return true
     setStartReadPageOpen(true)
     return false
   }
@@ -1127,14 +1148,14 @@ export default function ReaderPage() {
     }
   }
   const onOpenChapter = (chapterIndex) => {
-    if (!ensureMiniAppLoggedIn()) return
+    if (!ensureCanOpenChapter()) return
     const chapter = novel?.chapters?.[chapterIndex]
-    if (!isVipReader && chapterRequiresVip(chapter)) {
+    if (!effectiveVipReader && chapterRequiresVip(chapter)) {
       setChapterVipGateOpen(true)
       return
     }
     if (!chapterHasReadableBody(novel, chapterIndex)) return
-    reportReadOnChapterOpen(novel, chapterIndex, tgUser, isVipReader)
+    reportReadOnChapterOpen(novel, chapterIndex, tgUser, effectiveVipReader)
     const safeBaseViewCount = getSeedViewCount(novel)
     const optimisticNext = viewCount + 1
     setViewCount(optimisticNext)
@@ -1165,7 +1186,7 @@ export default function ReaderPage() {
   }, [novel, location.state?.openChapterIndex])
 
   const onOpenStartReadPage = () => {
-    if (isMiniAppLoggedIn) {
+    if (isMiniAppLoggedIn || devGuestRead) {
       const firstReadableChapterIndex = findFirstReadableChapterIndex(novel)
       if (firstReadableChapterIndex >= 0) {
         onOpenChapter(firstReadableChapterIndex)
@@ -1477,8 +1498,8 @@ export default function ReaderPage() {
           <ul className="tg-reader-detail__chapter-list">
             {displayedChapterRows.map((row) => {
               const hasReadableBody = chapterHasReadableBody(novel, row.chapterIndex)
-              const canReadNow = hasReadableBody && (isVipReader || !row.requiresVip)
-              const clickable = canReadNow || (!isVipReader && row.requiresVip)
+              const canReadNow = hasReadableBody && (effectiveVipReader || !row.requiresVip)
+              const clickable = canReadNow || (!effectiveVipReader && row.requiresVip)
               return (
                 <li
                   key={row.id}
