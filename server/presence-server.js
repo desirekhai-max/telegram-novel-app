@@ -1,4 +1,4 @@
-import http from 'node:http'
+﻿import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -59,14 +59,24 @@ import {
   saveAppFilterSection,
   buildPublicAppFilters,
 } from './app-filters-store.js'
+import {
+  initNovelVisibilityStore,
+  getNovelVisibilityDataFilePath,
+  setNovelVisibility,
+  attachVisibilityToNovel,
+  attachVisibilityToList,
+  filterPublishedNovels,
+  matchesVisibilityFilter,
+  normalizeVisibility,
+} from './novel-visibility-store.js'
 
 const HOST = process.env.HOST || '0.0.0.0'
 const PORT = Number(process.env.PORT || 8787)
 const ONLINE_WINDOW_MS = 45 * 1000
-const COIN_TO_RIEL = 1 // 100金币=100瑞尔 -> 1金币=1瑞尔
+const COIN_TO_RIEL = 1 // 100Θçæσ╕ü=100τæ₧σ░ö -> 1Θçæσ╕ü=1τæ₧σ░ö
 const RIEL_PER_USD = 4000
 const PHNOM_PENH_UTC_OFFSET_HOURS = 7
-const PHNOM_PENH_SETTLEMENT_HOUR = 9 // 每天早上9点结算
+const PHNOM_PENH_SETTLEMENT_HOUR = 9 // µ»Åσñ⌐µù⌐Σ╕è9τé╣τ╗ôτ«ù
 const records = new Map()
 const knownMembers = new Set()
 const paidMembers = new Set()
@@ -445,7 +455,7 @@ function normalizeVipOrderIn(raw) {
     planId: String(raw?.planId || '').trim().slice(0, 80),
     amount: String(raw?.amount || '$0').trim().slice(0, 40),
     status: String(raw?.status || 'success').trim().slice(0, 40),
-    statusLabel: String(raw?.statusLabel || 'បង់ប្រាក់ជោគជ័យ').trim().slice(0, 120),
+    statusLabel: String(raw?.statusLabel || 'ß₧öß₧äßƒïß₧ößƒÆß₧Üß₧╢ß₧Çßƒïß₧çßƒäß₧éß₧çßƒÉß₧Ö').trim().slice(0, 120),
     time: String(raw?.time || formatOrderTime(atMs)).trim().slice(0, 40),
     atMs,
     product: String(raw?.product || '').trim().slice(0, 180),
@@ -666,7 +676,7 @@ function createSuccessfulVipOrderForViewer(profile, planId) {
     planId: plan.planId,
     amount: plan.priceUsdLabel,
     status: 'success',
-    statusLabel: 'បង់ប្រាក់ជោគជ័យ',
+    statusLabel: 'ß₧öß₧äßƒïß₧ößƒÆß₧Üß₧╢ß₧Çßƒïß₧çßƒäß₧éß₧çßƒÉß₧Ö',
     time: formatOrderTime(atMs),
     atMs,
     product: getNeutralVipOrderProductLabel(),
@@ -1207,7 +1217,7 @@ function pruneOrphanReadRecordsInPlace() {
   if (readRecords.length !== before) persistMembers()
 }
 
-/** 启动时清理已下架书本残留的收藏、阅读记录与互动数据 */
+/** σÉ»σè¿µù╢µ╕àτÉåσ╖▓Σ╕ïµ₧╢Σ╣ªµ£¼µ«ïτòÖτÜäµö╢ΦùÅπÇüΘÿàΦ»╗Φ«░σ╜òΣ╕ÄΣ║Æσè¿µò░µì« */
 function pruneOrphanNovelRelations() {
   const liveTitles = listNovelTitles()
   const liveIds = new Set(liveTitles.map((row) => String(row?.id || '').trim()).filter(Boolean))
@@ -1382,12 +1392,12 @@ function getSettlementStartMs(nowMs = Date.now()) {
   const m = shifted.getUTCMonth()
   const d = shifted.getUTCDate()
 
-  // 先取 Phnom Penh 当天 00:00，再加上 09:00 结算点，最后转回 UTC 毫秒
+  // σàêσÅû Phnom Penh σ╜ôσñ⌐ 00:00∩╝îσåìσèáΣ╕è 09:00 τ╗ôτ«ùτé╣∩╝îµ£ÇσÉÄΦ╜¼σ¢₧ UTC µ»½τºÆ
   const localDayStartMs = Date.UTC(y, m, d, 0, 0, 0, 0)
   const settlementLocalMs = localDayStartMs + PHNOM_PENH_SETTLEMENT_HOUR * 60 * 60 * 1000
   const settlementUtcMs = settlementLocalMs - tzOffsetMs
 
-  // 若当前时间早于今天 09:00（柬时），则归到昨天 09:00 起算
+  // ΦïÑσ╜ôσëìµù╢Θù┤µù⌐Σ║ÄΣ╗èσñ⌐ 09:00∩╝êµƒ¼µù╢∩╝ë∩╝îσêÖσ╜Æσê░µÿ¿σñ⌐ 09:00 Φ╡╖τ«ù
   return nowMs >= settlementUtcMs ? settlementUtcMs : settlementUtcMs - 24 * 60 * 60 * 1000
 }
 
@@ -1397,14 +1407,14 @@ function getSettlementRangeByDate(dateText) {
   const [y, m, d] = text.split('-').map(Number)
   if (!y || !m || !d) return null
   const tzOffsetMs = PHNOM_PENH_UTC_OFFSET_HOURS * 60 * 60 * 1000
-  // dateText 视为 Phnom Penh 本地日期，当天结算点是 09:00
+  // dateText ΦºåΣ╕║ Phnom Penh µ£¼σ£░µùÑµ£ƒ∩╝îσ╜ôσñ⌐τ╗ôτ«ùτé╣µÿ» 09:00
   const localSettlementMs = Date.UTC(y, m - 1, d, PHNOM_PENH_SETTLEMENT_HOUR, 0, 0, 0)
   const startMs = localSettlementMs - tzOffsetMs
   const endMs = startMs + 24 * 60 * 60 * 1000
   return { startMs, endMs }
 }
 
-/** 解析 `YYYY-MM-DD HH:mm:ss` 为 UTC 毫秒（与 getSettlementRangeByDate 相同：按柬时墙钟再减偏移） */
+/** Φºúµ₧É `YYYY-MM-DD HH:mm:ss` Σ╕║ UTC µ»½τºÆ∩╝êΣ╕Ä getSettlementRangeByDate τ¢╕σÉî∩╝Üµîëµƒ¼µù╢σóÖΘÆƒσåìσçÅσüÅτº╗∩╝ë */
 function parsePhnomPenhLocalDateTime(text) {
   const m = String(text || '')
     .trim()
@@ -1500,7 +1510,7 @@ function makeCounts(rangeStartMs, rangeEndMs) {
   }
 
   for (const rec of records.values()) {
-    // 同一 member 只计入一个桶：后台优先，其次设备端
+    // σÉîΣ╕Ç member σÅ¬Φ«íσàÑΣ╕ÇΣ╕¬µí╢∩╝ÜσÉÄσÅ░Σ╝ÿσàê∩╝îσà╢µ¼íΦ«╛σñçτ½»
     if (rec.isAdmin) {
       admin += 1
       continue
@@ -1565,7 +1575,7 @@ function sendJson(res, code, payload) {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   })
   res.end(JSON.stringify(payload))
@@ -1681,7 +1691,7 @@ const server = http.createServer(async (req, res) => {
     })
   }
 
-  /** 首页筛选面板配置：放置 `server/home-filter-panel-config.json`，后台任意改标题/分组/选项即生效（重启可选：当前每次 GET 读盘） */
+  /** ΘªûΘí╡τ¡¢ΘÇëΘ¥óµ¥┐Θàìτ╜«∩╝Üµö╛τ╜« `server/home-filter-panel-config.json`∩╝îσÉÄσÅ░Σ╗╗µäÅµö╣µáçΘóÿ/σêåτ╗ä/ΘÇëΘí╣σì│τöƒµòê∩╝êΘçìσÉ»σÅ»ΘÇë∩╝Üσ╜ôσëìµ»Åµ¼í GET Φ»╗τ¢ÿ∩╝ë */
   const bundledCoverMatch = url.pathname.match(/^\/covers\/([^/]+)$/)
   if (req.method === 'GET' && bundledCoverMatch) {
     serveBundledCoverFile(res, decodeURIComponent(bundledCoverMatch[1]))
@@ -1721,7 +1731,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  /** VIP 套餐：与 `src/data/vipPlansCatalog.js` 同结构；编辑 `server/vip-plans.json` 后 GET 即生效 */
+  /** VIP σÑùΘñÉ∩╝ÜΣ╕Ä `src/data/vipPlansCatalog.js` σÉîτ╗ôµ₧ä∩╝¢τ╝ûΦ╛æ `server/vip-plans.json` σÉÄ GET σì│τöƒµòê */
   if (req.method === 'GET' && url.pathname === '/api/vip-plans') {
     try {
       const configPath = path.join(__dirname, 'vip-plans.json')
@@ -2004,12 +2014,13 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/novels-catalog') {
     const payload = getNovelsCatalogPayload()
+    const novels = filterPublishedNovels(payload.novels || [])
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
       'Access-Control-Allow-Origin': '*',
     })
-    res.end(JSON.stringify(payload))
+    res.end(JSON.stringify({ ...payload, novels }))
     return
   }
 
@@ -2047,7 +2058,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, ...result })
     } catch (err) {
       const msg = String(err?.message || err)
-      const code = msg.includes('1MB') || msg.includes('支持') ? 400 : 500
+      const code = msg.includes('1MB') || msg.includes('µö»µîü') ? 400 : 500
       return sendJson(res, code, { ok: false, error: msg })
     }
   }
@@ -2067,23 +2078,57 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/admin-legacy/novels') {
     if (!requireLegacyAdmin(req, res)) return
-    const result = listNovelsAdmin({
+    const visibilityFilter = url.searchParams.get('visibility')
+    const listQuery = {
       page: url.searchParams.get('page'),
       pageSize: url.searchParams.get('pageSize'),
       title: url.searchParams.get('title'),
       author: url.searchParams.get('author'),
       genreId: url.searchParams.get('genreId') || url.searchParams.get('genre'),
       status: url.searchParams.get('status'),
-    })
-    return sendJson(res, 200, { ok: true, ...result })
+    }
+
+    if (visibilityFilter) {
+      const page = Math.max(1, Number(listQuery.page) || 1)
+      const pageSize = Math.min(100, Math.max(1, Number(listQuery.pageSize) || 20))
+      const bulk = listNovelsAdmin({ ...listQuery, page: 1, pageSize: 100 })
+      let items = attachVisibilityToList(bulk.items || []).filter((row) =>
+        matchesVisibilityFilter(row, visibilityFilter),
+      )
+      const total = items.length
+      const start = (page - 1) * pageSize
+      items = items.slice(start, start + pageSize)
+      return sendJson(res, 200, { ok: true, items, total, page, pageSize })
+    }
+
+    const result = listNovelsAdmin(listQuery)
+    const items = attachVisibilityToList(result.items || [])
+    return sendJson(res, 200, { ok: true, ...result, items })
   }
 
   const adminNovelMatch = url.pathname.match(/^\/api\/admin-legacy\/novels\/([^/]+)$/)
+  const adminNovelVisibilityMatch = url.pathname.match(
+    /^\/api\/admin-legacy\/novels\/([^/]+)\/visibility$/,
+  )
   if (adminNovelMatch && req.method === 'GET') {
     if (!requireLegacyAdmin(req, res)) return
     const novel = getStoredNovelById(decodeURIComponent(adminNovelMatch[1]))
     if (!novel) return sendJson(res, 404, { ok: false, error: 'novel not found' })
-    return sendJson(res, 200, { ok: true, novel })
+    return sendJson(res, 200, { ok: true, novel: attachVisibilityToNovel(novel) })
+  }
+
+  if (adminNovelVisibilityMatch && req.method === 'PATCH') {
+    if (!requireLegacyAdmin(req, res)) return
+    try {
+      const novelId = decodeURIComponent(adminNovelVisibilityMatch[1])
+      const existing = getStoredNovelById(novelId)
+      if (!existing) return sendJson(res, 404, { ok: false, error: 'novel not found' })
+      const body = await parseJsonBody(req)
+      const visibility = setNovelVisibility(novelId, normalizeVisibility(body?.visibility))
+      return sendJson(res, 200, { ok: true, id: novelId, visibility })
+    } catch (err) {
+      return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
+    }
   }
 
   if (req.method === 'POST' && url.pathname === '/api/admin-legacy/novels') {
@@ -2091,7 +2136,8 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseJsonBody(req)
       const novel = createNovel(body)
-      return sendJson(res, 200, { ok: true, novel })
+      const visibility = setNovelVisibility(novel.id, normalizeVisibility(body?.visibility))
+      return sendJson(res, 200, { ok: true, novel: { ...novel, visibility } })
     } catch (err) {
       return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
     }
@@ -2102,7 +2148,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseJsonBody(req)
       const novel = updateNovel(decodeURIComponent(adminNovelMatch[1]), body)
-      return sendJson(res, 200, { ok: true, novel })
+      return sendJson(res, 200, { ok: true, novel: attachVisibilityToNovel(novel) })
     } catch (err) {
       const code = String(err?.message || '').includes('not found') ? 404 : 400
       return sendJson(res, code, { ok: false, error: String(err?.message || err) })
@@ -2182,7 +2228,7 @@ const server = http.createServer(async (req, res) => {
     }
     const passwordOk = verifyAdminPassword(password)
     if (username !== ADMIN_USER || !passwordOk || !verifyAdminOtp(otp)) {
-      return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
+      return sendJson(res, 401, { ok: false, error: 'Φ┤ªσÅ╖πÇüσ»åτáüµêûσè¿µÇüτáüΘöÖΦ»»' })
     }
     const token = crypto.randomBytes(24).toString('hex')
     adminSessions.set(token, { username, createdAt: now(), expiresAt: now() + ADMIN_TOKEN_TTL_MS })
@@ -2219,7 +2265,7 @@ const server = http.createServer(async (req, res) => {
       verifyAdminPassword(password) &&
       verifyAdminOtp(otp)
     if (!legacyOk && !adminOk) {
-      return sendJson(res, 401, { ok: false, error: '账号、密码或动态码错误' })
+      return sendJson(res, 401, { ok: false, error: 'Φ┤ªσÅ╖πÇüσ»åτáüµêûσè¿µÇüτáüΘöÖΦ»»' })
     }
     const token = crypto.randomBytes(24).toString('hex')
     adminLegacySessions.set(token, { username, createdAt: now(), expiresAt: now() + ADMIN_TOKEN_TTL_MS })
@@ -2305,7 +2351,7 @@ const server = http.createServer(async (req, res) => {
       txMetrics.sellUsdEvents.push({ ts, amount: Number(body.amount || 0) })
     } else if (eventType === 'coin-order' || eventType === 'coin-order-success') {
       const status = String(body.status || '').toLowerCase()
-      // 仅“成功交易”累计
+      // Σ╗àΓÇ£µêÉσèƒΣ║ñµÿôΓÇ¥τ┤»Φ«í
       if (status !== 'success' && status !== 'completed') {
         return sendJson(res, 200, { ok: true, ignored: true, reason: 'order not successful', counts: makeCounts() })
       }
@@ -2320,7 +2366,7 @@ const server = http.createServer(async (req, res) => {
       eventType === 'vip-package-success-usd'
     ) {
       const status = String(body.status || '').toLowerCase()
-      // 第三行第5卡：仅“系统审核成功”的VIP付费订单累计（美金直累加）
+      // τ¼¼Σ╕ëΦíîτ¼¼5σìí∩╝ÜΣ╗àΓÇ£τ│╗τ╗ƒσ«íµá╕µêÉσèƒΓÇ¥τÜäVIPΣ╗ÿΦ┤╣Φ«óσìòτ┤»Φ«í∩╝êτ╛ÄΘçæτ¢┤τ┤»σèá∩╝ë
       if (status && status !== 'success' && status !== 'completed') {
         return sendJson(res, 200, { ok: true, ignored: true, reason: 'vip order not successful', counts: makeCounts() })
       }
@@ -2740,6 +2786,7 @@ const server = http.createServer(async (req, res) => {
 
 const migrationResults = runAllLegacyMigrations()
 initAppFiltersStore()
+initNovelVisibilityStore()
 initOrdersStore()
 loadPersistedMembers()
 initNovelCoverUpload()
@@ -2752,6 +2799,7 @@ initNovelsStore()
       console.log(`[data] persistent dir: ${PERSISTENT_DATA_DIR}`)
       console.log(`[novels-store] data file: ${getNovelsDataFilePath()}`)
       console.log(`[novels-store] count: ${getNovelsCount()}`)
+      console.log(`[novel-visibility] data file: ${getNovelVisibilityDataFilePath()}`)
       console.log(`[orders-store] data file: ${getOrdersDataFilePath()}`)
       console.log(`[orders-store] count: ${getOrdersCount()}`)
       console.log('[payway] sandbox status:', JSON.stringify(getPayWaySandboxStatus()))
