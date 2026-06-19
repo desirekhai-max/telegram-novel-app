@@ -46,6 +46,16 @@ import {
   saveAppFilterSection,
   buildPublicAppFilters,
 } from './app-filters-store.js'
+import {
+  initNovelVisibilityStore,
+  getNovelVisibilityDataFilePath,
+  setNovelVisibility,
+  attachVisibilityToNovel,
+  attachVisibilityToList,
+  filterPublishedNovels,
+  matchesVisibilityFilter,
+  normalizeVisibility,
+} from './novel-visibility-store.js'
 
 const HOST = process.env.HOST || '0.0.0.0'
 const PORT = Number(process.env.PORT || 8787)
@@ -1414,7 +1424,7 @@ function sendJson(res, code, payload) {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   })
   res.end(JSON.stringify(payload))
@@ -1746,12 +1756,13 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/novels-catalog') {
     const payload = getNovelsCatalogPayload()
+    const novels = filterPublishedNovels(payload.novels || [])
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
       'Access-Control-Allow-Origin': '*',
     })
-    res.end(JSON.stringify(payload))
+    res.end(JSON.stringify({ ...payload, novels }))
     return
   }
 
@@ -1809,23 +1820,57 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/admin-legacy/novels') {
     if (!requireLegacyAdmin(req, res)) return
-    const result = listNovelsAdmin({
+    const visibilityFilter = url.searchParams.get('visibility')
+    const listQuery = {
       page: url.searchParams.get('page'),
       pageSize: url.searchParams.get('pageSize'),
       title: url.searchParams.get('title'),
       author: url.searchParams.get('author'),
       genreId: url.searchParams.get('genreId') || url.searchParams.get('genre'),
       status: url.searchParams.get('status'),
-    })
-    return sendJson(res, 200, { ok: true, ...result })
+    }
+
+    if (visibilityFilter) {
+      const page = Math.max(1, Number(listQuery.page) || 1)
+      const pageSize = Math.min(100, Math.max(1, Number(listQuery.pageSize) || 20))
+      const bulk = listNovelsAdmin({ ...listQuery, page: 1, pageSize: 100 })
+      let items = attachVisibilityToList(bulk.items || []).filter((row) =>
+        matchesVisibilityFilter(row, visibilityFilter),
+      )
+      const total = items.length
+      const start = (page - 1) * pageSize
+      items = items.slice(start, start + pageSize)
+      return sendJson(res, 200, { ok: true, items, total, page, pageSize })
+    }
+
+    const result = listNovelsAdmin(listQuery)
+    const items = attachVisibilityToList(result.items || [])
+    return sendJson(res, 200, { ok: true, ...result, items })
   }
 
   const adminNovelMatch = url.pathname.match(/^\/api\/admin-legacy\/novels\/([^/]+)$/)
+  const adminNovelVisibilityMatch = url.pathname.match(
+    /^\/api\/admin-legacy\/novels\/([^/]+)\/visibility$/,
+  )
   if (adminNovelMatch && req.method === 'GET') {
     if (!requireLegacyAdmin(req, res)) return
     const novel = getStoredNovelById(decodeURIComponent(adminNovelMatch[1]))
     if (!novel) return sendJson(res, 404, { ok: false, error: 'novel not found' })
-    return sendJson(res, 200, { ok: true, novel })
+    return sendJson(res, 200, { ok: true, novel: attachVisibilityToNovel(novel) })
+  }
+
+  if (adminNovelVisibilityMatch && req.method === 'PATCH') {
+    if (!requireLegacyAdmin(req, res)) return
+    try {
+      const novelId = decodeURIComponent(adminNovelVisibilityMatch[1])
+      const existing = getStoredNovelById(novelId)
+      if (!existing) return sendJson(res, 404, { ok: false, error: 'novel not found' })
+      const body = await parseJsonBody(req)
+      const visibility = setNovelVisibility(novelId, normalizeVisibility(body?.visibility))
+      return sendJson(res, 200, { ok: true, id: novelId, visibility })
+    } catch (err) {
+      return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
+    }
   }
 
   if (req.method === 'POST' && url.pathname === '/api/admin-legacy/novels') {
@@ -1833,7 +1878,8 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseJsonBody(req)
       const novel = createNovel(body)
-      return sendJson(res, 200, { ok: true, novel })
+      const visibility = setNovelVisibility(novel.id, normalizeVisibility(body?.visibility))
+      return sendJson(res, 200, { ok: true, novel: { ...novel, visibility } })
     } catch (err) {
       return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
     }
@@ -1844,7 +1890,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseJsonBody(req)
       const novel = updateNovel(decodeURIComponent(adminNovelMatch[1]), body)
-      return sendJson(res, 200, { ok: true, novel })
+      return sendJson(res, 200, { ok: true, novel: attachVisibilityToNovel(novel) })
     } catch (err) {
       const code = String(err?.message || '').includes('not found') ? 404 : 400
       return sendJson(res, code, { ok: false, error: String(err?.message || err) })
@@ -2461,6 +2507,7 @@ const server = http.createServer(async (req, res) => {
 
 const migrationResults = runAllLegacyMigrations()
 initAppFiltersStore()
+initNovelVisibilityStore()
 loadPersistedMembers()
 initNovelCoverUpload()
 initNovelsStore()
@@ -2471,6 +2518,7 @@ initNovelsStore()
       console.log(`[data] persistent dir: ${PERSISTENT_DATA_DIR}`)
       console.log(`[novels-store] data file: ${getNovelsDataFilePath()}`)
       console.log(`[novels-store] count: ${getNovelsCount()}`)
+      console.log(`[novel-visibility] data file: ${getNovelVisibilityDataFilePath()}`)
       console.log('[migrate] results:', JSON.stringify(migrationResults))
     })
   })
