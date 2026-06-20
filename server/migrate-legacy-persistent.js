@@ -24,6 +24,65 @@ function copyFileIfNeeded(legacyPath, targetPath) {
   }
 }
 
+const NOVELS_RESTORE_BUNDLE = path.join(__dirname, 'novels-data-restore-20260620.json')
+const NOVELS_RESTORE_TARGET_COUNT = 24
+
+function countNovelsInDataFile(filePath) {
+  if (!fs.existsSync(filePath)) return 0
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+    const list = Array.isArray(parsed?.novels) ? parsed.novels : []
+    return list.length
+  } catch {
+    return 0
+  }
+}
+
+/** 正式环境 Ephemeral：目标少于 24 本时，从 Git 内置备份恢复；已有 24 本则不覆盖。 */
+function restoreNovelsBundleIfNeeded(targetPath) {
+  const currentCount = countNovelsInDataFile(targetPath)
+  if (currentCount >= NOVELS_RESTORE_TARGET_COUNT) {
+    return {
+      restored: false,
+      reason: 'already_full',
+      currentCount,
+      targetPath,
+      restorePath: NOVELS_RESTORE_BUNDLE,
+    }
+  }
+  if (!fs.existsSync(NOVELS_RESTORE_BUNDLE)) {
+    return {
+      restored: false,
+      reason: 'restore_missing',
+      currentCount,
+      targetPath,
+      restorePath: NOVELS_RESTORE_BUNDLE,
+    }
+  }
+  try {
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true })
+    fs.copyFileSync(NOVELS_RESTORE_BUNDLE, targetPath)
+    const afterCount = countNovelsInDataFile(targetPath)
+    return {
+      restored: true,
+      reason: 'copied',
+      beforeCount: currentCount,
+      afterCount,
+      targetPath,
+      restorePath: NOVELS_RESTORE_BUNDLE,
+    }
+  } catch (err) {
+    return {
+      restored: false,
+      reason: 'error',
+      error: String(err?.message || err),
+      currentCount,
+      targetPath,
+      restorePath: NOVELS_RESTORE_BUNDLE,
+    }
+  }
+}
+
 function copyDirMerge(legacyDir, targetDir) {
   if (!fs.existsSync(legacyDir)) {
     return { migrated: false, reason: 'legacy_missing', legacyDir, targetDir }
@@ -72,11 +131,17 @@ export function runAllLegacyMigrations() {
     presenceFromDataDir: copyFileIfNeeded(path.join(__dirname, 'data', 'presence-data.json'), targetPresence),
     covers: copyDirMerge(path.join(__dirname, 'uploads', 'novel-covers'), targetCovers),
     coversFromDataDir: copyDirMerge(path.join(__dirname, 'data', 'uploads', 'novel-covers'), targetCovers),
+    novelsRestore: restoreNovelsBundleIfNeeded(targetNovels),
   }
   lastMigrationResults = results
   for (const [key, r] of Object.entries(results)) {
     if (r.migrated) {
       console.log(`[migrate] ${key}:`, r.legacyPath || r.legacyDir, '->', r.targetPath || r.targetDir)
+    }
+    if (key === 'novelsRestore' && r.restored) {
+      console.log(
+        `[migrate] novelsRestore: ${r.restorePath} -> ${r.targetPath} (${r.beforeCount} -> ${r.afterCount})`,
+      )
     }
   }
   return results
