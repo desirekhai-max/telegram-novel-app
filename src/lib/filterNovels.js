@@ -22,29 +22,19 @@ export function resolveNovelAudience(novel) {
   return Number.isFinite(idNum) && idNum % 2 === 0 ? 'female' : 'male'
 }
 
-/** 标签写法别名（用户选「1vs1」等与站内标签统一） */
-const TAG_ALIASES = {
-  '1vs1': '1v1',
-  '1VS1': '1v1',
-}
-
-function normalizeTag(t) {
-  return TAG_ALIASES[t] ?? t
-}
-
 function novelHasTag(novelTags, tag) {
-  const want = normalizeTag(tag)
-  return (novelTags ?? []).some((nt) => normalizeTag(nt) === want)
+  const want = String(tag ?? '').trim()
+  return (novelTags ?? []).some((nt) => String(nt ?? '').trim() === want)
 }
 
 function matchesLength(wordCountWan, lengthId) {
   if (lengthId === 'all') return true
   const w = Number(wordCountWan)
   if (!Number.isFinite(w) || w < 0) return false
-  if (lengthId === 'short') return w < 2
-  if (lengthId === 'medium') return w >= 2 && w <= 10
-  if (lengthId === 'long') return w > 10
-  return true
+  if (lengthId === 'w_lt_5') return w < 5
+  if (lengthId === 'w_5_10') return w >= 5 && w <= 10
+  if (lengthId === 'w_gte_10') return w > 10
+  return false
 }
 
 export function isDefaultHomeFilterCriteria(c) {

@@ -30,52 +30,46 @@ const DEFAULT_PANEL = {
 
 function defaultGenres() {
   return [
-    { id: 'all', label: '全部', enabled: true, sort: 0, pill: true },
-    { id: 'urban', label: '都市', enabled: true, sort: 10 },
-    { id: 'campus', label: '校园', enabled: true, sort: 20 },
-    { id: 'taboo', label: '乱伦', enabled: true, sort: 30 },
-    { id: 'xuanhuan', label: '玄幻', enabled: true, sort: 40 },
-    { id: 'system', label: '系统', enabled: true, sort: 50 },
-    { id: 'transmigration', label: '穿越', enabled: true, sort: 60 },
-    { id: 'wuxia', label: '武侠', enabled: true, sort: 70 },
-    { id: 'fantasy', label: '奇幻', enabled: true, sort: 80 },
-    { id: 'rural', label: '乡村', enabled: true, sort: 90 },
-    { id: 'history', label: '历史', enabled: true, sort: 100 },
-    { id: 'celebrity', label: '明星', enabled: true, sort: 110 },
-    { id: 'superpower', label: '异能', enabled: true, sort: 120 },
-    { id: 'scifi', label: '科幻', enabled: true, sort: 130 },
-    { id: 'fanfic', label: '同人', enabled: true, sort: 140 },
+    { id: 'all', label: 'ទាំងអស់', enabled: true, sort: 0, pill: true },
+    { id: 'urban', label: 'ទីក្រុង', enabled: true, sort: 10 },
+    { id: 'rural', label: 'ជនបទ', enabled: true, sort: 20 },
+    { id: 'campus', label: 'សាលារៀន', enabled: true, sort: 30 },
+    { id: 'taboo', label: 'គ្រួសារ', enabled: true, sort: 40 },
+    { id: 'transmigration', label: 'ឆ្លងភព', enabled: true, sort: 50 },
+    { id: 'history', label: 'ប្រវត្តិសាស្ត្រ', enabled: true, sort: 60 },
+    { id: 'celebrity', label: 'តារា', enabled: true, sort: 70 },
+    { id: 'samegender', label: 'ភេទដូចគ្នា', enabled: true, sort: 80 },
   ]
 }
 
 function defaultStatus() {
   return [
-    { id: 'all', label: '全部', enabled: true, sort: 0, pill: true },
-    { id: 'ongoing', label: '连载中', enabled: true, sort: 10 },
-    { id: 'completed', label: '已完结', enabled: true, sort: 20 },
+    { id: 'all', label: 'ទាំងអស់', enabled: true, sort: 0, pill: true },
+    { id: 'ongoing', label: 'កំពុងចេញ', enabled: true, sort: 10 },
+    { id: 'completed', label: 'ចប់ហើយ', enabled: true, sort: 20 },
   ]
 }
 
 function defaultWordRanges() {
   return [
-    { id: 'all', label: '全部', enabled: true, sort: 0, pill: true },
-    { id: 'w_lt_10', label: '10万以下', enabled: true, sort: 10, long: true },
-    { id: 'w_10_30', label: '10-30万', enabled: true, sort: 20, long: true },
-    { id: 'w_30_50', label: '30-50万', enabled: true, sort: 30, long: true },
-    { id: 'w_50_100', label: '50-100万', enabled: true, sort: 40, long: true },
-    { id: 'w_gt_100', label: '100万以上', enabled: true, sort: 50, long: true },
+    { id: 'all', label: 'ទាំងអស់', enabled: true, sort: 0, pill: true },
+    { id: 'w_lt_5', label: 'ក្រោម5ម៉ឺនពាក្យ', enabled: true, sort: 10, long: true },
+    { id: 'w_5_10', label: '5ម៉ឺន-10ម៉ឺនពាក្យ', enabled: true, sort: 20, long: true },
+    { id: 'w_gte_10', label: '10ម៉ឺនពាក្យឡើង', enabled: true, sort: 30, long: true },
   ]
 }
 
 function defaultTags() {
   const names = [
-    '1v1', '1vs1', 'AI辅助', 'BE', 'HE', 'NTR', 'SM', '人外', '先婚后爱', '克系', '公路文', '剧情',
-    '单元剧', '双向暗恋', '双洁', '古穿今', '古言', '同居', '后宫', '团宠', '娱乐圈', '复仇', '大女主',
-    '天作之合', '失忆', '奇幻', '异能', '年上', '年下', '强强', '快穿', '悬疑', '情有独钟', '成长',
-    '战争', '无限流', '日常', '星际', '末世', '校园', '欢喜冤家', '治愈', '流俗地', '灵异', '爽文',
-    '甜宠', '甜文', '生子', '电竞', '破镜重圆', '科幻', '穿越', '系统', '纯爱', '综漫', '美强惨',
-    '职场', '肉香', '虐恋', '西幻', '谍战', '赛博朋克', '轻松', '边限', '追妻火葬场', '都市', '重生',
-    '金手指', '银发', '青梅竹马', '异世界', '豪门', '黑暗向',
+    '1v1', 'BL', 'GL', 'កំប្លែង', 'សងសឹក', 'គ្មានរោម', 'ប្រែកាយ', 'រ៉ូមែនទិក', 'ឧបករណ៍សិច',
+    'ចេញទឹកដោះ', 'ស្ត្រីល្មភតណ្ហា', 'ស្រ្តីមេមេម៉ាយ', 'ជំនួយដោយ AI', 'មានប្តីហើយ', 'លួចលាក់មានថ្មី',
+    'ស្នេហាស្មោះស្ម័គ្រ', 'បង្វឹកផ្លូវភេទ', 'ពាក្យអាសអាភាស', 'ឪពុកនិងកូនស្រី', 'រួមភេទតាមរន្ធគូទ',
+    'បងប្អូនបង្កើត', 'រឿងនយោបាយ', 'ដូរដៃគូរួមភេទ', 'ចងចំណង', 'ម្តាយក្បត់ចិត្ត', 'ម្តាយនិងកូនប្រុស',
+    'ស្រីចាប់បង្ខំប្រុស', 'បំបែកព្រហ្មចារី', 'ចាប់រំលោភ', 'វាយបូក', 'ប្រពន្ធគេ', 'រួមភេទជាមួយសត្វ',
+    'ស្រោមបារ', 'ផ្អែមល្ហែម', 'គ្មានការក្បត់ចិត្ត', 'ទាសករផ្លូវភេទ', 'ប្រើថ្នាំសម្រើប', 'ស្រីស្អាតប្រចាំសាលា',
+    'ជនជាតិបរទេស', 'ពូជសាសន៍ចម្លែក', 'មើលសង្សារ/ប្រពន្ធផ្ទាល់ភ្នែក', 'ឪពុកក្មេកនិងកូនប្រសារស្រី',
+    'ចូលចិត្តប្រពន្ធដេកជាមួយគេផ្សេង', 'ស្រ្តីវ័យកណ្តាលតណ្ហាក្រាស់', 'ក្មេងប្រុសរួមភេទជាមួយស្រីចាស់',
+    'សំលៀកបំពាក់ឯកសណ្ឋាន', 'ប្រពន្ធក្បត់ចិត្តល្មភតណ្ហា', 'លួចរួមភេទពេលដេកលក់/មិនដឹងខ្លួន',
   ]
   return names.map((label, i) => ({
     id: label,
@@ -87,10 +81,10 @@ function defaultTags() {
 
 function defaultSort() {
   return [
-    { id: 'update', label: '最新更新', enabled: true, sort: 0 },
-    { id: 'views', label: '最多阅读', enabled: true, sort: 10 },
-    { id: 'rating', label: '最高评分', enabled: true, sort: 20 },
-    { id: 'publish', label: '最新发布', enabled: true, sort: 30 },
+    { id: 'update', label: 'កំណែថ្មី', enabled: true, sort: 0 },
+    { id: 'views', label: 'អ្នកអាន', enabled: true, sort: 10 },
+    { id: 'rating', label: 'ពិន្ទុ', enabled: true, sort: 20 },
+    { id: 'publish', label: 'បោះផ្សាយថ្មី', enabled: true, sort: 30 },
   ]
 }
 
@@ -228,7 +222,7 @@ export function buildPublicAppFilters() {
         key: 'tags',
         title: 'ស្លាក',
         type: 'tags',
-        allLabel: 'ស្លាកទាំងអស់',
+        allLabel: 'ទាំងអស់',
         options: toPanelOptions(tagItems),
       },
       {

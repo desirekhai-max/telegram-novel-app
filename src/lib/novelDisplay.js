@@ -165,13 +165,13 @@ export function formatWordCountFooter(wan) {
 
 /**
  * 按总字数（万字）分档：
- * - < 2万字：រឿងខ្លី
- * - 2万到10万字：រឿងមធ្យម
+ * - < 5万字：រឿងខ្លី
+ * - 5万到10万字：រឿងមធ្យម
  * - > 10万字：រឿងវែង
  */
 export function getMeatCategoryByWordCount(novel) {
   const w = getDisplayWordCountWan(novel)
-  if (w < 2) return 'រឿងខ្លី'
+  if (w < 5) return 'រឿងខ្លី'
   if (w <= 10) return 'រឿងមធ្យម'
   return 'រឿងវែង'
 }

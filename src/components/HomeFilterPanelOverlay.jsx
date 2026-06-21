@@ -219,7 +219,7 @@ export default function HomeFilterPanelOverlay({ criteria, onCriteriaChange, onC
                       aria-pressed={tagsAllActive}
                       onClick={clearTags}
                     >
-                      {group.allLabel ?? 'ស្លាកទាំងអស់'}
+                      {group.allLabel ?? 'ទាំងអស់'}
                     </button>
                     {group.options.map((o) => {
                       const on = tagSet.has(o.value)

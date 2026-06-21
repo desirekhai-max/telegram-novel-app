@@ -8,9 +8,15 @@
       "title": "ប្រភេទ",
       "type": "single",
       "options": [
-        { "value": "all", "label": "គ្រប់ប្រភេទ", "pill": true },
-        { "value": "urban", "label": "都市" },
-        { "value": "campus", "label": "校园" }
+        { "value": "all", "label": "ទាំងអស់", "pill": true },
+        { "value": "urban", "label": "ទីក្រុង" },
+        { "value": "rural", "label": "ជនបទ" },
+        { "value": "campus", "label": "សាលារៀន" },
+        { "value": "taboo", "label": "គ្រួសារ" },
+        { "value": "transmigration", "label": "ឆ្លងភព" },
+        { "value": "history", "label": "ប្រវត្តិសាស្ត្រ" },
+        { "value": "celebrity", "label": "តារា" },
+        { "value": "samegender", "label": "ភេទដូចគ្នា" }
       ]
     },
     {
@@ -18,9 +24,9 @@
       "title": "ស្ថានភាព",
       "type": "single",
       "options": [
-        { "value": "all", "label": "គ្រប់ស្ថានភាព", "pill": true },
-        { "value": "completed", "label": "រឿងពេញ" },
-        { "value": "ongoing", "label": "កំពុងបន្ត" }
+        { "value": "all", "label": "ទាំងអស់", "pill": true },
+        { "value": "ongoing", "label": "កំពុងចេញ" },
+        { "value": "completed", "label": "ចប់ហើយ" }
       ]
     },
     {
@@ -37,10 +43,11 @@
       "key": "tags",
       "title": "ស្លាក",
       "type": "tags",
-      "allLabel": "ស្លាកទាំងអស់",
+      "allLabel": "ទាំងអស់",
       "options": [
         { "value": "1v1", "label": "1v1" },
-        { "value": "HE", "label": "HE" }
+        { "value": "BL", "label": "BL" },
+        { "value": "GL", "label": "GL" }
       ]
     },
     {
@@ -48,10 +55,10 @@
       "title": "កម្រិត",
       "type": "single",
       "options": [
-        { "value": "all", "label": "ទំហំទាំងអស់", "pill": true },
-        { "value": "short", "label": "រឿងខ្លី ក្រោម2ម៉ឺនពាក្យ", "long": true },
-        { "value": "medium", "label": "រឿងមធ្យម 2ម៉ឺន-10ម៉ឺនពាក្យ", "long": true },
-        { "value": "long", "label": "រឿងវែង លើស10ម៉ឺនពាក្យ", "long": true }
+        { "value": "all", "label": "ទាំងអស់", "pill": true },
+        { "value": "w_lt_5", "label": "ក្រោម5ម៉ឺនពាក្យ", "long": true },
+        { "value": "w_5_10", "label": "5ម៉ឺន-10ម៉ឺនពាក្យ", "long": true },
+        { "value": "w_gte_10", "label": "10ម៉ឺនពាក្យឡើង", "long": true }
       ]
     },
     {

@@ -7,6 +7,7 @@ import {
   SOURCE_OPTIONS,
   STATUS_OPTIONS,
   TAG_CHIPS,
+  tagChipLabel,
 } from '../data/homeFilters.js'
 
 /** @typedef {{ value: string, label: string, pill?: boolean, long?: boolean }} HomeFilterOption */
@@ -70,7 +71,7 @@ function normalizeGroup(raw, index) {
     : safeNonEmptyStr(raw.title, key)
   const options = normalizeOptions(raw.options, type)
   if (type === 'tags') {
-    const allLabel = safeNonEmptyStr(raw.allLabel, 'ស្លាកទាំងអស់')
+    const allLabel = safeNonEmptyStr(raw.allLabel, 'ទាំងអស់')
     return {
       key,
       title,
@@ -153,8 +154,8 @@ export function buildDefaultHomeFilterPanelConfig() {
         key: 'tags',
         title: 'ស្លាក',
         type: 'tags',
-        allLabel: 'ស្លាកទាំងអស់',
-        options: TAG_CHIPS.map((t) => ({ value: t, label: t })),
+        allLabel: 'ទាំងអស់',
+        options: TAG_CHIPS.map((t) => ({ value: t, label: tagChipLabel(t) })),
       },
       {
         key: 'lengthId',
