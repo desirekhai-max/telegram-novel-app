@@ -1356,6 +1356,33 @@ function resetInteractionData() {
   persistMembers()
 }
 
+function countNovelCommentsData() {
+  let reviewCount = 0
+  let replyCount = 0
+  for (const row of novelReviews.values()) {
+    if (Array.isArray(row?.items)) reviewCount += row.items.length
+  }
+  for (const row of novelReplies.values()) {
+    if (Array.isArray(row?.items)) replyCount += row.items.length
+  }
+  return { reviewCount, replyCount }
+}
+
+/** 仅清空评论/回复/投票，不影响浏览、点赞、收藏、阅读记录、订单、VIP 等。 */
+function clearNovelCommentsData() {
+  const { reviewCount, replyCount } = countNovelCommentsData()
+  novelReviews.clear()
+  novelReplies.clear()
+  novelReviewVotes.clear()
+  novelReviewVoteProfiles.clear()
+  persistMembers()
+  return {
+    ok: true,
+    clearedReviews: reviewCount,
+    clearedReplies: replyCount,
+  }
+}
+
 function resolveNovelViewCount(novelId, baseCount = 0) {
   const key = String(novelId || '').trim()
   if (!key) return 0
@@ -2629,6 +2656,11 @@ const server = http.createServer(async (req, res) => {
     if (!requireLegacyAdmin(req, res)) return
     resetInteractionData()
     return sendJson(res, 200, { ok: true })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/admin-legacy/clear-novel-comments') {
+    if (!requireLegacyAdmin(req, res)) return
+    return sendJson(res, 200, clearNovelCommentsData())
   }
 
   if (req.method === 'GET' && url.pathname === '/api/home-stats') {
