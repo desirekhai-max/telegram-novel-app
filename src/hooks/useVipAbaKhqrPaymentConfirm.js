@@ -4,40 +4,31 @@ import { clearVipAbaKhqrPendingPayment, getActiveVipAbaKhqrPendingExpiry } from 
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 
 const POLL_MS = 4000
-const DEFAULT_RELEASE_AFTER_FAILED_POLLS = 5
 
 /**
  * Poll PayWay until VIP is active — used when user returns to Telegram after browser/ABA payment.
+ * Confirming UI stays up until payment succeeds or the 2-minute pending TTL expires.
  * @param {{
  *   enabled?: boolean,
- *   confirmingUiActive?: boolean,
  *   tranId?: string,
  *   planId?: string,
  *   onSuccess?: () => void,
- *   onReleaseConfirming?: () => void,
  *   onExpired?: () => void,
- *   releaseAfterFailedPolls?: number,
  * }} options
  */
 export function useVipAbaKhqrPaymentConfirm(options = {}) {
   const {
     enabled = false,
-    confirmingUiActive = false,
     tranId = '',
     planId = '',
     onSuccess,
-    onReleaseConfirming,
     onExpired,
-    releaseAfterFailedPolls = DEFAULT_RELEASE_AFTER_FAILED_POLLS,
   } = options
   const pollRef = useRef(0)
   const pendingSuccessRef = useRef(false)
-  const failedPollsRef = useRef(0)
   const onSuccessRef = useRef(onSuccess)
-  const onReleaseConfirmingRef = useRef(onReleaseConfirming)
   const onExpiredRef = useRef(onExpired)
   onSuccessRef.current = onSuccess
-  onReleaseConfirmingRef.current = onReleaseConfirming
   onExpiredRef.current = onExpired
 
   const stopPolling = useCallback(() => {
@@ -74,25 +65,11 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
     }
     if (result.ok && result.profile?.vipActive) {
       finishSuccess()
-      return
     }
-
-    if (!confirmingUiActive) return
-
-    failedPollsRef.current += 1
-    if (failedPollsRef.current >= releaseAfterFailedPolls) {
-      onReleaseConfirmingRef.current?.()
-    }
-  }, [confirmingUiActive, enabled, finishSuccess, planId, tranId])
+  }, [enabled, finishSuccess, planId, tranId])
 
   const pollOnceRef = useRef(pollOnce)
   pollOnceRef.current = pollOnce
-
-  useEffect(() => {
-    if (confirmingUiActive) {
-      failedPollsRef.current = 0
-    }
-  }, [confirmingUiActive, tranId])
 
   useEffect(() => {
     pendingSuccessRef.current = false
@@ -113,7 +90,6 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
       if (pendingSuccessRef.current) return
-      if (confirmingUiActive) failedPollsRef.current = 0
       void pollOnceRef.current()
     }
 
@@ -123,7 +99,7 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
       stopPolling()
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [confirmingUiActive, enabled, stopPolling, tranId])
+  }, [enabled, stopPolling, tranId])
 
   return { pendingSuccess: pendingSuccessRef.current }
 }

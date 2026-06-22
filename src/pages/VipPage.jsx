@@ -24,7 +24,6 @@ import {
   hasActiveVipAbaKhqrBrowserFlow,
   loadActiveVipAbaKhqrPending,
   markVipAbaKhqrBrowserFlowOpen,
-  markVipAbaKhqrConfirmingUiDismissed,
   resolveVipAbaKhqrAwaitingUiState,
   saveVipAbaKhqrPendingPayment,
   saveVipAbaKhqrSession,
@@ -41,6 +40,48 @@ function formatKhqrPendingCountdown(remainingMs) {
   const mins = Math.floor(totalSec / 60)
   const secs = totalSec % 60
   return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
+function readVipScrollBottomInset(extra = 28) {
+  if (typeof window === 'undefined') return 96
+  const rootStyle = getComputedStyle(document.documentElement)
+  const raw = rootStyle.getPropertyValue('--tg-bottom-nav-bar-stack').trim()
+  const navStack = raw ? parseFloat(raw) : 72
+  return (Number.isFinite(navStack) ? navStack : 72) + extra
+}
+
+/** Keep target fully inside VIP scroll main (Android / iOS / desktop Telegram). */
+function scrollWithinVipMain(root, target, options = {}) {
+  if (!root || !target) return false
+
+  const topInset = Number(options.topInset) >= 0 ? Number(options.topInset) : 12
+  const bottomInset = readVipScrollBottomInset(options.bottomExtra ?? 28)
+  const behavior = options.behavior || 'smooth'
+  const rootRect = root.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  let delta = 0
+
+  if (targetRect.top < rootRect.top + topInset) {
+    delta = targetRect.top - rootRect.top - topInset
+  } else if (targetRect.bottom > rootRect.bottom - bottomInset) {
+    delta = targetRect.bottom - (rootRect.bottom - bottomInset)
+  }
+
+  if (Math.abs(delta) < 1) return false
+  root.scrollBy({ top: delta, behavior })
+  return true
+}
+
+function scrollWithinVipMainAfterLayout(root, target, options = {}) {
+  const settleMs = Number(options.settleMs) > 0 ? Number(options.settleMs) : 420
+  const run = (behavior) => scrollWithinVipMain(root, target, { ...options, behavior })
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      run('smooth')
+      window.setTimeout(() => run('auto'), settleMs)
+    })
+  })
 }
 
 function readInitialVipAbaKhqrUiState() {
@@ -65,6 +106,7 @@ export default function VipPage() {
   const scrollRef = useRef(null)
   const plansSectionRef = useRef(null)
   const paymentSectionRef = useRef(null)
+  const abaKhqrEntryRef = useRef(null)
   const refundFooterRef = useRef(null)
   const consentRef = useRef(null)
   const prevTermsAcceptedRef = useRef(false)
@@ -186,30 +228,21 @@ export default function VipPage() {
     )
   }, [navigate, refreshViewerProfile, selectedPlanId, viewerProfile.role])
 
-  const onReleasePaymentConfirming = useCallback(() => {
-    markVipAbaKhqrConfirmingUiDismissed()
-    setConfirmingPaymentReturn(false)
-    setPurchaseNotice('')
-  }, [])
-
   const onAbaKhqrPaymentExpired = useCallback(() => {
     const tid = String(pendingAbaPayment?.tranId || '').trim()
     clearVipAbaKhqrPendingPayment(tid)
     setAbaKhqrAwaitingReturn(false)
     setConfirmingPaymentReturn(false)
     setPendingCountdownMs(0)
-    setPurchaseNotice('ការបង់ប្រាក់ផុតកំណត់แล้ว (២ នាទី) សូមចុច ABA KHQR ម្តងទៀត')
+    setPurchaseNotice('ការបង់ប្រាក់ផុតកំណត់ហើយ (2 នាទី) សូមចុច ABA KHQR ម្តងទៀត')
   }, [pendingAbaPayment?.tranId])
 
   useVipAbaKhqrPaymentConfirm({
     enabled: abaKhqrAwaitingReturn && Boolean(pendingAbaPayment?.tranId),
-    confirmingUiActive: confirmingPaymentReturn,
     tranId: pendingAbaPayment?.tranId || '',
     planId: pendingAbaPayment?.planId || '',
     onSuccess: onAbaKhqrPaymentConfirmed,
-    onReleaseConfirming: onReleasePaymentConfirming,
     onExpired: onAbaKhqrPaymentExpired,
-    releaseAfterFailedPolls: 3,
   })
 
   useEffect(() => {
@@ -350,21 +383,9 @@ export default function VipPage() {
     const plans = plansSectionRef.current
     if (!root || !plans) return
 
-    window.requestAnimationFrame(() => {
-      const rootRect = root.getBoundingClientRect()
-      const plansRect = plans.getBoundingClientRect()
-      const bottomInset = 16
-      const overflow = plansRect.bottom - (rootRect.bottom - bottomInset)
-
-      if (overflow > 0) {
-        root.scrollBy({ top: overflow, behavior: 'smooth' })
-        return
-      }
-
-      if (plansRect.top < rootRect.top + 12) {
-        plans.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-    })
+    const lastPlan = plans.lastElementChild
+    const target = lastPlan instanceof HTMLElement ? lastPlan : plans
+    scrollWithinVipMainAfterLayout(root, target, { topInset: 12, bottomExtra: 32, settleMs: 480 })
   }, [])
 
   useEffect(() => {
@@ -372,7 +393,7 @@ export default function VipPage() {
     prevTermsAcceptedRef.current = termsAccepted
     if (!termsAccepted || wasAccepted) return undefined
 
-    const t = window.setTimeout(scrollToRevealPlans, 100)
+    const t = window.setTimeout(scrollToRevealPlans, 180)
     return () => window.clearTimeout(t)
   }, [scrollToRevealPlans, termsAccepted])
 
@@ -399,27 +420,10 @@ export default function VipPage() {
     if (!selectedPlanId || !termsAccepted || !tgUser?.id) return undefined
     const t = window.setTimeout(() => {
       const root = scrollRef.current
-      const payment = paymentSectionRef.current
-      const footer = refundFooterRef.current
-      if (!root || !payment || !footer) return
-
-      window.requestAnimationFrame(() => {
-        const rootRect = root.getBoundingClientRect()
-        const footerRect = footer.getBoundingClientRect()
-        const paymentRect = payment.getBoundingClientRect()
-        const bottomInset = 20
-
-        const footerOverflow = footerRect.bottom - (rootRect.bottom - bottomInset)
-        if (footerOverflow > 0) {
-          root.scrollBy({ top: footerOverflow, behavior: 'smooth' })
-          return
-        }
-
-        if (paymentRect.top > rootRect.top + 12 && paymentRect.top > rootRect.bottom * 0.45) {
-          payment.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }
-      })
-    }, 120)
+      const target = abaKhqrEntryRef.current || paymentSectionRef.current
+      if (!root || !target) return
+      scrollWithinVipMainAfterLayout(root, target, { topInset: 8, bottomExtra: 32, settleMs: 520 })
+    }, 200)
     return () => window.clearTimeout(t)
   }, [selectedPlanId, termsAccepted, tgUser?.id])
 
@@ -577,7 +581,7 @@ export default function VipPage() {
                   សូមជ្រើសរើសវិធីបង់ប្រាក់ដែលអ្នកពេញចិត្ត
                 </p>
               </header>
-              <div className="tg-vip-payment-section__cards">
+              <div ref={abaKhqrEntryRef} className="tg-vip-payment-section__cards">
                 <AbaKhqrEntryRow
                   title="ABA KHQR"
                   subtitle="Scan to pay with any banking app"

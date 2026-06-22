@@ -20,6 +20,10 @@
           return /android/i.test(String(navigator.userAgent || ''))
         }
 
+        function isIos() {
+          return /iphone|ipad|ipod/i.test(String(navigator.userAgent || ''))
+        }
+
         function extractEncodedQrcode(deeplink) {
           var raw = String(deeplink || '').trim()
           var match = raw.match(/[?&]qrcode=([^&#]+)/i)
@@ -96,6 +100,7 @@
 
         function tryOpenTarget(summonTarget) {
           if (!summonTarget) return
+          if (isIos()) return
           try {
             var frame = document.createElement('iframe')
             frame.style.cssText = 'display:none;width:0;height:0;border:0'

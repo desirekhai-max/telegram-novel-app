@@ -36,6 +36,11 @@ export function shouldTryAbaMobileDeeplinkFirst() {
   return isLikelyMobileDevice()
 }
 
+/** iOS Safari blocks invalid custom schemes with a system alert — auto-summon only on Android. */
+export function shouldAutoSummonAbaInExternalBrowser() {
+  return isAndroidDevice()
+}
+
 export function extractEncodedQrcodeFromDeeplink(deeplink) {
   const raw = String(deeplink || '').trim()
   const match = raw.match(/[?&]qrcode=([^&#]+)/i)
@@ -288,11 +293,19 @@ export function openAbaMobileDeeplink(deeplink, stores = {}) {
 export function trySummonAbaMobileInBrowser(input = {}) {
   if (typeof window === 'undefined') return { attempted: false, method: 'no_window' }
 
-  const summonTarget = buildAbaMobileOpenHref(input)
-  if (!summonTarget) return { attempted: false, method: 'no_target' }
-
   const onFailed = () => {
     if (typeof input.onSummonFailed === 'function') input.onSummonFailed()
+  }
+
+  // iOS Safari shows "address is invalid" when ABA is missing; stay on QR page silently.
+  if (isIosDevice()) {
+    return { attempted: false, method: 'ios_qr_only' }
+  }
+
+  const summonTarget = buildAbaMobileOpenHref(input)
+  if (!summonTarget) {
+    onFailed()
+    return { attempted: false, method: 'no_target' }
   }
 
   try {
@@ -311,13 +324,15 @@ export function trySummonAbaMobileInBrowser(input = {}) {
     /* ignore */
   }
 
-  window.setTimeout(() => {
-    try {
-      window.location.href = summonTarget
-    } catch {
-      onFailed()
-    }
-  }, 80)
+  if (isAndroidDevice()) {
+    window.setTimeout(() => {
+      try {
+        window.location.href = summonTarget
+      } catch {
+        onFailed()
+      }
+    }, 80)
+  }
 
   watchAbaMobileSummonOutcome({ onFailed })
   return { attempted: true, method: 'browser_direct' }
@@ -332,12 +347,12 @@ export function trySummonAbaMobileInBrowser(input = {}) {
 export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
   if (typeof window === 'undefined') return { opened: false, method: 'no_window' }
 
-  const extraParams = isLikelyMobileDevice() ? { auto_summon: '1' } : {}
+  const extraParams = shouldAutoSummonAbaInExternalBrowser() ? { auto_summon: '1' } : {}
   const qrPageUrl = buildAbaKhqrPageUrl(session, planId, extraParams)
   if (qrPageUrl && launchViaExternalOpenLink(qrPageUrl)) {
     return {
       opened: true,
-      method: isLikelyMobileDevice() ? 'external_qr_page' : 'external_qr_page_desktop',
+      method: shouldAutoSummonAbaInExternalBrowser() ? 'external_qr_page' : 'external_qr_page_desktop',
     }
   }
 
