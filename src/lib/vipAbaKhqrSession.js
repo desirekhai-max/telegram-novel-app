@@ -4,6 +4,9 @@ export const VIP_ABA_KHQR_SESSION_KEY = 'tg_vip_aba_khqr_session_v1'
 export const VIP_ABA_KHQR_LAST_IMAGE_KEY = 'tg_vip_aba_khqr_last_image_v1'
 export const VIP_ABA_KHQR_ACTIVE_PENDING_KEY = 'tg_vip_aba_khqr_active_pending_v1'
 export const VIP_ABA_KHQR_PENDING_PREFIX = 'tg_vip_aba_khqr_pending_v1:'
+export const VIP_ABA_KHQR_BROWSER_FLOW_KEY = 'tg_vip_aba_khqr_browser_flow_v1'
+/** Client-side pending / QR validity shown to user (2 minutes). */
+export const VIP_ABA_KHQR_PENDING_TTL_MS = 2 * 60 * 1000
 
 const BOOT_SESSION_KEYS = [
   'tranId',
@@ -234,12 +237,58 @@ export function buildAbaKhqrPageUrl(session, planId = '', extraParams = {}) {
   return url.toString()
 }
 
-/** @param {VipAbaKhqrSession} session */
-export function saveVipAbaKhqrPendingPayment(session) {
+/** @param {Record<string, unknown> | null | undefined} raw */
+function readPendingMeta(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const startedAtMs = Number(raw.pendingStartedAtMs || 0)
+  const expireAtMs = Number(raw.pendingExpireAtMs || 0)
+  if (!startedAtMs && !expireAtMs) return null
+  return {
+    startedAtMs,
+    expireAtMs: expireAtMs || startedAtMs + VIP_ABA_KHQR_PENDING_TTL_MS,
+  }
+}
+
+/** @param {Record<string, unknown> | null | undefined} raw */
+function isPendingRecordExpired(raw) {
+  const meta = readPendingMeta(raw)
+  if (!meta) return true
+  return Date.now() > meta.expireAtMs
+}
+
+/** @param {string} tranId */
+function loadPendingRecordRaw(tranId) {
+  const tid = String(tranId || '').trim()
+  if (!tid) return null
+  try {
+    const raw = localStorage.getItem(`${VIP_ABA_KHQR_PENDING_PREFIX}${tid}`)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+/** @param {VipAbaKhqrSession} session @param {{ expireAtMs?: number }} [opts] */
+export function saveVipAbaKhqrPendingPayment(session, opts = {}) {
   const normalized = normalizeVipAbaKhqrSession(session)
   if (!normalized) return false
+  const startedAtMs = Date.now()
+  const serverExpireAtMs = Number(opts.expireAtMs || 0)
+  const clientExpireAtMs = startedAtMs + VIP_ABA_KHQR_PENDING_TTL_MS
+  const pendingExpireAtMs =
+    serverExpireAtMs > startedAtMs
+      ? Math.min(serverExpireAtMs, clientExpireAtMs)
+      : clientExpireAtMs
   try {
-    localStorage.setItem(`${VIP_ABA_KHQR_PENDING_PREFIX}${normalized.tranId}`, JSON.stringify(normalized))
+    localStorage.setItem(
+      `${VIP_ABA_KHQR_PENDING_PREFIX}${normalized.tranId}`,
+      JSON.stringify({
+        ...normalized,
+        pendingStartedAtMs: startedAtMs,
+        pendingExpireAtMs,
+      }),
+    )
     localStorage.setItem(VIP_ABA_KHQR_ACTIVE_PENDING_KEY, normalized.tranId)
     return true
   } catch {
@@ -251,13 +300,13 @@ export function saveVipAbaKhqrPendingPayment(session) {
 export function loadVipAbaKhqrPendingPayment(tranId) {
   const tid = String(tranId || '').trim()
   if (!tid) return null
-  try {
-    const raw = localStorage.getItem(`${VIP_ABA_KHQR_PENDING_PREFIX}${tid}`)
-    if (!raw) return null
-    return normalizeVipAbaKhqrSession(JSON.parse(raw))
-  } catch {
+  const record = loadPendingRecordRaw(tid)
+  if (!record) return null
+  if (isPendingRecordExpired(record)) {
+    clearVipAbaKhqrPendingPayment(tid)
     return null
   }
+  return normalizeVipAbaKhqrSession(record)
 }
 
 /** Latest pending payment started from VIP page (for return-to-TG success detection). */
@@ -271,6 +320,60 @@ export function loadActiveVipAbaKhqrPending() {
   }
 }
 
+/** @param {string} [tranId] @returns {{ expireAtMs: number, remainingMs: number } | null} */
+export function getActiveVipAbaKhqrPendingExpiry(tranId) {
+  const tid = String(tranId || localStorage.getItem(VIP_ABA_KHQR_ACTIVE_PENDING_KEY) || '').trim()
+  if (!tid) return null
+  const record = loadPendingRecordRaw(tid)
+  if (!record || isPendingRecordExpired(record)) {
+    clearVipAbaKhqrPendingPayment(tid)
+    return null
+  }
+  const meta = readPendingMeta(record)
+  if (!meta) return null
+  return {
+    expireAtMs: meta.expireAtMs,
+    remainingMs: Math.max(0, meta.expireAtMs - Date.now()),
+  }
+}
+
+/** Mark that user opened browser / bank for this tran (same Mini App session). */
+export function markVipAbaKhqrBrowserFlowOpen(session) {
+  const tranId = String(session?.tranId || '').trim()
+  if (!tranId || typeof sessionStorage === 'undefined') return false
+  try {
+    sessionStorage.setItem(
+      VIP_ABA_KHQR_BROWSER_FLOW_KEY,
+      JSON.stringify({ tranId, openedAtMs: Date.now() }),
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function clearVipAbaKhqrBrowserFlowMark() {
+  try {
+    sessionStorage.removeItem(VIP_ABA_KHQR_BROWSER_FLOW_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** @param {string} [tranId] */
+export function hasActiveVipAbaKhqrBrowserFlow(tranId) {
+  const tid = String(tranId || '').trim()
+  if (!tid || typeof sessionStorage === 'undefined') return false
+  try {
+    const raw = sessionStorage.getItem(VIP_ABA_KHQR_BROWSER_FLOW_KEY)
+    if (!raw) return false
+    const parsed = JSON.parse(raw)
+    return String(parsed?.tranId || '').trim() === tid
+  } catch {
+    return false
+  }
+}
+
 /** @param {string} [tranId] */
 export function clearVipAbaKhqrPendingPayment(tranId) {
   const tid = String(tranId || localStorage.getItem(VIP_ABA_KHQR_ACTIVE_PENDING_KEY) || '').trim()
@@ -281,6 +384,7 @@ export function clearVipAbaKhqrPendingPayment(tranId) {
   } catch {
     /* ignore */
   }
+  clearVipAbaKhqrBrowserFlowMark()
 }
 
 /** @returns {boolean} */

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { isTelegramMiniApp } from '../lib/telegramWebApp.js'
-import { clearVipAbaKhqrPendingPayment } from '../lib/vipAbaKhqrSession.js'
+import { clearVipAbaKhqrPendingPayment, getActiveVipAbaKhqrPendingExpiry } from '../lib/vipAbaKhqrSession.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 
 const POLL_MS = 4000
@@ -15,6 +15,7 @@ const DEFAULT_RELEASE_AFTER_FAILED_POLLS = 5
  *   planId?: string,
  *   onSuccess?: () => void,
  *   onReleaseConfirming?: () => void,
+ *   onExpired?: () => void,
  *   releaseAfterFailedPolls?: number,
  * }} options
  */
@@ -26,6 +27,7 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
     planId = '',
     onSuccess,
     onReleaseConfirming,
+    onExpired,
     releaseAfterFailedPolls = DEFAULT_RELEASE_AFTER_FAILED_POLLS,
   } = options
   const pollRef = useRef(0)
@@ -33,8 +35,10 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
   const failedPollsRef = useRef(0)
   const onSuccessRef = useRef(onSuccess)
   const onReleaseConfirmingRef = useRef(onReleaseConfirming)
+  const onExpiredRef = useRef(onExpired)
   onSuccessRef.current = onSuccess
   onReleaseConfirmingRef.current = onReleaseConfirming
+  onExpiredRef.current = onExpired
 
   const stopPolling = useCallback(() => {
     if (!pollRef.current) return
@@ -56,8 +60,18 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
     if (!enabled || !tid || pendingSuccessRef.current) return
     if (!isTelegramMiniApp()) return
 
+    const expiry = getActiveVipAbaKhqrPendingExpiry(tid)
+    if (!expiry || expiry.remainingMs <= 0) {
+      onExpiredRef.current?.()
+      return
+    }
+
     const result = await confirmViewerVipPayment({ tranId: tid, planId: pid })
     if (pendingSuccessRef.current) return
+    if (result.error === 'payment_expired') {
+      onExpiredRef.current?.()
+      return
+    }
     if (result.ok && result.profile?.vipActive) {
       finishSuccess()
       return

@@ -123,6 +123,7 @@ export async function startViewerVipAbaKhqr(planId) {
         playStore: String(data.playStore || ''),
         returnUrl: String(data.returnUrl || ''),
         browserHandoffToken: String(data.browserHandoffToken || ''),
+        expireAtMs: Number(data.expireAt || 0),
       },
     }
   } catch (err) {

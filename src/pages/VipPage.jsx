@@ -16,11 +16,14 @@ import { buildAbaKhqrUiMockSession, isAbaKhqrUiMockFlowEnabled } from '../lib/ab
 import { preloadAbaKhqrPaymentAssets } from '../lib/abaKhqrAssets.js'
 import { startAbaKhqrPaymentFlow } from '../lib/abaMobile.js'
 import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
-import { isTelegramMiniApp } from '../lib/telegramWebApp.js'
 import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
 import { useVipAbaKhqrPaymentConfirm } from '../hooks/useVipAbaKhqrPaymentConfirm.js'
 import {
+  clearVipAbaKhqrPendingPayment,
+  getActiveVipAbaKhqrPendingExpiry,
+  hasActiveVipAbaKhqrBrowserFlow,
   loadActiveVipAbaKhqrPending,
+  markVipAbaKhqrBrowserFlowOpen,
   saveVipAbaKhqrPendingPayment,
   saveVipAbaKhqrSession,
 } from '../lib/vipAbaKhqrSession.js'
@@ -30,6 +33,13 @@ import {
   startViewerVipAbaKhqr,
   startViewerVipPayWayCheckout,
 } from '../lib/viewerProfileApi.js'
+
+function formatKhqrPendingCountdown(remainingMs) {
+  const totalSec = Math.max(0, Math.ceil(Number(remainingMs || 0) / 1000))
+  const mins = Math.floor(totalSec / 60)
+  const secs = totalSec % 60
+  return `${mins}:${String(secs).padStart(2, '0')}`
+}
 
 export default function VipPage() {
   const navigate = useNavigate()
@@ -41,14 +51,9 @@ export default function VipPage() {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [purchaseNotice, setPurchaseNotice] = useState('')
   const [purchaseError, setPurchaseError] = useState('')
-  const [abaKhqrAwaitingReturn, setAbaKhqrAwaitingReturn] = useState(() => {
-    const pending = loadActiveVipAbaKhqrPending()
-    return Boolean(pending?.tranId)
-  })
-  const [confirmingPaymentReturn, setConfirmingPaymentReturn] = useState(() => {
-    const pending = loadActiveVipAbaKhqrPending()
-    return Boolean(pending?.tranId && isTelegramMiniApp())
-  })
+  const [abaKhqrAwaitingReturn, setAbaKhqrAwaitingReturn] = useState(false)
+  const [confirmingPaymentReturn, setConfirmingPaymentReturn] = useState(false)
+  const [pendingCountdownMs, setPendingCountdownMs] = useState(0)
   const paymentWasBackgroundedRef = useRef(false)
   const scrollRef = useRef(null)
   const plansSectionRef = useRef(null)
@@ -85,6 +90,16 @@ export default function VipPage() {
     void preloadVipPaymentSuccessAssets()
   }, [])
 
+  useEffect(() => {
+    const pending = loadActiveVipAbaKhqrPending()
+    if (pending?.tranId) {
+      setAbaKhqrAwaitingReturn(true)
+      return
+    }
+    setAbaKhqrAwaitingReturn(false)
+    setConfirmingPaymentReturn(false)
+  }, [])
+
   const plans = useMemo(
     () => [...getVipPlansCatalogForRole(viewerProfile.role)].sort((a, b) => a.sortOrder - b.sortOrder),
     [viewerProfile.role],
@@ -118,10 +133,11 @@ export default function VipPage() {
     async (session, planId) => {
       await preloadAbaKhqrPaymentAssets()
       saveVipAbaKhqrSession(session)
-      saveVipAbaKhqrPendingPayment(session)
 
       const opened = startAbaKhqrPaymentFlow(session, planId)
       if (opened.opened) {
+        saveVipAbaKhqrPendingPayment(session, { expireAtMs: session.expireAtMs })
+        markVipAbaKhqrBrowserFlowOpen(session)
         setAbaKhqrAwaitingReturn(true)
         setConfirmingPaymentReturn(false)
         paymentWasBackgroundedRef.current = false
@@ -131,6 +147,7 @@ export default function VipPage() {
         return true
       }
 
+      clearVipAbaKhqrPendingPayment(session?.tranId)
       setPurchaseError('មិនអាចបើក Browser បាន សូមព្យាយាមម្តងទៀត')
       return false
     },
@@ -164,6 +181,15 @@ export default function VipPage() {
     setPurchaseNotice('')
   }, [])
 
+  const onAbaKhqrPaymentExpired = useCallback(() => {
+    const tid = String(pendingAbaPayment?.tranId || '').trim()
+    clearVipAbaKhqrPendingPayment(tid)
+    setAbaKhqrAwaitingReturn(false)
+    setConfirmingPaymentReturn(false)
+    setPendingCountdownMs(0)
+    setPurchaseNotice('ការបង់ប្រាក់ផុតកំណត់แล้ว (២ នាទី) សូមចុច ABA KHQR ម្តងទៀត')
+  }, [pendingAbaPayment?.tranId])
+
   useVipAbaKhqrPaymentConfirm({
     enabled: abaKhqrAwaitingReturn && Boolean(pendingAbaPayment?.tranId),
     confirmingUiActive: confirmingPaymentReturn,
@@ -171,8 +197,32 @@ export default function VipPage() {
     planId: pendingAbaPayment?.planId || '',
     onSuccess: onAbaKhqrPaymentConfirmed,
     onReleaseConfirming: onReleasePaymentConfirming,
+    onExpired: onAbaKhqrPaymentExpired,
     releaseAfterFailedPolls: 3,
   })
+
+  useEffect(() => {
+    if (!confirmingPaymentReturn) {
+      setPendingCountdownMs(0)
+      return undefined
+    }
+
+    const tid = String(pendingAbaPayment?.tranId || '').trim()
+    if (!tid) return undefined
+
+    const tick = () => {
+      const expiry = getActiveVipAbaKhqrPendingExpiry(tid)
+      if (!expiry || expiry.remainingMs <= 0) {
+        onAbaKhqrPaymentExpired()
+        return
+      }
+      setPendingCountdownMs(expiry.remainingMs)
+    }
+
+    tick()
+    const timerId = window.setInterval(tick, 1000)
+    return () => window.clearInterval(timerId)
+  }, [confirmingPaymentReturn, onAbaKhqrPaymentExpired, pendingAbaPayment?.tranId])
 
   useEffect(() => {
     if (!abaKhqrAwaitingReturn) {
@@ -181,12 +231,16 @@ export default function VipPage() {
     }
 
     const onVisibility = () => {
+      const tid = String(loadActiveVipAbaKhqrPending()?.tranId || '').trim()
       if (document.visibilityState === 'hidden') {
-        paymentWasBackgroundedRef.current = true
+        if (tid && hasActiveVipAbaKhqrBrowserFlow(tid)) {
+          paymentWasBackgroundedRef.current = true
+        }
         return
       }
       if (document.visibilityState !== 'visible') return
       if (!paymentWasBackgroundedRef.current) return
+      if (!tid || !hasActiveVipAbaKhqrBrowserFlow(tid)) return
       setConfirmingPaymentReturn(true)
       setPurchaseNotice('')
     }
@@ -378,6 +432,14 @@ export default function VipPage() {
               </p>
               <p className="tg-vip-page__confirming-desc" lang="km">
                 សូមរង់ចាំបន្តិច ប្រព័ន្ធកំពុងពិនិត្យ ABA KHQR
+              </p>
+              <p className="tg-vip-page__confirming-expiry" lang="km">
+                QR នេះមានសុពលភាព ២ នាទី
+                {pendingCountdownMs > 0
+                  ? ` · នៅសល់ ${formatKhqrPendingCountdown(pendingCountdownMs)}`
+                  : ''}
+                {' '}
+                — បើហួសពេល សូមបង្កើត QR ថ្មី
               </p>
             </section>
           ) : (
