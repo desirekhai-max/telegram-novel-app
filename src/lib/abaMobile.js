@@ -36,27 +36,6 @@ export function shouldTryAbaMobileDeeplinkFirst() {
   return isLikelyMobileDevice()
 }
 
-export const VIP_ABA_IOS_SUMMON_TRUSTED_KEY = 'vip_aba_ios_summon_trusted'
-
-export function isIosAbaSummonTrusted() {
-  if (typeof localStorage === 'undefined') return false
-  try {
-    return localStorage.getItem(VIP_ABA_IOS_SUMMON_TRUSTED_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-export function markIosAbaSummonTrusted() {
-  if (typeof localStorage === 'undefined') return false
-  try {
-    localStorage.setItem(VIP_ABA_IOS_SUMMON_TRUSTED_KEY, '1')
-    return true
-  } catch {
-    return false
-  }
-}
-
 /** Mobile external browser: try aba-open bridge before React QR page. */
 export function shouldAutoSummonAbaInExternalBrowser() {
   return isLikelyMobileDevice()
@@ -342,7 +321,7 @@ export function trySummonAbaMobileInBrowser(input = {}) {
     /* ignore */
   }
 
-  if (isAndroidDevice()) {
+  if (isAndroidDevice() || isIosDevice()) {
     window.setTimeout(() => {
       try {
         window.location.href = summonTarget
@@ -350,26 +329,12 @@ export function trySummonAbaMobileInBrowser(input = {}) {
         onFailed()
       }
     }, 80)
-  } else if (isIosDevice() && isIosAbaSummonTrusted()) {
-    window.setTimeout(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-      try {
-        window.location.href = summonTarget
-      } catch {
-        onFailed()
-      }
-    }, 120)
   }
 
-  watchAbaMobileSummonOutcome({
-    onLaunched: () => {
-      markIosAbaSummonTrusted()
-    },
-    onFailed,
-  })
+  watchAbaMobileSummonOutcome({ onFailed })
   return {
     attempted: true,
-    method: isIosDevice() ? 'ios_browser_iframe' : 'browser_direct',
+    method: isIosDevice() ? 'ios_browser_deeplink' : 'browser_direct',
   }
 }
 

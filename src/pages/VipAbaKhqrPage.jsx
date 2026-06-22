@@ -9,10 +9,8 @@ import {
   withFreshMockKhqrImage,
 } from '../lib/abaKhqrUiMock.js'
 import {
-  buildAbaMobileOpenHref,
   buildAbaQrPageReturnUrl,
   isIosDevice,
-  markIosAbaSummonTrusted,
   shouldTryAbaMobileDeeplinkFirst,
   trySummonAbaMobile,
   trySummonAbaMobileInBrowser,
@@ -130,7 +128,6 @@ export default function VipAbaKhqrPage() {
     !inTelegram && !abaSummonFailedQuery && (autoSummonQuery || isIosDevice())
   const shouldHideQrForAutoSummon = autoSummonQuery && !inTelegram && !abaSummonFailedQuery
   const [showQrAfterAutoSummon, setShowQrAfterAutoSummon] = useState(!shouldHideQrForAutoSummon)
-  const [iosSummonFallbackReady, setIosSummonFallbackReady] = useState(false)
 
   const isUiMock = isUiMockAbaKhqrSession(qrSession) || uiMockQuery
   const tranId = String(qrSession?.tranId || tranIdParam || '').trim()
@@ -240,7 +237,6 @@ export default function VipAbaKhqrPage() {
     const deeplink = String(session.abapayDeeplink || '').trim()
     if (!qrString && !deeplink) {
       setShowQrAfterAutoSummon(true)
-      setIosSummonFallbackReady(isIosDevice())
       return undefined
     }
 
@@ -250,26 +246,21 @@ export default function VipAbaKhqrPage() {
       abapayDeeplink: deeplink,
       returnToQrUrl,
       onSummonFailed: () => {
-        if (!isIosDevice()) setStatusNote(ABA_SUMMON_FAILED_NOTE)
+        setStatusNote(ABA_SUMMON_FAILED_NOTE)
         setShowQrAfterAutoSummon(true)
-        setIosSummonFallbackReady(true)
       },
     })
 
     if (!result.attempted) {
       setShowQrAfterAutoSummon(true)
-      setIosSummonFallbackReady(isIosDevice())
       return undefined
     }
 
     autoSummonOutcomeCleanupRef.current = watchAbaMobileSummonOutcome({
-      onLaunched: () => {
-        markIosAbaSummonTrusted()
-      },
+      onLaunched: () => {},
       onFailed: () => {
-        if (!isIosDevice()) setStatusNote(ABA_SUMMON_FAILED_NOTE)
+        setStatusNote(ABA_SUMMON_FAILED_NOTE)
         setShowQrAfterAutoSummon(true)
-        setIosSummonFallbackReady(true)
       },
     })
 
@@ -477,20 +468,11 @@ export default function VipAbaKhqrPage() {
     })
 
   const showAbaMobileButton = useMemo(() => {
-    if (isUiMock || !shouldTryAbaMobileDeeplinkFirst()) return false
+    if (!inTelegram || isUiMock || !shouldTryAbaMobileDeeplinkFirst()) return false
     const qrString = String(displaySession?.qrString || '').trim()
     const deeplink = String(displaySession?.abapayDeeplink || '').trim()
-    const hasTarget = Boolean(qrString || deeplink)
-    if (inTelegram) return hasTarget
-    return isIosDevice() && hasTarget && iosSummonFallbackReady
-  }, [
-    displaySession?.abapayDeeplink,
-    displaySession?.qrString,
-    inTelegram,
-    iosSummonFallbackReady,
-    isUiMock,
-    showQrAfterAutoSummon,
-  ])
+    return Boolean(qrString || deeplink)
+  }, [displaySession?.abapayDeeplink, displaySession?.qrString, inTelegram, isUiMock])
 
   const onOpenAbaMobile = useCallback(() => {
     const session = qrSessionRef.current || displaySession
@@ -510,17 +492,6 @@ export default function VipAbaKhqrPage() {
       onSummonFailed: () => {
         setStatusNote(ABA_SUMMON_FAILED_NOTE)
       },
-    }
-
-    if (!inTelegram && isIosDevice()) {
-      const target = buildAbaMobileOpenHref(summonInput)
-      if (!target) {
-        setStatusNote(ABA_SUMMON_FAILED_NOTE)
-        return
-      }
-      markIosAbaSummonTrusted()
-      window.location.href = target
-      return
     }
 
     const result = inTelegram
