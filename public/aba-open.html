@@ -13,8 +13,38 @@
         var handoff = String(params.get('handoff') || '').trim()
         var target = String(params.get('target') || '').trim()
         var back = String(params.get('back') || '').trim()
+        var summonParam = String(params.get('summon') || '').trim()
         var cancelled = false
         var backTimer = 0
+        var IOS_SUMMON_TRUSTED_KEY = 'vip_aba_ios_summon_trusted'
+
+        function iosTrustedSummon() {
+          try {
+            return localStorage.getItem(IOS_SUMMON_TRUSTED_KEY) === '1'
+          } catch (e) {
+            return false
+          }
+        }
+
+        function markIosTrusted() {
+          try {
+            localStorage.setItem(IOS_SUMMON_TRUSTED_KEY, '1')
+          } catch (e) {
+            /* ignore */
+          }
+        }
+
+        function iosIframeSummon(summonTarget) {
+          if (!summonTarget) return
+          try {
+            var frame = document.createElement('iframe')
+            frame.style.cssText = 'display:none;width:0;height:0;border:0'
+            frame.src = summonTarget
+            document.documentElement.appendChild(frame)
+          } catch (e) {
+            /* ignore */
+          }
+        }
 
         function isAndroid() {
           return /android/i.test(String(navigator.userAgent || ''))
@@ -100,7 +130,25 @@
 
         function tryOpenTarget(summonTarget) {
           if (!summonTarget) return
-          if (isIos()) return
+
+          if (isIos()) {
+            iosIframeSummon(summonTarget)
+            if (iosTrustedSummon()) {
+              window.setTimeout(function () {
+                if (document.visibilityState === 'hidden') {
+                  cancelBack()
+                  return
+                }
+                try {
+                  window.location.href = summonTarget
+                } catch (e) {
+                  /* ignore */
+                }
+              }, 120)
+            }
+            return
+          }
+
           try {
             var frame = document.createElement('iframe')
             frame.style.cssText = 'display:none;width:0;height:0;border:0'
@@ -119,23 +167,32 @@
         }
 
         document.addEventListener('visibilitychange', function () {
-          if (document.visibilityState === 'hidden') cancelBack()
+          if (document.visibilityState === 'hidden') {
+            markIosTrusted()
+            cancelBack()
+          }
         })
         window.addEventListener('pagehide', cancelBack)
 
+        function iosQrFallbackFailedFlag() {
+          return !(isIos() && !iosTrustedSummon())
+        }
+
         function startLegacyFlow() {
           if (target) tryOpenTarget(target)
-          scheduleBack(2800, true)
+          var failed = iosQrFallbackFailedFlag()
+          scheduleBack(2800, failed)
           window.addEventListener('pageshow', function () {
-            scheduleBack(900, true)
+            scheduleBack(900, failed)
           })
           window.addEventListener('focus', function () {
-            scheduleBack(700, true)
+            scheduleBack(700, failed)
           })
         }
 
         function startHandoffFlow() {
           var qrBack = buildQrPageUrl(true)
+          var failed = iosQrFallbackFailedFlag()
           fetch(
             API_BASE +
               '/api/vip-orders/aba-khqr-handoff?tran_id=' +
@@ -159,17 +216,21 @@
                 return
               }
               tryOpenTarget(summonTarget)
-              scheduleBack(2800, true)
+              scheduleBack(2800, failed)
               window.addEventListener('pageshow', function () {
-                scheduleBack(900, true)
+                scheduleBack(900, failed)
               })
               window.addEventListener('focus', function () {
-                scheduleBack(700, true)
+                scheduleBack(700, failed)
               })
             })
             .catch(function () {
               goBack(true)
             })
+        }
+
+        if (summonParam && isIos()) {
+          iosIframeSummon(summonParam)
         }
 
         if (tranId && handoff) {

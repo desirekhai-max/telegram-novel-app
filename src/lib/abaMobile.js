@@ -36,9 +36,30 @@ export function shouldTryAbaMobileDeeplinkFirst() {
   return isLikelyMobileDevice()
 }
 
-/** iOS Safari blocks invalid custom schemes with a system alert — auto-summon only on Android. */
+export const VIP_ABA_IOS_SUMMON_TRUSTED_KEY = 'vip_aba_ios_summon_trusted'
+
+export function isIosAbaSummonTrusted() {
+  if (typeof localStorage === 'undefined') return false
+  try {
+    return localStorage.getItem(VIP_ABA_IOS_SUMMON_TRUSTED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function markIosAbaSummonTrusted() {
+  if (typeof localStorage === 'undefined') return false
+  try {
+    localStorage.setItem(VIP_ABA_IOS_SUMMON_TRUSTED_KEY, '1')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Mobile external browser: try aba-open bridge before React QR page. */
 export function shouldAutoSummonAbaInExternalBrowser() {
-  return isAndroidDevice()
+  return isLikelyMobileDevice()
 }
 
 export function extractEncodedQrcodeFromDeeplink(deeplink) {
@@ -140,12 +161,14 @@ function buildAbaOpenBridgeUrl(session, planId = '') {
   const tranId = String(session?.tranId || '').trim()
   const pid = String(planId || session?.planId || '').trim()
   const handoff = String(session?.browserHandoffToken || '').trim()
+  const deeplink = String(session?.abapayDeeplink || '').trim()
   if (!tranId || !pid || !handoff) return ''
 
   const bridge = new URL('/aba-open.html', getAppPublicOrigin())
   bridge.searchParams.set('tran_id', tranId)
   bridge.searchParams.set('plan_id', pid)
   bridge.searchParams.set('handoff', handoff)
+  if (deeplink) bridge.searchParams.set('summon', deeplink)
   return bridge.toString()
 }
 
@@ -297,11 +320,6 @@ export function trySummonAbaMobileInBrowser(input = {}) {
     if (typeof input.onSummonFailed === 'function') input.onSummonFailed()
   }
 
-  // iOS Safari shows "address is invalid" when ABA is missing; stay on QR page silently.
-  if (isIosDevice()) {
-    return { attempted: false, method: 'ios_qr_only' }
-  }
-
   const summonTarget = buildAbaMobileOpenHref(input)
   if (!summonTarget) {
     onFailed()
@@ -332,10 +350,27 @@ export function trySummonAbaMobileInBrowser(input = {}) {
         onFailed()
       }
     }, 80)
+  } else if (isIosDevice() && isIosAbaSummonTrusted()) {
+    window.setTimeout(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      try {
+        window.location.href = summonTarget
+      } catch {
+        onFailed()
+      }
+    }, 120)
   }
 
-  watchAbaMobileSummonOutcome({ onFailed })
-  return { attempted: true, method: 'browser_direct' }
+  watchAbaMobileSummonOutcome({
+    onLaunched: () => {
+      markIosAbaSummonTrusted()
+    },
+    onFailed,
+  })
+  return {
+    attempted: true,
+    method: isIosDevice() ? 'ios_browser_iframe' : 'browser_direct',
+  }
 }
 
 /**
@@ -350,7 +385,7 @@ export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
   const pid = String(planId || session?.planId || '').trim()
   let targetUrl = ''
 
-  // Android: lightweight bridge summons ABA before any React QR page loads (no QR flash).
+  // Mobile: lightweight bridge summons ABA before any React QR page loads (no QR flash).
   if (shouldAutoSummonAbaInExternalBrowser()) {
     targetUrl = buildAbaOpenBridgeUrl(session, pid)
   }
