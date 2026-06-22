@@ -13,6 +13,7 @@
         var handoff = String(params.get('handoff') || '').trim()
         var target = String(params.get('target') || '').trim()
         var back = String(params.get('back') || '').trim()
+        var summonParam = String(params.get('summon') || '').trim()
         var cancelled = false
         var backTimer = 0
 
@@ -137,6 +138,29 @@
           return isIos() ? 500 : 700
         }
 
+        function attachFallbackTimers(failed) {
+          scheduleBack(fallbackPrimaryMs(), failed)
+          window.addEventListener('pageshow', function () {
+            scheduleBack(fallbackPageshowMs(), failed)
+          })
+          window.addEventListener('focus', function () {
+            scheduleBack(fallbackFocusMs(), failed)
+          })
+        }
+
+        function iosOpenSummonNow(summonTarget) {
+          if (!summonTarget || !isIos()) return
+          try {
+            location.replace(summonTarget)
+          } catch (e) {
+            try {
+              location.href = summonTarget
+            } catch (e2) {
+              /* ignore */
+            }
+          }
+        }
+
         document.addEventListener('visibilitychange', function () {
           if (document.visibilityState === 'hidden') cancelBack()
         })
@@ -144,13 +168,7 @@
 
         function startLegacyFlow() {
           if (target) tryOpenTarget(target)
-          scheduleBack(fallbackPrimaryMs(), true)
-          window.addEventListener('pageshow', function () {
-            scheduleBack(fallbackPageshowMs(), true)
-          })
-          window.addEventListener('focus', function () {
-            scheduleBack(fallbackFocusMs(), true)
-          })
+          attachFallbackTimers(true)
         }
 
         function startHandoffFlow() {
@@ -178,17 +196,19 @@
                 return
               }
               tryOpenTarget(summonTarget)
-              scheduleBack(fallbackPrimaryMs(), true)
-              window.addEventListener('pageshow', function () {
-                scheduleBack(fallbackPageshowMs(), true)
-              })
-              window.addEventListener('focus', function () {
-                scheduleBack(fallbackFocusMs(), true)
-              })
+              attachFallbackTimers(true)
             })
             .catch(function () {
               goBack(true)
             })
+        }
+
+        // iOS: summon synchronously on first paint (still inside TG click → Safari navigation).
+        // Do not wait for handoff fetch — async fetch loses user activation and triggers extra dialogs.
+        if (summonParam && isIos() && tranId && handoff) {
+          iosOpenSummonNow(summonParam)
+          attachFallbackTimers(false)
+          return
         }
 
         if (tranId && handoff) {

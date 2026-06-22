@@ -136,7 +136,7 @@ function buildLegacyAbaOpenBridgeUrl(summonTarget, returnToQrUrl) {
   return bridge.toString()
 }
 
-function buildAbaOpenBridgeUrl(session, planId = '') {
+function buildAbaOpenBridgeUrl(session, planId = '', options = {}) {
   const tranId = String(session?.tranId || '').trim()
   const pid = String(planId || session?.planId || '').trim()
   const handoff = String(session?.browserHandoffToken || '').trim()
@@ -146,6 +146,12 @@ function buildAbaOpenBridgeUrl(session, planId = '') {
   bridge.searchParams.set('tran_id', tranId)
   bridge.searchParams.set('plan_id', pid)
   bridge.searchParams.set('handoff', handoff)
+  if (options.iosImmediateSummon) {
+    const deeplink = String(session?.abapayDeeplink || '').trim()
+    if (deeplink.toLowerCase().startsWith(ABA_DEEPLINK_PREFIX)) {
+      bridge.searchParams.set('summon', deeplink)
+    }
+  }
   return bridge.toString()
 }
 
@@ -359,7 +365,7 @@ export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
   if (shouldUseAbaOpenBridgeInExternalBrowser()) {
     targetUrl = buildAbaOpenBridgeUrl(session, pid)
   } else if (isIosDevice()) {
-    targetUrl = buildAbaOpenBridgeUrl(session, pid)
+    targetUrl = buildAbaOpenBridgeUrl(session, pid, { iosImmediateSummon: true })
   } else {
     targetUrl = buildAbaKhqrPageUrl(session, pid)
   }
