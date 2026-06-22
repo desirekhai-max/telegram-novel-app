@@ -148,6 +148,33 @@
           })
         }
 
+        /** iOS: QR only when user returns to Safari without entering ABA (invalid URL OK / Open→Cancel). */
+        function attachIosQrFallbackAfterSummon() {
+          var qrDone = false
+          var summonAt = Date.now()
+
+          function tryShowQrIfStillOnBridge() {
+            if (qrDone || cancelled) return
+            if (document.visibilityState === 'hidden') {
+              qrDone = true
+              return
+            }
+            qrDone = true
+            goBack(false)
+          }
+
+          function onSafariBounceBack() {
+            if (Date.now() - summonAt < 320) return
+            window.setTimeout(tryShowQrIfStillOnBridge, 60)
+          }
+
+          window.addEventListener('focus', onSafariBounceBack)
+          window.addEventListener('pageshow', function (ev) {
+            if (ev.persisted) return
+            onSafariBounceBack()
+          })
+        }
+
         function iosOpenSummonNow(summonTarget) {
           if (!summonTarget || !isIos()) return
           try {
@@ -203,11 +230,11 @@
             })
         }
 
-        // iOS: summon synchronously on first paint (still inside TG click → Safari navigation).
-        // Do not wait for handoff fetch — async fetch loses user activation and triggers extra dialogs.
+        // iOS: sync deeplink on first paint; QR only after invalid-address OK or Open→Cancel.
+        // Installed + Open→Open: page hides → cancelBack → never show QR.
         if (summonParam && isIos() && tranId && handoff) {
           iosOpenSummonNow(summonParam)
-          attachFallbackTimers(false)
+          attachIosQrFallbackAfterSummon()
           return
         }
 
