@@ -8,6 +8,7 @@ import {
   isUiMockAbaKhqrSession,
   withFreshMockKhqrImage,
 } from '../lib/abaKhqrUiMock.js'
+import { openAbaMobileDeeplink, shouldTryAbaMobileDeeplinkFirst } from '../lib/abaMobile.js'
 import { readVipPaymentFulfillmentHint } from '../lib/vipPaymentResultState.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 import {
@@ -65,6 +66,7 @@ export default function VipAbaKhqrPage() {
   const pendingSuccessRef = useRef(false)
   const successDelayTimerRef = useRef(0)
   const redirectCheckedRef = useRef(false)
+  const deeplinkAttemptedRef = useRef(false)
   const edgeSwipeHandlers = useEdgeSwipeBack()
   const pageSwipeHandlers = resultModal ? {} : edgeSwipeHandlers
 
@@ -160,6 +162,22 @@ export default function VipAbaKhqrPage() {
   useEffect(() => {
     void preloadVipPaymentSuccessAssets()
   }, [])
+
+  useEffect(() => {
+    if (isUiMock || deeplinkAttemptedRef.current || !tranId) return undefined
+    if (!shouldTryAbaMobileDeeplinkFirst()) return undefined
+
+    const session = qrSessionRef.current
+    const deeplink = String(session?.abapayDeeplink || '').trim()
+    if (!deeplink) return undefined
+
+    deeplinkAttemptedRef.current = true
+    openAbaMobileDeeplink(deeplink, {
+      playStore: String(session?.playStore || '').trim(),
+      appStore: String(session?.appStore || '').trim(),
+    })
+    return undefined
+  }, [isUiMock, tranId])
 
   useEffect(() => {
     if (redirectCheckedRef.current) return
