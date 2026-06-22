@@ -24,6 +24,7 @@ import {
   hasActiveVipAbaKhqrBrowserFlow,
   loadActiveVipAbaKhqrPending,
   markVipAbaKhqrBrowserFlowOpen,
+  markVipAbaKhqrBrowserFlowReturned,
   resolveVipAbaKhqrAwaitingUiState,
   saveVipAbaKhqrPendingPayment,
   saveVipAbaKhqrSession,
@@ -193,7 +194,7 @@ export default function VipPage() {
         saveVipAbaKhqrPendingPayment(session, { expireAtMs: session.expireAtMs })
         markVipAbaKhqrBrowserFlowOpen(session)
         setAbaKhqrAwaitingReturn(true)
-        setConfirmingPaymentReturn(true)
+        setConfirmingPaymentReturn(false)
         paymentWasBackgroundedRef.current = false
         setPurchaseNotice('')
         return true
@@ -285,6 +286,7 @@ export default function VipPage() {
       if (document.visibilityState !== 'visible') return
       if (!paymentWasBackgroundedRef.current) return
       if (!tid || !hasActiveVipAbaKhqrBrowserFlow(tid)) return
+      markVipAbaKhqrBrowserFlowReturned(tid)
       setConfirmingPaymentReturn(true)
       setPurchaseNotice('')
     }

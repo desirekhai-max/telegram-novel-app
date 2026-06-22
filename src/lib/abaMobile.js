@@ -347,12 +347,22 @@ export function trySummonAbaMobileInBrowser(input = {}) {
 export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
   if (typeof window === 'undefined') return { opened: false, method: 'no_window' }
 
-  const extraParams = shouldAutoSummonAbaInExternalBrowser() ? { auto_summon: '1' } : {}
-  const qrPageUrl = buildAbaKhqrPageUrl(session, planId, extraParams)
-  if (qrPageUrl && launchViaExternalOpenLink(qrPageUrl)) {
+  const pid = String(planId || session?.planId || '').trim()
+  let targetUrl = ''
+
+  // Android: lightweight bridge summons ABA before any React QR page loads (no QR flash).
+  if (shouldAutoSummonAbaInExternalBrowser()) {
+    targetUrl = buildAbaOpenBridgeUrl(session, pid)
+  }
+
+  if (!targetUrl) {
+    targetUrl = buildAbaKhqrPageUrl(session, pid)
+  }
+
+  if (targetUrl && launchViaExternalOpenLink(targetUrl)) {
     return {
       opened: true,
-      method: shouldAutoSummonAbaInExternalBrowser() ? 'external_qr_page' : 'external_qr_page_desktop',
+      method: targetUrl.includes('/aba-open.html') ? 'external_aba_bridge' : 'external_qr_page',
     }
   }
 

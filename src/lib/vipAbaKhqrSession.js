@@ -345,7 +345,7 @@ export function markVipAbaKhqrBrowserFlowOpen(session) {
   try {
     sessionStorage.setItem(
       VIP_ABA_KHQR_BROWSER_FLOW_KEY,
-      JSON.stringify({ tranId, openedAtMs: Date.now() }),
+      JSON.stringify({ tranId, openedAtMs: Date.now(), returnedFromBrowser: false }),
     )
     clearVipAbaKhqrConfirmingUiDismissed()
     return true
@@ -378,12 +378,48 @@ function isVipAbaKhqrConfirmingUiDismissed() {
   }
 }
 
+function hasVipAbaKhqrBrowserFlowReturned(tranId) {
+  const tid = String(tranId || '').trim()
+  if (!tid || typeof sessionStorage === 'undefined') return false
+  try {
+    const raw = sessionStorage.getItem(VIP_ABA_KHQR_BROWSER_FLOW_KEY)
+    if (!raw) return false
+    const parsed = JSON.parse(raw)
+    return (
+      String(parsed?.tranId || '').trim() === tid && parsed?.returnedFromBrowser === true
+    )
+  } catch {
+    return false
+  }
+}
+
+/** Mark that user came back to Mini App after opening browser / bank. */
+export function markVipAbaKhqrBrowserFlowReturned(tranId) {
+  const tid = String(tranId || '').trim()
+  if (!tid || typeof sessionStorage === 'undefined') return false
+  try {
+    const raw = sessionStorage.getItem(VIP_ABA_KHQR_BROWSER_FLOW_KEY)
+    if (!raw) return false
+    const parsed = JSON.parse(raw)
+    if (String(parsed?.tranId || '').trim() !== tid) return false
+    sessionStorage.setItem(
+      VIP_ABA_KHQR_BROWSER_FLOW_KEY,
+      JSON.stringify({ ...parsed, returnedFromBrowser: true }),
+    )
+    clearVipAbaKhqrConfirmingUiDismissed()
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** @param {string} [tranId] */
 export function shouldShowVipAbaKhqrConfirmingUi(tranId) {
   const tid = String(tranId || loadActiveVipAbaKhqrPending()?.tranId || '').trim()
   if (!tid) return false
   if (isVipAbaKhqrConfirmingUiDismissed()) return false
   if (!hasActiveVipAbaKhqrBrowserFlow(tid)) return false
+  if (!hasVipAbaKhqrBrowserFlowReturned(tid)) return false
   return Boolean(loadVipAbaKhqrPendingPayment(tid))
 }
 

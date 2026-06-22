@@ -13,6 +13,7 @@ import {
   shouldTryAbaMobileDeeplinkFirst,
   trySummonAbaMobile,
   trySummonAbaMobileInBrowser,
+  watchAbaMobileSummonOutcome,
 } from '../lib/abaMobile.js'
 import { isTelegramMiniApp } from '../lib/telegramWebApp.js'
 import { readVipPaymentFulfillmentHint } from '../lib/vipPaymentResultState.js'
@@ -118,8 +119,13 @@ export default function VipAbaKhqrPage() {
   )
   const [handoffError, setHandoffError] = useState('')
   const autoSummonAttemptedRef = useRef(false)
+  const autoSummonOutcomeCleanupRef = useRef(null)
   const qrSession = qrSessionRef.current
   const inTelegram = isTelegramMiniApp()
+  const abaSummonFailedQuery = searchParams.get('aba_summon_failed') === '1'
+  const shouldHideQrForAutoSummon =
+    autoSummonQuery && !inTelegram && !abaSummonFailedQuery
+  const [showQrAfterAutoSummon, setShowQrAfterAutoSummon] = useState(!shouldHideQrForAutoSummon)
 
   const isUiMock = isUiMockAbaKhqrSession(qrSession) || uiMockQuery
   const tranId = String(qrSession?.tranId || tranIdParam || '').trim()
@@ -224,18 +230,44 @@ export default function VipAbaKhqrPage() {
     if (!session) return
     const qrString = String(session.qrString || '').trim()
     const deeplink = String(session.abapayDeeplink || '').trim()
-    if (!qrString && !deeplink) return
+    if (!qrString && !deeplink) {
+      setShowQrAfterAutoSummon(true)
+      return undefined
+    }
 
     autoSummonAttemptedRef.current = true
-    trySummonAbaMobileInBrowser({
+    const result = trySummonAbaMobileInBrowser({
       qrString,
       abapayDeeplink: deeplink,
       returnToQrUrl,
       onSummonFailed: () => {
         setStatusNote(ABA_SUMMON_FAILED_NOTE)
+        setShowQrAfterAutoSummon(true)
       },
     })
+
+    if (!result.attempted) {
+      setShowQrAfterAutoSummon(true)
+      return undefined
+    }
+
+    autoSummonOutcomeCleanupRef.current = watchAbaMobileSummonOutcome({
+      onLaunched: () => {},
+      onFailed: () => {
+        setStatusNote(ABA_SUMMON_FAILED_NOTE)
+        setShowQrAfterAutoSummon(true)
+      },
+    })
+
+    return () => {
+      autoSummonOutcomeCleanupRef.current?.()
+      autoSummonOutcomeCleanupRef.current = null
+    }
   }, [autoSummonQuery, handoffLoading, inTelegram, returnToQrUrl])
+
+  useEffect(() => {
+    if (abaSummonFailedQuery) setShowQrAfterAutoSummon(true)
+  }, [abaSummonFailedQuery])
 
   const stopPolling = useCallback(() => {
     if (!pollRef.current) return
@@ -483,13 +515,15 @@ export default function VipAbaKhqrPage() {
               {handoffError}
             </p>
           ) : null}
-          <AbaKhqrPaymentScreen
-            session={displaySession}
-            statusNote={statusNote}
-            showDemoActions={isUiMock}
-            onSimulatePaid={markPaymentSuccess}
-            onQrReady={handoffKhqrBootShell}
-          />
+          {showQrAfterAutoSummon ? (
+            <AbaKhqrPaymentScreen
+              session={displaySession}
+              statusNote={statusNote}
+              showDemoActions={isUiMock}
+              onSimulatePaid={markPaymentSuccess}
+              onQrReady={handoffKhqrBootShell}
+            />
+          ) : null}
 
           {showAbaMobileButton ? (
             <button
