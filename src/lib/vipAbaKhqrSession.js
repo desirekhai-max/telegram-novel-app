@@ -5,6 +5,7 @@ export const VIP_ABA_KHQR_LAST_IMAGE_KEY = 'tg_vip_aba_khqr_last_image_v1'
 export const VIP_ABA_KHQR_ACTIVE_PENDING_KEY = 'tg_vip_aba_khqr_active_pending_v1'
 export const VIP_ABA_KHQR_PENDING_PREFIX = 'tg_vip_aba_khqr_pending_v1:'
 export const VIP_ABA_KHQR_BROWSER_FLOW_KEY = 'tg_vip_aba_khqr_browser_flow_v1'
+export const VIP_ABA_KHQR_CONFIRMING_DISMISSED_KEY = 'tg_vip_aba_khqr_confirming_dismissed_v1'
 /** Client-side pending / QR validity shown to user (2 minutes). */
 export const VIP_ABA_KHQR_PENDING_TTL_MS = 2 * 60 * 1000
 
@@ -346,9 +347,56 @@ export function markVipAbaKhqrBrowserFlowOpen(session) {
       VIP_ABA_KHQR_BROWSER_FLOW_KEY,
       JSON.stringify({ tranId, openedAtMs: Date.now() }),
     )
+    clearVipAbaKhqrConfirmingUiDismissed()
     return true
   } catch {
     return false
+  }
+}
+
+export function markVipAbaKhqrConfirmingUiDismissed() {
+  try {
+    sessionStorage.setItem(VIP_ABA_KHQR_CONFIRMING_DISMISSED_KEY, '1')
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearVipAbaKhqrConfirmingUiDismissed() {
+  try {
+    sessionStorage.removeItem(VIP_ABA_KHQR_CONFIRMING_DISMISSED_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+function isVipAbaKhqrConfirmingUiDismissed() {
+  try {
+    return sessionStorage.getItem(VIP_ABA_KHQR_CONFIRMING_DISMISSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** @param {string} [tranId] */
+export function shouldShowVipAbaKhqrConfirmingUi(tranId) {
+  const tid = String(tranId || loadActiveVipAbaKhqrPending()?.tranId || '').trim()
+  if (!tid) return false
+  if (isVipAbaKhqrConfirmingUiDismissed()) return false
+  if (!hasActiveVipAbaKhqrBrowserFlow(tid)) return false
+  return Boolean(loadVipAbaKhqrPendingPayment(tid))
+}
+
+/** Restore VIP tab awaiting / confirming UI after in-app navigation or cold mount. */
+export function resolveVipAbaKhqrAwaitingUiState() {
+  const pending = loadActiveVipAbaKhqrPending()
+  if (!pending?.tranId) {
+    return { awaiting: false, confirming: false, pending: null }
+  }
+  return {
+    awaiting: true,
+    confirming: shouldShowVipAbaKhqrConfirmingUi(pending.tranId),
+    pending,
   }
 }
 
@@ -385,6 +433,7 @@ export function clearVipAbaKhqrPendingPayment(tranId) {
     /* ignore */
   }
   clearVipAbaKhqrBrowserFlowMark()
+  clearVipAbaKhqrConfirmingUiDismissed()
 }
 
 /** @returns {boolean} */

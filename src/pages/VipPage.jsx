@@ -24,6 +24,8 @@ import {
   hasActiveVipAbaKhqrBrowserFlow,
   loadActiveVipAbaKhqrPending,
   markVipAbaKhqrBrowserFlowOpen,
+  markVipAbaKhqrConfirmingUiDismissed,
+  resolveVipAbaKhqrAwaitingUiState,
   saveVipAbaKhqrPendingPayment,
   saveVipAbaKhqrSession,
 } from '../lib/vipAbaKhqrSession.js'
@@ -41,6 +43,10 @@ function formatKhqrPendingCountdown(remainingMs) {
   return `${mins}:${String(secs).padStart(2, '0')}`
 }
 
+function readInitialVipAbaKhqrUiState() {
+  return resolveVipAbaKhqrAwaitingUiState()
+}
+
 export default function VipPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -51,8 +57,9 @@ export default function VipPage() {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [purchaseNotice, setPurchaseNotice] = useState('')
   const [purchaseError, setPurchaseError] = useState('')
-  const [abaKhqrAwaitingReturn, setAbaKhqrAwaitingReturn] = useState(false)
-  const [confirmingPaymentReturn, setConfirmingPaymentReturn] = useState(false)
+  const initialAbaUiState = useMemo(() => readInitialVipAbaKhqrUiState(), [])
+  const [abaKhqrAwaitingReturn, setAbaKhqrAwaitingReturn] = useState(initialAbaUiState.awaiting)
+  const [confirmingPaymentReturn, setConfirmingPaymentReturn] = useState(initialAbaUiState.confirming)
   const [pendingCountdownMs, setPendingCountdownMs] = useState(0)
   const paymentWasBackgroundedRef = useRef(false)
   const scrollRef = useRef(null)
@@ -90,15 +97,20 @@ export default function VipPage() {
     void preloadVipPaymentSuccessAssets()
   }, [])
 
-  useEffect(() => {
-    const pending = loadActiveVipAbaKhqrPending()
-    if (pending?.tranId) {
-      setAbaKhqrAwaitingReturn(true)
-      return
+  const syncAbaKhqrAwaitingUiState = useCallback(() => {
+    const { awaiting, confirming, pending } = resolveVipAbaKhqrAwaitingUiState()
+    setAbaKhqrAwaitingReturn(awaiting)
+    setConfirmingPaymentReturn(confirming)
+    if (confirming) setPurchaseNotice('')
+    if (pending?.planId) {
+      setSelectedPlanId((current) => current || pending.planId)
     }
-    setAbaKhqrAwaitingReturn(false)
-    setConfirmingPaymentReturn(false)
   }, [])
+
+  useEffect(() => {
+    if (location.pathname !== '/vip') return
+    syncAbaKhqrAwaitingUiState()
+  }, [location.pathname, syncAbaKhqrAwaitingUiState])
 
   const plans = useMemo(
     () => [...getVipPlansCatalogForRole(viewerProfile.role)].sort((a, b) => a.sortOrder - b.sortOrder),
@@ -139,11 +151,9 @@ export default function VipPage() {
         saveVipAbaKhqrPendingPayment(session, { expireAtMs: session.expireAtMs })
         markVipAbaKhqrBrowserFlowOpen(session)
         setAbaKhqrAwaitingReturn(true)
-        setConfirmingPaymentReturn(false)
+        setConfirmingPaymentReturn(true)
         paymentWasBackgroundedRef.current = false
-        setPurchaseNotice(
-          'សូមបង់ប្រាក់ក្នុង Browser ។ បញ្ចប់ហើយត្រឡប់មក Telegram ដើម្បីបញ្ជាក់ VIP',
-        )
+        setPurchaseNotice('')
         return true
       }
 
@@ -177,6 +187,7 @@ export default function VipPage() {
   }, [navigate, refreshViewerProfile, selectedPlanId, viewerProfile.role])
 
   const onReleasePaymentConfirming = useCallback(() => {
+    markVipAbaKhqrConfirmingUiDismissed()
     setConfirmingPaymentReturn(false)
     setPurchaseNotice('')
   }, [])
