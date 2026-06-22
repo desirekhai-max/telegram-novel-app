@@ -10,11 +10,9 @@ import {
 } from '../lib/abaKhqrUiMock.js'
 import {
   buildAbaQrPageReturnUrl,
-  isIosDevice,
   shouldTryAbaMobileDeeplinkFirst,
   trySummonAbaMobile,
   trySummonAbaMobileInBrowser,
-  watchAbaMobileSummonOutcome,
 } from '../lib/abaMobile.js'
 import { isTelegramMiniApp } from '../lib/telegramWebApp.js'
 import { readVipPaymentFulfillmentHint } from '../lib/vipPaymentResultState.js'
@@ -120,13 +118,12 @@ export default function VipAbaKhqrPage() {
   )
   const [handoffError, setHandoffError] = useState('')
   const autoSummonAttemptedRef = useRef(false)
-  const autoSummonOutcomeCleanupRef = useRef(null)
   const qrSession = qrSessionRef.current
   const inTelegram = isTelegramMiniApp()
   const abaSummonFailedQuery = searchParams.get('aba_summon_failed') === '1'
   const shouldAutoSummonInBrowser =
-    !inTelegram && !abaSummonFailedQuery && (autoSummonQuery || isIosDevice())
-  const shouldHideQrForAutoSummon = autoSummonQuery && !inTelegram && !abaSummonFailedQuery
+    !inTelegram && !abaSummonFailedQuery && autoSummonQuery
+  const shouldHideQrForAutoSummon = shouldAutoSummonInBrowser
   const [showQrAfterAutoSummon, setShowQrAfterAutoSummon] = useState(!shouldHideQrForAutoSummon)
 
   const isUiMock = isUiMockAbaKhqrSession(qrSession) || uiMockQuery
@@ -253,21 +250,9 @@ export default function VipAbaKhqrPage() {
 
     if (!result.attempted) {
       setShowQrAfterAutoSummon(true)
-      return undefined
     }
 
-    autoSummonOutcomeCleanupRef.current = watchAbaMobileSummonOutcome({
-      onLaunched: () => {},
-      onFailed: () => {
-        setStatusNote(ABA_SUMMON_FAILED_NOTE)
-        setShowQrAfterAutoSummon(true)
-      },
-    })
-
-    return () => {
-      autoSummonOutcomeCleanupRef.current?.()
-      autoSummonOutcomeCleanupRef.current = null
-    }
+    return undefined
   }, [handoffLoading, inTelegram, returnToQrUrl, sessionReady, shouldAutoSummonInBrowser])
 
   useEffect(() => {

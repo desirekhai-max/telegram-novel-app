@@ -36,9 +36,9 @@ export function shouldTryAbaMobileDeeplinkFirst() {
   return isLikelyMobileDevice()
 }
 
-/** Mobile external browser: try aba-open bridge before React QR page. */
-export function shouldAutoSummonAbaInExternalBrowser() {
-  return isLikelyMobileDevice()
+/** Android external browser: lightweight bridge before React QR page. */
+export function shouldUseAbaOpenBridgeInExternalBrowser() {
+  return isAndroidDevice()
 }
 
 export function extractEncodedQrcodeFromDeeplink(deeplink) {
@@ -140,14 +140,12 @@ function buildAbaOpenBridgeUrl(session, planId = '') {
   const tranId = String(session?.tranId || '').trim()
   const pid = String(planId || session?.planId || '').trim()
   const handoff = String(session?.browserHandoffToken || '').trim()
-  const deeplink = String(session?.abapayDeeplink || '').trim()
   if (!tranId || !pid || !handoff) return ''
 
   const bridge = new URL('/aba-open.html', getAppPublicOrigin())
   bridge.searchParams.set('tran_id', tranId)
   bridge.searchParams.set('plan_id', pid)
   bridge.searchParams.set('handoff', handoff)
-  if (deeplink) bridge.searchParams.set('summon', deeplink)
   return bridge.toString()
 }
 
@@ -305,6 +303,17 @@ export function trySummonAbaMobileInBrowser(input = {}) {
     return { attempted: false, method: 'no_target' }
   }
 
+  if (isIosDevice()) {
+    try {
+      window.location.href = summonTarget
+    } catch {
+      onFailed()
+      return { attempted: false, method: 'ios_href_failed' }
+    }
+    watchAbaMobileSummonOutcome({ onFailed, timeoutMs: 1800 })
+    return { attempted: true, method: 'ios_browser_deeplink' }
+  }
+
   try {
     const frame = document.createElement('iframe')
     frame.style.cssText = 'display:none;width:0;height:0;border:0'
@@ -321,7 +330,7 @@ export function trySummonAbaMobileInBrowser(input = {}) {
     /* ignore */
   }
 
-  if (isAndroidDevice() || isIosDevice()) {
+  if (isAndroidDevice()) {
     window.setTimeout(() => {
       try {
         window.location.href = summonTarget
@@ -332,10 +341,7 @@ export function trySummonAbaMobileInBrowser(input = {}) {
   }
 
   watchAbaMobileSummonOutcome({ onFailed })
-  return {
-    attempted: true,
-    method: isIosDevice() ? 'ios_browser_deeplink' : 'browser_direct',
-  }
+  return { attempted: true, method: 'browser_direct' }
 }
 
 /**
@@ -350,12 +356,11 @@ export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
   const pid = String(planId || session?.planId || '').trim()
   let targetUrl = ''
 
-  // Mobile: lightweight bridge summons ABA before any React QR page loads (no QR flash).
-  if (shouldAutoSummonAbaInExternalBrowser()) {
+  if (shouldUseAbaOpenBridgeInExternalBrowser()) {
     targetUrl = buildAbaOpenBridgeUrl(session, pid)
-  }
-
-  if (!targetUrl) {
+  } else if (isIosDevice()) {
+    targetUrl = buildAbaKhqrPageUrl(session, pid, { auto_summon: '1' })
+  } else {
     targetUrl = buildAbaKhqrPageUrl(session, pid)
   }
 

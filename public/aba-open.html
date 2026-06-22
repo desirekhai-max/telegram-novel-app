@@ -13,7 +13,6 @@
         var handoff = String(params.get('handoff') || '').trim()
         var target = String(params.get('target') || '').trim()
         var back = String(params.get('back') || '').trim()
-        var summonParam = String(params.get('summon') || '').trim()
         var cancelled = false
         var backTimer = 0
 
@@ -125,12 +124,12 @@
 
         function startLegacyFlow() {
           if (target) tryOpenTarget(target)
-          scheduleBack(2800, true)
+          scheduleBack(1500, true)
           window.addEventListener('pageshow', function () {
-            scheduleBack(900, true)
+            scheduleBack(600, true)
           })
           window.addEventListener('focus', function () {
-            scheduleBack(700, true)
+            scheduleBack(500, true)
           })
         }
 
@@ -159,21 +158,17 @@
                 return
               }
               tryOpenTarget(summonTarget)
-              scheduleBack(2800, true)
+              scheduleBack(1500, true)
               window.addEventListener('pageshow', function () {
-                scheduleBack(900, true)
+                scheduleBack(600, true)
               })
               window.addEventListener('focus', function () {
-                scheduleBack(700, true)
+                scheduleBack(500, true)
               })
             })
             .catch(function () {
               goBack(true)
             })
-        }
-
-        if (summonParam && isIos()) {
-          tryOpenTarget(summonParam)
         }
 
         if (tranId && handoff) {
