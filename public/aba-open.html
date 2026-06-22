@@ -1,0 +1,180 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title></title>
+    <script>
+      ;(function () {
+        var API_BASE = 'https://telegram-novel-app-production-7f1e.up.railway.app'
+        var params = new URLSearchParams(location.search)
+        var tranId = String(params.get('tran_id') || '').trim()
+        var planId = String(params.get('plan_id') || '').trim()
+        var handoff = String(params.get('handoff') || '').trim()
+        var target = String(params.get('target') || '').trim()
+        var back = String(params.get('back') || '').trim()
+        var cancelled = false
+        var backTimer = 0
+
+        function isAndroid() {
+          return /android/i.test(String(navigator.userAgent || ''))
+        }
+
+        function extractEncodedQrcode(deeplink) {
+          var raw = String(deeplink || '').trim()
+          var match = raw.match(/[?&]qrcode=([^&#]+)/i)
+          return match && match[1] ? String(match[1]) : ''
+        }
+
+        function buildQrPageUrl(failed) {
+          var url =
+            location.origin +
+            '/vip/aba-khqr?tran_id=' +
+            encodeURIComponent(tranId) +
+            '&plan_id=' +
+            encodeURIComponent(planId)
+          if (handoff) url += '&handoff=' + encodeURIComponent(handoff)
+          if (failed) url += '&aba_summon_failed=1'
+          return url
+        }
+
+        function buildAndroidIntent(qrString, deeplink, fallbackBack) {
+          var encoded = extractEncodedQrcode(deeplink)
+          var back = String(fallbackBack || '').trim()
+          if (encoded) {
+            var intent =
+              'intent://ababank.com?type=payway&qrcode=' +
+              encoded +
+              '#Intent;scheme=abamobilebank;'
+            if (back) intent += 'S.browser_fallback_url=' + encodeURIComponent(back) + ';'
+            intent += 'end;'
+            return intent
+          }
+          var qr = String(qrString || '').trim()
+          if (!qr) return ''
+          var intent2 =
+            'intent://ababank.com?type=payway&qrcode=' +
+            encodeURIComponent(qr) +
+            '#Intent;scheme=abamobilebank;'
+          if (back) intent2 += 'S.browser_fallback_url=' + encodeURIComponent(back) + ';'
+          intent2 += 'end;'
+          return intent2
+        }
+
+        function buildSummonTarget(session, fallbackBack) {
+          var qrString = String(session.qrString || '').trim()
+          var deeplink = String(session.abapayDeeplink || '').trim()
+          if (isAndroid()) return buildAndroidIntent(qrString, deeplink, fallbackBack)
+          if (deeplink.toLowerCase().indexOf('abamobilebank://') === 0) return deeplink
+          return ''
+        }
+
+        function cancelBack() {
+          cancelled = true
+          if (backTimer) window.clearTimeout(backTimer)
+        }
+
+        function goBack(failed) {
+          if (cancelled) return
+          var next = back
+          if (!next && tranId && planId) next = buildQrPageUrl(failed !== false)
+          if (!next) return
+          try {
+            location.replace(next)
+          } catch (e) {
+            location.href = next
+          }
+        }
+
+        function scheduleBack(ms, failed) {
+          if (cancelled) return
+          if (backTimer) window.clearTimeout(backTimer)
+          backTimer = window.setTimeout(function () {
+            goBack(failed)
+          }, ms)
+        }
+
+        function tryOpenTarget(summonTarget) {
+          if (!summonTarget) return
+          try {
+            var frame = document.createElement('iframe')
+            frame.style.cssText = 'display:none;width:0;height:0;border:0'
+            frame.src = summonTarget
+            document.documentElement.appendChild(frame)
+          } catch (e) {
+            /* ignore */
+          }
+          window.setTimeout(function () {
+            try {
+              location.href = summonTarget
+            } catch (e) {
+              /* ignore */
+            }
+          }, 80)
+        }
+
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'hidden') cancelBack()
+        })
+        window.addEventListener('pagehide', cancelBack)
+
+        function startLegacyFlow() {
+          if (target) tryOpenTarget(target)
+          scheduleBack(2800, true)
+          window.addEventListener('pageshow', function () {
+            scheduleBack(900, true)
+          })
+          window.addEventListener('focus', function () {
+            scheduleBack(700, true)
+          })
+        }
+
+        function startHandoffFlow() {
+          var qrBack = buildQrPageUrl(true)
+          fetch(
+            API_BASE +
+              '/api/vip-orders/aba-khqr-handoff?tran_id=' +
+              encodeURIComponent(tranId) +
+              '&handoff=' +
+              encodeURIComponent(handoff),
+          )
+            .then(function (res) {
+              return res.json().catch(function () {
+                return {}
+              })
+            })
+            .then(function (data) {
+              if (!data || !data.ok || !data.session) {
+                goBack(true)
+                return
+              }
+              var summonTarget = buildSummonTarget(data.session, qrBack)
+              if (!summonTarget) {
+                goBack(true)
+                return
+              }
+              tryOpenTarget(summonTarget)
+              scheduleBack(2800, true)
+              window.addEventListener('pageshow', function () {
+                scheduleBack(900, true)
+              })
+              window.addEventListener('focus', function () {
+                scheduleBack(700, true)
+              })
+            })
+            .catch(function () {
+              goBack(true)
+            })
+        }
+
+        if (tranId && handoff) {
+          startHandoffFlow()
+          return
+        }
+
+        startLegacyFlow()
+      })()
+    </script>
+  </head>
+  <body></body>
+</html>

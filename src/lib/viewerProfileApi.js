@@ -122,6 +122,7 @@ export async function startViewerVipAbaKhqr(planId) {
         appStore: String(data.appStore || ''),
         playStore: String(data.playStore || ''),
         returnUrl: String(data.returnUrl || ''),
+        browserHandoffToken: String(data.browserHandoffToken || ''),
       },
     }
   } catch (err) {
@@ -131,6 +132,39 @@ export async function startViewerVipAbaKhqr(planId) {
       error: err instanceof Error ? err.message : 'aba_khqr_network_error',
       session: null,
     }
+  }
+}
+
+export async function fetchAbaKhqrHandoffSession({ tranId, handoff, signal } = {}) {
+  const tid = String(tranId || '').trim()
+  const token = String(handoff || '').trim()
+  if (!tid || !token) return null
+  try {
+    const qs = new URLSearchParams({ tran_id: tid, handoff: token })
+    const res = await fetch(apiUrl(`/api/vip-orders/aba-khqr-handoff?${qs.toString()}`), {
+      method: 'GET',
+      signal,
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data?.ok || !data?.session) return null
+    const session = data.session
+    return {
+      tranId: String(session.tranId || tid),
+      planId: String(session.planId || ''),
+      amountLabel: String(session.amountLabel || ''),
+      amount: Number(session.amount || 0),
+      currency: String(session.currency || 'USD'),
+      merchantLabel: String(session.merchantLabel || 'VIP-Subscription'),
+      qrImage: String(session.qrImage || ''),
+      qrString: String(session.qrString || ''),
+      abapayDeeplink: String(session.abapayDeeplink || ''),
+      appStore: String(session.appStore || ''),
+      playStore: String(session.playStore || ''),
+      returnUrl: String(session.returnUrl || ''),
+      browserHandoffToken: token,
+    }
+  } catch {
+    return null
   }
 }
 

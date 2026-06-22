@@ -43,6 +43,13 @@
         var isKhqrReturn =
           path.indexOf('/vip/payment-return') !== -1 && search.indexOf('hosted=1') === -1
         if (!isKhqrPath && !isKhqrReturn) return
+        if (
+          search.indexOf('handoff=') !== -1 ||
+          search.indexOf('qr_src=') !== -1 ||
+          search.indexOf('auto_summon=1') !== -1
+        ) {
+          return
+        }
         document.documentElement.classList.add('tg-khqr-boot')
       })()
     </script>
@@ -258,6 +265,21 @@
           path.indexOf('/vip/payment-return') !== -1 && search.indexOf('hosted=1') === -1
         if (!isKhqrPath && !isKhqrReturn) return
 
+        function releaseToReact() {
+          document.documentElement.classList.remove('tg-khqr-boot')
+          var existing = document.getElementById('tg-khqr-boot-shell')
+          if (existing) existing.remove()
+        }
+
+        if (
+          search.indexOf('handoff=') !== -1 ||
+          search.indexOf('qr_src=') !== -1 ||
+          search.indexOf('auto_summon=1') !== -1
+        ) {
+          releaseToReact()
+          return
+        }
+
         var SESSION_KEY = 'tg_vip_aba_khqr_session_v1'
         var IMAGE_KEY = 'tg_vip_aba_khqr_last_image_v1'
         var HEADER_LOGO = '/aba-pay-header-logo.png'
@@ -419,6 +441,9 @@
         trackImage(headerLogo)
         if (pendingImages <= 0) {
           stack.classList.remove('tg-khqr-boot-shell__qr-stack--pending')
+        }
+        if (!qrImage) {
+          window.setTimeout(releaseToReact, 1500)
         }
       })()
     </script>

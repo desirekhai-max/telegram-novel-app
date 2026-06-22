@@ -1943,6 +1943,30 @@ const server = http.createServer(async (req, res) => {
       pendingVipOrdersByTranId.delete(tranId)
       return sendJson(res, 502, { ok: false, error: qr.error || 'qr_generation_failed' })
     }
+    const browserHandoffToken = crypto.randomBytes(12).toString('hex')
+    const khqrSession = {
+      tranId,
+      planId: plan.planId,
+      amountLabel: plan.priceUsdLabel,
+      amount: qr.amount,
+      currency: qr.currency,
+      merchantLabel: getNeutralVipOrderProductLabel(),
+      qrImage: qr.qrImage,
+      qrString: qr.qrString,
+      abapayDeeplink: qr.abapayDeeplink,
+      appStore: qr.appStore,
+      playStore: qr.playStore,
+      returnUrl: returnDeeplinkUrl,
+      browserHandoffToken,
+    }
+    const pendingRow = pendingVipOrdersByTranId.get(tranId)
+    if (pendingRow) {
+      pendingVipOrdersByTranId.set(tranId, {
+        ...pendingRow,
+        browserHandoffToken,
+        khqrSession,
+      })
+    }
     persistMembers()
     return sendJson(res, 200, {
       ok: true,
@@ -1962,8 +1986,35 @@ const server = http.createServer(async (req, res) => {
       playStore: qr.playStore,
       qrImageTemplate: qr.qrImageTemplate,
       returnUrl: returnDeeplinkUrl,
+      browserHandoffToken,
       profile: buildViewerProfileResponse(profile),
     })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/vip-orders/aba-khqr-handoff') {
+    const tranId = String(url.searchParams.get('tran_id') || url.searchParams.get('tranId') || '')
+      .trim()
+      .slice(0, 20)
+    const handoff = String(url.searchParams.get('handoff') || url.searchParams.get('token') || '')
+      .trim()
+      .slice(0, 64)
+    if (!tranId || !handoff) {
+      return sendJson(res, 400, { ok: false, error: 'tran_id and handoff required' })
+    }
+    const pending = pendingVipOrdersByTranId.get(tranId)
+    if (!pending || String(pending.browserHandoffToken || '') !== handoff) {
+      return sendJson(res, 404, { ok: false, error: 'handoff_not_found' })
+    }
+    if (Number(pending.expireAt || 0) > 0 && pending.expireAt < now()) {
+      return sendJson(res, 410, { ok: false, error: 'payment_expired' })
+    }
+    const session = pending.khqrSession && typeof pending.khqrSession === 'object'
+      ? pending.khqrSession
+      : null
+    if (!session?.qrImage && !session?.qrString && !session?.abapayDeeplink) {
+      return sendJson(res, 404, { ok: false, error: 'khqr_session_missing' })
+    }
+    return sendJson(res, 200, { ok: true, session })
   }
 
   if (req.method === 'POST' && url.pathname === '/api/vip-orders/confirm-payment') {

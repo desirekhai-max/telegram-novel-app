@@ -14,8 +14,16 @@ import {
 } from '../lib/paywayCheckout.js'
 import { buildAbaKhqrUiMockSession, isAbaKhqrUiMockFlowEnabled } from '../lib/abaKhqrUiMock.js'
 import { preloadAbaKhqrPaymentAssets } from '../lib/abaKhqrAssets.js'
+import { startAbaKhqrPaymentFlow } from '../lib/abaMobile.js'
 import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
-import { saveVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
+import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
+import { useVipAbaKhqrPaymentConfirm } from '../hooks/useVipAbaKhqrPaymentConfirm.js'
+import {
+  loadActiveVipAbaKhqrPending,
+  saveVipAbaKhqrPendingPayment,
+  saveVipAbaKhqrSession,
+} from '../lib/vipAbaKhqrSession.js'
+import { navigateToVipPaymentSuccess } from '../lib/vipPaymentSuccessNavigation.js'
 import {
   purchaseViewerVipPlan,
   startViewerVipAbaKhqr,
@@ -32,6 +40,10 @@ export default function VipPage() {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [purchaseNotice, setPurchaseNotice] = useState('')
   const [purchaseError, setPurchaseError] = useState('')
+  const [abaKhqrAwaitingReturn, setAbaKhqrAwaitingReturn] = useState(() => {
+    const pending = loadActiveVipAbaKhqrPending()
+    return Boolean(pending?.tranId)
+  })
   const scrollRef = useRef(null)
   const plansSectionRef = useRef(null)
   const paymentSectionRef = useRef(null)
@@ -96,16 +108,54 @@ export default function VipPage() {
     [navigate],
   )
 
-  const navigateToAbaKhqrPage = useCallback(
+  const openAbaKhqrBrowserFlow = useCallback(
     async (session, planId) => {
       await preloadAbaKhqrPaymentAssets()
-      const path = isAbaKhqrUiMockFlowEnabled() && session.uiMock
-        ? `/vip/aba-khqr?ui_mock=1&tran_id=${encodeURIComponent(session.tranId)}&plan_id=${encodeURIComponent(planId)}`
-        : `/vip/aba-khqr?tran_id=${encodeURIComponent(session.tranId)}&plan_id=${encodeURIComponent(planId)}`
-      navigate(path)
+      saveVipAbaKhqrSession(session)
+      saveVipAbaKhqrPendingPayment(session)
+
+      const opened = startAbaKhqrPaymentFlow(session, planId)
+      if (opened.opened) {
+        setAbaKhqrAwaitingReturn(true)
+        setPurchaseNotice(
+          'សូមបង់ប្រាក់ក្នុង Browser ។ បញ្ចប់ហើយត្រឡប់មក Telegram ដើម្បីបញ្ជាក់ VIP',
+        )
+        return true
+      }
+
+      setPurchaseError('មិនអាចបើក Browser បាន សូមព្យាយាមម្តងទៀត')
+      return false
     },
-    [navigate],
+    [],
   )
+
+  const pendingAbaPayment = useMemo(() => loadActiveVipAbaKhqrPending(), [abaKhqrAwaitingReturn])
+
+  const onAbaKhqrPaymentConfirmed = useCallback(() => {
+    const pending = loadActiveVipAbaKhqrPending()
+    const planId = String(pending?.planId || selectedPlanId || '').trim()
+    const durationHours = Number(getVipPlanForPurchase(planId, viewerProfile.role)?.durationHours) || 0
+    setAbaKhqrAwaitingReturn(false)
+    setPurchaseNotice('')
+    void refreshViewerProfile()
+    navigateToVipPaymentSuccess(
+      navigate,
+      {
+        planId,
+        priceLabel: String(pending?.amountLabel || '').trim(),
+        durationHours,
+        purchasedAt: new Date().toISOString(),
+      },
+      { replace: false, slideEnter: true },
+    )
+  }, [navigate, refreshViewerProfile, selectedPlanId, viewerProfile.role])
+
+  useVipAbaKhqrPaymentConfirm({
+    enabled: abaKhqrAwaitingReturn && Boolean(pendingAbaPayment?.tranId),
+    tranId: pendingAbaPayment?.tranId || '',
+    planId: pendingAbaPayment?.planId || '',
+    onSuccess: onAbaKhqrPaymentConfirmed,
+  })
 
   const runAbaPaymentStart = useCallback(
     async () => {
@@ -127,15 +177,13 @@ export default function VipPage() {
       try {
         if (isAbaKhqrUiMockFlowEnabled()) {
           const mockSession = buildAbaKhqrUiMockSession(planId, viewerProfile.role)
-          saveVipAbaKhqrSession(mockSession)
-          await navigateToAbaKhqrPage(mockSession, planId)
+          await openAbaKhqrBrowserFlow(mockSession, planId)
           return
         }
 
         const aba = await startViewerVipAbaKhqr(planId)
         if (aba?.ok && aba.session?.tranId) {
-          saveVipAbaKhqrSession(aba.session)
-          await navigateToAbaKhqrPage(aba.session, planId)
+          await openAbaKhqrBrowserFlow(aba.session, planId)
           return
         }
 
@@ -165,7 +213,7 @@ export default function VipPage() {
     [
       abaKhqrPending,
       fallbackHostedCheckout,
-      navigateToAbaKhqrPage,
+      openAbaKhqrBrowserFlow,
       refreshViewerProfile,
       selectedPlanId,
       termsAccepted,
