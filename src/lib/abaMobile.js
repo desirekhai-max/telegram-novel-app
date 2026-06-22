@@ -324,29 +324,31 @@ export function trySummonAbaMobileInBrowser(input = {}) {
 }
 
 /**
- * VIP flow: open formal-site QR page in browser (auto-summon ABA, then show QR).
+ * VIP flow: open formal-site QR page in external browser.
+ * Mobile: auto-summon ABA first, then QR fallback. Desktop: QR only (no ABA app).
  * @param {import('./vipAbaKhqrSession.js').VipAbaKhqrSession} session
  * @param {string} [planId]
  */
 export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
   if (typeof window === 'undefined') return { opened: false, method: 'no_window' }
 
-  const qrPageUrl = buildAbaKhqrPageUrl(session, planId, { auto_summon: '1' })
+  const extraParams = isLikelyMobileDevice() ? { auto_summon: '1' } : {}
+  const qrPageUrl = buildAbaKhqrPageUrl(session, planId, extraParams)
   if (qrPageUrl && launchViaExternalOpenLink(qrPageUrl)) {
-    return { opened: true, method: 'external_qr_page' }
+    return {
+      opened: true,
+      method: isLikelyMobileDevice() ? 'external_qr_page' : 'external_qr_page_desktop',
+    }
   }
 
   return { opened: false, method: 'browser_open_failed' }
 }
 
 /**
- * Mobile: always open formal-site browser flow (never in-app QR page).
+ * Open formal-site browser QR flow (mobile + desktop Telegram).
  * @param {import('./vipAbaKhqrSession.js').VipAbaKhqrSession} session
  * @param {string} [planId]
  */
 export function startAbaKhqrPaymentFlow(session, planId = '') {
-  if (!isLikelyMobileDevice()) {
-    return { opened: false, method: 'desktop' }
-  }
   return openAbaKhqrPaymentInExternalBrowser(session, planId)
 }
