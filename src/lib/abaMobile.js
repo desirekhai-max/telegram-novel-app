@@ -359,7 +359,7 @@ export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
   if (shouldUseAbaOpenBridgeInExternalBrowser()) {
     targetUrl = buildAbaOpenBridgeUrl(session, pid)
   } else if (isIosDevice()) {
-    targetUrl = buildAbaKhqrPageUrl(session, pid, { auto_summon: '1' })
+    targetUrl = buildAbaOpenBridgeUrl(session, pid)
   } else {
     targetUrl = buildAbaKhqrPageUrl(session, pid)
   }
