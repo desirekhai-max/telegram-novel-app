@@ -4,24 +4,37 @@ import { clearVipAbaKhqrPendingPayment } from '../lib/vipAbaKhqrSession.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 
 const POLL_MS = 4000
-const SUCCESS_NAV_DELAY_MS = 2000
+const DEFAULT_RELEASE_AFTER_FAILED_POLLS = 5
 
 /**
  * Poll PayWay until VIP is active — used when user returns to Telegram after browser/ABA payment.
  * @param {{
  *   enabled?: boolean,
+ *   confirmingUiActive?: boolean,
  *   tranId?: string,
  *   planId?: string,
  *   onSuccess?: () => void,
+ *   onReleaseConfirming?: () => void,
+ *   releaseAfterFailedPolls?: number,
  * }} options
  */
 export function useVipAbaKhqrPaymentConfirm(options = {}) {
-  const { enabled = false, tranId = '', planId = '', onSuccess } = options
+  const {
+    enabled = false,
+    confirmingUiActive = false,
+    tranId = '',
+    planId = '',
+    onSuccess,
+    onReleaseConfirming,
+    releaseAfterFailedPolls = DEFAULT_RELEASE_AFTER_FAILED_POLLS,
+  } = options
   const pollRef = useRef(0)
   const pendingSuccessRef = useRef(false)
-  const successTimerRef = useRef(0)
+  const failedPollsRef = useRef(0)
   const onSuccessRef = useRef(onSuccess)
+  const onReleaseConfirmingRef = useRef(onReleaseConfirming)
   onSuccessRef.current = onSuccess
+  onReleaseConfirmingRef.current = onReleaseConfirming
 
   const stopPolling = useCallback(() => {
     if (!pollRef.current) return
@@ -34,14 +47,7 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
     pendingSuccessRef.current = true
     stopPolling()
     clearVipAbaKhqrPendingPayment(tranId)
-    if (successTimerRef.current) {
-      window.clearTimeout(successTimerRef.current)
-      successTimerRef.current = 0
-    }
-    successTimerRef.current = window.setTimeout(() => {
-      successTimerRef.current = 0
-      onSuccessRef.current?.()
-    }, SUCCESS_NAV_DELAY_MS)
+    onSuccessRef.current?.()
   }, [stopPolling, tranId])
 
   const pollOnce = useCallback(async () => {
@@ -54,11 +60,25 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
     if (pendingSuccessRef.current) return
     if (result.ok && result.profile?.vipActive) {
       finishSuccess()
+      return
     }
-  }, [enabled, finishSuccess, planId, tranId])
+
+    if (!confirmingUiActive) return
+
+    failedPollsRef.current += 1
+    if (failedPollsRef.current >= releaseAfterFailedPolls) {
+      onReleaseConfirmingRef.current?.()
+    }
+  }, [confirmingUiActive, enabled, finishSuccess, planId, tranId])
 
   const pollOnceRef = useRef(pollOnce)
   pollOnceRef.current = pollOnce
+
+  useEffect(() => {
+    if (confirmingUiActive) {
+      failedPollsRef.current = 0
+    }
+  }, [confirmingUiActive, tranId])
 
   useEffect(() => {
     pendingSuccessRef.current = false
@@ -79,6 +99,7 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
       if (pendingSuccessRef.current) return
+      if (confirmingUiActive) failedPollsRef.current = 0
       void pollOnceRef.current()
     }
 
@@ -87,12 +108,8 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
     return () => {
       stopPolling()
       document.removeEventListener('visibilitychange', onVisible)
-      if (successTimerRef.current) {
-        window.clearTimeout(successTimerRef.current)
-        successTimerRef.current = 0
-      }
     }
-  }, [enabled, stopPolling, tranId])
+  }, [confirmingUiActive, enabled, stopPolling, tranId])
 
   return { pendingSuccess: pendingSuccessRef.current }
 }

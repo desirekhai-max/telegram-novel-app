@@ -160,6 +160,15 @@ export default function VipAbaKhqrPage() {
   }, [sessionReady, handoffError])
 
   useEffect(() => {
+    if (inTelegram) return undefined
+    const previousTitle = document.title
+    document.title = '69KKH NOVEL'
+    return () => {
+      document.title = previousTitle
+    }
+  }, [inTelegram])
+
+  useEffect(() => {
     if (searchParams.get('aba_summon_failed') === '1') {
       setStatusNote(ABA_SUMMON_FAILED_NOTE)
     }
@@ -422,11 +431,11 @@ export default function VipAbaKhqrPage() {
     })
 
   const showAbaMobileButton = useMemo(() => {
-    if (isUiMock || !shouldTryAbaMobileDeeplinkFirst()) return false
+    if (!inTelegram || isUiMock || !shouldTryAbaMobileDeeplinkFirst()) return false
     const qrString = String(displaySession?.qrString || '').trim()
     const deeplink = String(displaySession?.abapayDeeplink || '').trim()
     return Boolean(qrString || deeplink)
-  }, [displaySession?.abapayDeeplink, displaySession?.qrString, isUiMock])
+  }, [displaySession?.abapayDeeplink, displaySession?.qrString, inTelegram, isUiMock])
 
   const onOpenAbaMobile = useCallback(() => {
     const session = qrSessionRef.current || displaySession

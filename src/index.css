@@ -1312,6 +1312,36 @@ a {
   margin-top: 0;
 }
 
+.tg-vip-page__confirming-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.tg-vip-page__confirming-desc {
+  margin: 0;
+  max-width: 280px;
+  font-size: 11px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.tg-vip-page__confirming-spinner {
+  width: 36px;
+  height: 36px;
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  border-top-color: rgba(201, 160, 61, 0.95);
+  border-radius: 50%;
+  animation: tg-vip-confirm-spin 0.85s linear infinite;
+}
+
+@keyframes tg-vip-confirm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Notifications: toolbar divider + empty/loading polish; no outer cards */
 .tg-notifications__toolbar.tg-toolbar {
   box-shadow: none;

@@ -16,6 +16,7 @@ import { buildAbaKhqrUiMockSession, isAbaKhqrUiMockFlowEnabled } from '../lib/ab
 import { preloadAbaKhqrPaymentAssets } from '../lib/abaKhqrAssets.js'
 import { startAbaKhqrPaymentFlow } from '../lib/abaMobile.js'
 import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
+import { isTelegramMiniApp } from '../lib/telegramWebApp.js'
 import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
 import { useVipAbaKhqrPaymentConfirm } from '../hooks/useVipAbaKhqrPaymentConfirm.js'
 import {
@@ -44,6 +45,11 @@ export default function VipPage() {
     const pending = loadActiveVipAbaKhqrPending()
     return Boolean(pending?.tranId)
   })
+  const [confirmingPaymentReturn, setConfirmingPaymentReturn] = useState(() => {
+    const pending = loadActiveVipAbaKhqrPending()
+    return Boolean(pending?.tranId && isTelegramMiniApp())
+  })
+  const paymentWasBackgroundedRef = useRef(false)
   const scrollRef = useRef(null)
   const plansSectionRef = useRef(null)
   const paymentSectionRef = useRef(null)
@@ -117,6 +123,8 @@ export default function VipPage() {
       const opened = startAbaKhqrPaymentFlow(session, planId)
       if (opened.opened) {
         setAbaKhqrAwaitingReturn(true)
+        setConfirmingPaymentReturn(false)
+        paymentWasBackgroundedRef.current = false
         setPurchaseNotice(
           'សូមបង់ប្រាក់ក្នុង Browser ។ បញ្ចប់ហើយត្រឡប់មក Telegram ដើម្បីបញ្ជាក់ VIP',
         )
@@ -136,6 +144,7 @@ export default function VipPage() {
     const planId = String(pending?.planId || selectedPlanId || '').trim()
     const durationHours = Number(getVipPlanForPurchase(planId, viewerProfile.role)?.durationHours) || 0
     setAbaKhqrAwaitingReturn(false)
+    setConfirmingPaymentReturn(false)
     setPurchaseNotice('')
     void refreshViewerProfile()
     navigateToVipPaymentSuccess(
@@ -146,16 +155,45 @@ export default function VipPage() {
         durationHours,
         purchasedAt: new Date().toISOString(),
       },
-      { replace: false, slideEnter: true },
+      { replace: true, slideEnter: true },
     )
   }, [navigate, refreshViewerProfile, selectedPlanId, viewerProfile.role])
 
+  const onReleasePaymentConfirming = useCallback(() => {
+    setConfirmingPaymentReturn(false)
+    setPurchaseNotice('')
+  }, [])
+
   useVipAbaKhqrPaymentConfirm({
     enabled: abaKhqrAwaitingReturn && Boolean(pendingAbaPayment?.tranId),
+    confirmingUiActive: confirmingPaymentReturn,
     tranId: pendingAbaPayment?.tranId || '',
     planId: pendingAbaPayment?.planId || '',
     onSuccess: onAbaKhqrPaymentConfirmed,
+    onReleaseConfirming: onReleasePaymentConfirming,
+    releaseAfterFailedPolls: 3,
   })
+
+  useEffect(() => {
+    if (!abaKhqrAwaitingReturn) {
+      paymentWasBackgroundedRef.current = false
+      return undefined
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        paymentWasBackgroundedRef.current = true
+        return
+      }
+      if (document.visibilityState !== 'visible') return
+      if (!paymentWasBackgroundedRef.current) return
+      setConfirmingPaymentReturn(true)
+      setPurchaseNotice('')
+    }
+
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [abaKhqrAwaitingReturn])
 
   const runAbaPaymentStart = useCallback(
     async () => {
@@ -328,6 +366,22 @@ export default function VipPage() {
         className="tg-list-wrap tg-account-scroll tg-account-scroll--vip flex min-h-0 flex-1 flex-col px-3 py-5"
       >
         <section className="tg-vip-page__stack mx-auto flex w-full max-w-[420px] shrink-0 flex-col gap-3">
+          {confirmingPaymentReturn ? (
+            <section
+              className="tg-vip-page__confirming flex min-h-[50vh] flex-col items-center justify-center gap-3 px-4 py-10 text-center"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <span className="tg-vip-page__confirming-spinner" aria-hidden />
+              <p className="tg-vip-page__confirming-title" lang="km">
+                កំពុងបញ្ជាក់ការទូទាត់…
+              </p>
+              <p className="tg-vip-page__confirming-desc" lang="km">
+                សូមរង់ចាំបន្តិច ប្រព័ន្ធកំពុងពិនិត្យ ABA KHQR
+              </p>
+            </section>
+          ) : (
+            <>
           <VipPurchaseConsent
             sectionRef={consentRef}
             shake={consentShaking}
@@ -491,6 +545,8 @@ export default function VipPage() {
               <span lang="en">Refund Policy</span>
             </Link>
           </footer>
+            </>
+          )}
         </section>
       </main>
 
