@@ -1,6 +1,6 @@
 import { BookOpen, Calendar, Check, Clock, Tag } from 'lucide-react'
 import { useLayoutEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { getVipPlanForPurchase, getVipPlanTierAccentColor, getVipPlanTierClass } from '../data/vipPlansCatalog.js'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
@@ -15,6 +15,7 @@ import {
   formatVipPlanHoursLabel,
   loadVipPaymentSuccessPayload,
 } from '../lib/vipPaymentSuccessState.js'
+import { VIP_PAYMENT_SUCCESS_SLIDE_STATE } from '../lib/vipPaymentSuccessNavigation.js'
 function TitleOrnament({ mirrored = false }) {
   return (
     <svg
@@ -172,7 +173,9 @@ function PurchasedPlanCard({ rows, planTierClass, iconColor }) {
 /** VIP 支付成功页 — 空白模板，后续可补 UI */
 export default function VipPaymentSuccessPage() {
   const edgeSwipeHandlers = useEdgeSwipeBack()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
+  const slideEnter = location.state?.enter === VIP_PAYMENT_SUCCESS_SLIDE_STATE.enter
   const { viewerProfile } = useViewerProfile()
   const payload = useMemo(() => loadVipPaymentSuccessPayload(), [])
   const resolvedPlanId = useMemo(
@@ -201,7 +204,15 @@ export default function VipPaymentSuccessPage() {
   }, [heroReady])
 
   return (
-    <div className="tg-app tg-vip-payment-success-page" {...edgeSwipeHandlers}>
+    <div
+      className={[
+        'tg-app tg-vip-payment-success-page',
+        slideEnter ? 'tg-vip-payment-success-page--slide-enter' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      {...edgeSwipeHandlers}
+    >
       <main className="tg-vip-payment-success-page__main">
         <header
           className={[

@@ -345,7 +345,12 @@ export function markVipAbaKhqrBrowserFlowOpen(session) {
   try {
     sessionStorage.setItem(
       VIP_ABA_KHQR_BROWSER_FLOW_KEY,
-      JSON.stringify({ tranId, openedAtMs: Date.now(), returnedFromBrowser: false }),
+      JSON.stringify({
+        tranId,
+        openedAtMs: Date.now(),
+        returnedFromBrowser: false,
+        tgBackgrounded: false,
+      }),
     )
     clearVipAbaKhqrConfirmingUiDismissed()
     return true
@@ -378,16 +383,42 @@ function isVipAbaKhqrConfirmingUiDismissed() {
   }
 }
 
+function readVipAbaKhqrBrowserFlowRecord(tranId) {
+  const tid = String(tranId || '').trim()
+  if (!tid || typeof sessionStorage === 'undefined') return null
+  try {
+    const raw = sessionStorage.getItem(VIP_ABA_KHQR_BROWSER_FLOW_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (String(parsed?.tranId || '').trim() !== tid) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
 function hasVipAbaKhqrBrowserFlowReturned(tranId) {
+  const parsed = readVipAbaKhqrBrowserFlowRecord(tranId)
+  return parsed?.returnedFromBrowser === true
+}
+
+function hasVipAbaKhqrBrowserFlowBackgrounded(tranId) {
+  const parsed = readVipAbaKhqrBrowserFlowRecord(tranId)
+  return parsed?.tgBackgrounded === true
+}
+
+/** Mini App went to background while browser / bank flow is active (sync, before paint). */
+export function markVipAbaKhqrBrowserFlowBackgrounded(tranId) {
   const tid = String(tranId || '').trim()
   if (!tid || typeof sessionStorage === 'undefined') return false
   try {
-    const raw = sessionStorage.getItem(VIP_ABA_KHQR_BROWSER_FLOW_KEY)
-    if (!raw) return false
-    const parsed = JSON.parse(raw)
-    return (
-      String(parsed?.tranId || '').trim() === tid && parsed?.returnedFromBrowser === true
+    const parsed = readVipAbaKhqrBrowserFlowRecord(tid)
+    if (!parsed) return false
+    sessionStorage.setItem(
+      VIP_ABA_KHQR_BROWSER_FLOW_KEY,
+      JSON.stringify({ ...parsed, tgBackgrounded: true }),
     )
+    return true
   } catch {
     return false
   }
@@ -419,8 +450,16 @@ export function shouldShowVipAbaKhqrConfirmingUi(tranId) {
   if (!tid) return false
   if (isVipAbaKhqrConfirmingUiDismissed()) return false
   if (!hasActiveVipAbaKhqrBrowserFlow(tid)) return false
-  if (!hasVipAbaKhqrBrowserFlowReturned(tid)) return false
-  return Boolean(loadVipAbaKhqrPendingPayment(tid))
+  if (!loadVipAbaKhqrPendingPayment(tid)) return false
+  if (hasVipAbaKhqrBrowserFlowReturned(tid)) return true
+  if (
+    hasVipAbaKhqrBrowserFlowBackgrounded(tid) &&
+    typeof document !== 'undefined' &&
+    document.visibilityState === 'visible'
+  ) {
+    return true
+  }
+  return false
 }
 
 /** Restore VIP tab awaiting / confirming UI after in-app navigation or cold mount. */

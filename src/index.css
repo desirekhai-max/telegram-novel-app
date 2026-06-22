@@ -1359,6 +1359,24 @@ a {
   }
 }
 
+.tg-vip-page__confirming--slide-out {
+  animation: tg-vip-confirm-slide-out 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes tg-vip-confirm-slide-out {
+  to {
+    opacity: 0;
+    transform: translateX(-16%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-vip-page__confirming--slide-out {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 /* Notifications: toolbar divider + empty/loading polish; no outer cards */
 .tg-notifications__toolbar.tg-toolbar {
   box-shadow: none;
@@ -2311,6 +2329,27 @@ a {
 .tg-vip-payment-success-page.tg-app {
   padding: 0;
   background: #ffffff;
+}
+
+.tg-vip-payment-success-page--slide-enter.tg-app {
+  animation: tg-vip-success-slide-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes tg-vip-success-slide-in {
+  from {
+    opacity: 0.92;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-vip-payment-success-page--slide-enter.tg-app {
+    animation: none;
+  }
 }
 
 .tg-vip-payment-success-page__main {

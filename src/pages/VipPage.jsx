@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { BookOpen, Check, ChevronRight, ShieldCheck } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AbaKhqrEntryRow from '../components/AbaKhqrEntryRow.jsx'
@@ -23,11 +24,13 @@ import {
   getActiveVipAbaKhqrPendingExpiry,
   hasActiveVipAbaKhqrBrowserFlow,
   loadActiveVipAbaKhqrPending,
+  markVipAbaKhqrBrowserFlowBackgrounded,
   markVipAbaKhqrBrowserFlowOpen,
   markVipAbaKhqrBrowserFlowReturned,
   resolveVipAbaKhqrAwaitingUiState,
   saveVipAbaKhqrPendingPayment,
   saveVipAbaKhqrSession,
+  shouldShowVipAbaKhqrConfirmingUi,
 } from '../lib/vipAbaKhqrSession.js'
 import { navigateToVipPaymentSuccess } from '../lib/vipPaymentSuccessNavigation.js'
 import {
@@ -102,8 +105,10 @@ export default function VipPage() {
   const initialAbaUiState = useMemo(() => readInitialVipAbaKhqrUiState(), [])
   const [abaKhqrAwaitingReturn, setAbaKhqrAwaitingReturn] = useState(initialAbaUiState.awaiting)
   const [confirmingPaymentReturn, setConfirmingPaymentReturn] = useState(initialAbaUiState.confirming)
+  const [confirmingSlideOut, setConfirmingSlideOut] = useState(false)
   const [pendingCountdownMs, setPendingCountdownMs] = useState(0)
   const paymentWasBackgroundedRef = useRef(false)
+  const successNavPendingRef = useRef(false)
   const scrollRef = useRef(null)
   const plansSectionRef = useRef(null)
   const paymentSectionRef = useRef(null)
@@ -209,24 +214,40 @@ export default function VipPage() {
 
   const pendingAbaPayment = useMemo(() => loadActiveVipAbaKhqrPending(), [abaKhqrAwaitingReturn])
 
+  const showConfirmingUi = useMemo(() => {
+    if (confirmingPaymentReturn || confirmingSlideOut) return true
+    const tid = String(pendingAbaPayment?.tranId || '').trim()
+    if (!abaKhqrAwaitingReturn || !tid) return false
+    return shouldShowVipAbaKhqrConfirmingUi(tid)
+  }, [
+    abaKhqrAwaitingReturn,
+    confirmingPaymentReturn,
+    confirmingSlideOut,
+    pendingAbaPayment?.tranId,
+  ])
+
   const onAbaKhqrPaymentConfirmed = useCallback(() => {
+    if (successNavPendingRef.current) return
+    successNavPendingRef.current = true
+
     const pending = loadActiveVipAbaKhqrPending()
     const planId = String(pending?.planId || selectedPlanId || '').trim()
     const durationHours = Number(getVipPlanForPurchase(planId, viewerProfile.role)?.durationHours) || 0
-    setAbaKhqrAwaitingReturn(false)
-    setConfirmingPaymentReturn(false)
-    setPurchaseNotice('')
-    void refreshViewerProfile()
-    navigateToVipPaymentSuccess(
-      navigate,
-      {
-        planId,
-        priceLabel: String(pending?.amountLabel || '').trim(),
-        durationHours,
-        purchasedAt: new Date().toISOString(),
-      },
-      { replace: true, slideEnter: true },
-    )
+    const successPayload = {
+      planId,
+      priceLabel: String(pending?.amountLabel || '').trim(),
+      durationHours,
+      purchasedAt: new Date().toISOString(),
+    }
+
+    setConfirmingSlideOut(true)
+    window.setTimeout(() => {
+      setAbaKhqrAwaitingReturn(false)
+      setConfirmingPaymentReturn(false)
+      setPurchaseNotice('')
+      void refreshViewerProfile()
+      navigateToVipPaymentSuccess(navigate, successPayload, { replace: true, slideEnter: true })
+    }, 280)
   }, [navigate, refreshViewerProfile, selectedPlanId, viewerProfile.role])
 
   const onAbaKhqrPaymentExpired = useCallback(() => {
@@ -247,7 +268,7 @@ export default function VipPage() {
   })
 
   useEffect(() => {
-    if (!confirmingPaymentReturn) {
+    if (!showConfirmingUi) {
       setPendingCountdownMs(0)
       return undefined
     }
@@ -267,9 +288,9 @@ export default function VipPage() {
     tick()
     const timerId = window.setInterval(tick, 1000)
     return () => window.clearInterval(timerId)
-  }, [confirmingPaymentReturn, onAbaKhqrPaymentExpired, pendingAbaPayment?.tranId])
+  }, [showConfirmingUi, onAbaKhqrPaymentExpired, pendingAbaPayment?.tranId])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!abaKhqrAwaitingReturn) {
       paymentWasBackgroundedRef.current = false
       return undefined
@@ -279,16 +300,19 @@ export default function VipPage() {
       const tid = String(loadActiveVipAbaKhqrPending()?.tranId || '').trim()
       if (document.visibilityState === 'hidden') {
         if (tid && hasActiveVipAbaKhqrBrowserFlow(tid)) {
+          markVipAbaKhqrBrowserFlowBackgrounded(tid)
           paymentWasBackgroundedRef.current = true
         }
         return
       }
       if (document.visibilityState !== 'visible') return
-      if (!paymentWasBackgroundedRef.current) return
       if (!tid || !hasActiveVipAbaKhqrBrowserFlow(tid)) return
+      if (!paymentWasBackgroundedRef.current && !shouldShowVipAbaKhqrConfirmingUi(tid)) return
       markVipAbaKhqrBrowserFlowReturned(tid)
-      setConfirmingPaymentReturn(true)
-      setPurchaseNotice('')
+      flushSync(() => {
+        setConfirmingPaymentReturn(true)
+        setPurchaseNotice('')
+      })
     }
 
     document.addEventListener('visibilitychange', onVisibility)
@@ -437,11 +461,16 @@ export default function VipPage() {
         className="tg-list-wrap tg-account-scroll tg-account-scroll--vip flex min-h-0 flex-1 flex-col px-3 py-5"
       >
         <section className="tg-vip-page__stack mx-auto flex w-full max-w-[420px] shrink-0 flex-col gap-3">
-          {confirmingPaymentReturn ? (
+          {showConfirmingUi ? (
             <section
-              className="tg-vip-page__confirming flex min-h-[50vh] flex-col items-center justify-center gap-3 px-4 py-10 text-center"
+              className={[
+                'tg-vip-page__confirming flex min-h-[50vh] flex-col items-center justify-center gap-3 px-4 py-10 text-center',
+                confirmingSlideOut ? 'tg-vip-page__confirming--slide-out' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               aria-live="polite"
-              aria-busy="true"
+              aria-busy={!confirmingSlideOut}
             >
               <span className="tg-vip-page__confirming-spinner" aria-hidden />
               <p className="tg-vip-page__confirming-title" lang="km">
