@@ -27,12 +27,10 @@ import {
   saveVipAbaKhqrSession,
 } from '../lib/vipAbaKhqrSession.js'
 import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
-import { navigateToVipPaymentSuccess } from '../lib/vipPaymentSuccessNavigation.js'
+import { scheduleVipPaymentSuccessNavigation } from '../lib/vipPaymentSuccessNavigation.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
 import { useDisablePageZoom } from '../hooks/useDisablePageZoom.js'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
-
-const SUCCESS_NAV_DELAY_MS = 2000
 
 const ABA_SUMMON_FAILED_NOTE =
   'មិនអាចបើក ABA Mobile ។ សូម Scan QR ខាងលើដើម្បីបង់ប្រាក់'
@@ -137,10 +135,10 @@ export default function VipAbaKhqrPage() {
     return 'កំពុងរង់ចាំការបញ្ជាក់ការទូទាត់…'
   })
   const [resultModal, setResultModal] = useState(null)
+  const [successSlideOut, setSuccessSlideOut] = useState(false)
   const pollRef = useRef(0)
   const successNavRef = useRef(false)
   const pendingSuccessRef = useRef(false)
-  const successDelayTimerRef = useRef(0)
   const redirectCheckedRef = useRef(false)
   const edgeSwipeHandlers = useEdgeSwipeBack()
   const pageSwipeHandlers = resultModal ? {} : edgeSwipeHandlers
@@ -269,40 +267,38 @@ export default function VipAbaKhqrPage() {
     if (successNavRef.current) return
     successNavRef.current = true
     pendingSuccessRef.current = false
-    if (successDelayTimerRef.current) {
-      window.clearTimeout(successDelayTimerRef.current)
-      successDelayTimerRef.current = 0
-    }
     stopPolling()
 
     const activeSession = qrSessionRef.current
-    clearVipAbaKhqrSession()
-    clearVipAbaKhqrPendingPayment(tranId)
-    navigateToVipPaymentSuccess(
+    const successPayload = {
+      planId,
+      priceLabel: String(activeSession?.amountLabel || '').trim(),
+      durationHours,
+      purchasedAt: new Date().toISOString(),
+    }
+
+    scheduleVipPaymentSuccessNavigation(
       navigate,
+      successPayload,
+      () => setSuccessSlideOut(true),
       {
-        planId,
-        priceLabel: String(activeSession?.amountLabel || '').trim(),
-        durationHours,
-        purchasedAt: new Date().toISOString(),
+        replace: true,
+        onBeforeNavigate: () => {
+          clearVipAbaKhqrSession()
+          clearVipAbaKhqrPendingPayment(tranId)
+          void refreshViewerProfile()
+        },
       },
-      { replace: true, slideEnter: false },
     )
-    void refreshViewerProfile()
-    void preloadVipPaymentSuccessAssets()
-  }, [durationHours, navigate, planId, refreshViewerProfile, stopPolling])
+  }, [durationHours, navigate, planId, refreshViewerProfile, stopPolling, tranId])
 
   const startSuccessCountdown = useCallback(() => {
-    if (successNavRef.current || successDelayTimerRef.current) return
+    if (successNavRef.current) return
     if (document.visibilityState !== 'visible') return
 
     setStatusNote('ការបង់ប្រាក់បានជោគជ័យ កំពុងបញ្ជាក់…')
     void preloadVipPaymentSuccessAssets()
-
-    successDelayTimerRef.current = window.setTimeout(() => {
-      successDelayTimerRef.current = 0
-      goSuccess()
-    }, SUCCESS_NAV_DELAY_MS)
+    goSuccess()
   }, [goSuccess])
 
   const markPaymentSuccess = useCallback(() => {
@@ -420,16 +416,6 @@ export default function VipAbaKhqrPage() {
     }
   }, [fulfillmentHint, inTelegram, isUiMock, planIdParam, stopPolling, tranId, tranIdParam, uiMockQuery, viewerProfile.role])
 
-  useEffect(
-    () => () => {
-      if (successDelayTimerRef.current) {
-        window.clearTimeout(successDelayTimerRef.current)
-        successDelayTimerRef.current = 0
-      }
-    },
-    [],
-  )
-
   const closeResultModal = useCallback(() => {
     setResultModal(null)
   }, [])
@@ -492,7 +478,15 @@ export default function VipAbaKhqrPage() {
   }, [displaySession, inTelegram, isUiMock, returnToQrUrl])
 
   return (
-    <div className="tg-app tg-app--account tg-aba-khqr-page" {...pageSwipeHandlers}>
+    <div
+      className={[
+        'tg-app tg-app--account tg-aba-khqr-page',
+        successSlideOut ? 'tg-aba-khqr-page--slide-out' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      {...pageSwipeHandlers}
+    >
       <main className="tg-list-wrap tg-aba-khqr-page__main flex min-h-0 flex-1 flex-col">
         <div className="tg-aba-khqr-page__shell">
           {handoffLoading ? (

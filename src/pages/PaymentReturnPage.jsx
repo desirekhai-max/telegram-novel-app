@@ -4,7 +4,7 @@ import VipPaymentResultModal from '../components/VipPaymentResultModal.jsx'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
 import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
-import { navigateToVipPaymentSuccess } from '../lib/vipPaymentSuccessNavigation.js'
+import { scheduleVipPaymentSuccessNavigation } from '../lib/vipPaymentSuccessNavigation.js'
 import { readVipPaymentFulfillmentHint } from '../lib/vipPaymentResultState.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 import { clearVipAbaKhqrSession } from '../lib/vipAbaKhqrSession.js'
@@ -21,6 +21,7 @@ export default function PaymentReturnPage() {
   const { viewerProfile, refreshViewerProfile } = useViewerProfile()
   const [viewState, setViewState] = useState('loading')
   const [statusMessage, setStatusMessage] = useState('')
+  const [successSlideOut, setSuccessSlideOut] = useState(false)
   const successNavRef = useRef(false)
 
   const uiMock = searchParams.get('ui_mock') === '1'
@@ -49,7 +50,7 @@ export default function PaymentReturnPage() {
   const goSuccessPage = useCallback(() => {
     if (successNavRef.current) return
     successNavRef.current = true
-    navigateToVipPaymentSuccess(
+    scheduleVipPaymentSuccessNavigation(
       navigate,
       {
         planId: planId || catalogPlan?.planId || 'vip_entry',
@@ -57,9 +58,15 @@ export default function PaymentReturnPage() {
         durationHours,
         purchasedAt: new Date().toISOString(),
       },
-      { replace: true, slideEnter: false },
+      () => setSuccessSlideOut(true),
+      {
+        replace: true,
+        onBeforeNavigate: () => {
+          void refreshViewerProfile()
+        },
+      },
     )
-  }, [catalogPlan?.planId, catalogPlan?.priceUsdLabel, durationHours, navigate, planId])
+  }, [catalogPlan?.planId, catalogPlan?.priceUsdLabel, durationHours, navigate, planId, refreshViewerProfile])
 
   useEffect(() => {
     if (shouldRedirectToKhqr) return undefined
@@ -105,7 +112,6 @@ export default function PaymentReturnPage() {
       if (!active) return
 
       if (result.ok && result.profile?.vipActive) {
-        void refreshViewerProfile()
         goSuccessPage()
         return
       }
@@ -147,7 +153,14 @@ export default function PaymentReturnPage() {
   }
 
   return (
-    <div className="tg-vip-payment-result-modal-host">
+    <div
+      className={[
+        'tg-vip-payment-result-modal-host',
+        successSlideOut ? 'tg-vip-payment-result-modal-host--slide-out' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       {!modalViewState ? (
         <div className="tg-vip-payment-result-modal-host__status">
           <p className="tg-vip-payment-result-modal-host__status-text" lang="km">

@@ -32,7 +32,7 @@ import {
   saveVipAbaKhqrSession,
   shouldShowVipAbaKhqrConfirmingUi,
 } from '../lib/vipAbaKhqrSession.js'
-import { navigateToVipPaymentSuccess } from '../lib/vipPaymentSuccessNavigation.js'
+import { scheduleVipPaymentSuccessNavigation } from '../lib/vipPaymentSuccessNavigation.js'
 import {
   purchaseViewerVipPlan,
   startViewerVipAbaKhqr,
@@ -240,14 +240,20 @@ export default function VipPage() {
       purchasedAt: new Date().toISOString(),
     }
 
-    setConfirmingSlideOut(true)
-    window.setTimeout(() => {
-      setAbaKhqrAwaitingReturn(false)
-      setConfirmingPaymentReturn(false)
-      setPurchaseNotice('')
-      void refreshViewerProfile()
-      navigateToVipPaymentSuccess(navigate, successPayload, { replace: true, slideEnter: true })
-    }, 280)
+    scheduleVipPaymentSuccessNavigation(
+      navigate,
+      successPayload,
+      () => setConfirmingSlideOut(true),
+      {
+        replace: true,
+        onBeforeNavigate: () => {
+          setAbaKhqrAwaitingReturn(false)
+          setConfirmingPaymentReturn(false)
+          setPurchaseNotice('')
+          void refreshViewerProfile()
+        },
+      },
+    )
   }, [navigate, refreshViewerProfile, selectedPlanId, viewerProfile.role])
 
   const onAbaKhqrPaymentExpired = useCallback(() => {

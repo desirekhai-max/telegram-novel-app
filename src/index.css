@@ -1363,6 +1363,11 @@ a {
   animation: tg-vip-confirm-slide-out 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
+.tg-aba-khqr-page--slide-out.tg-app,
+.tg-vip-payment-result-modal-host--slide-out {
+  animation: tg-vip-confirm-slide-out 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
 @keyframes tg-vip-confirm-slide-out {
   to {
     opacity: 0;
@@ -1371,7 +1376,9 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tg-vip-page__confirming--slide-out {
+  .tg-vip-page__confirming--slide-out,
+  .tg-aba-khqr-page--slide-out.tg-app,
+  .tg-vip-payment-result-modal-host--slide-out {
     animation: none;
     opacity: 0;
   }
