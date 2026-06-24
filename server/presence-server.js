@@ -343,6 +343,7 @@ function pruneExpiredReadRecords(nowMs = now()) {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const DATA_FILE = path.join(PERSISTENT_DATA_DIR, 'presence-data.json')
+const ADMIN_SESSIONS_FILE = path.join(PERSISTENT_DATA_DIR, 'admin-sessions.json')
 
 function normalizeTelegramUserId(raw) {
   const n = Number(raw)
@@ -1736,6 +1737,61 @@ function getLegacyAdminSession(token) {
   return rec
 }
 
+function touchAdminSession(token) {
+  if (!token) return null
+  pruneAdminSessions()
+  const rec = adminSessions.get(token)
+  if (!rec || Number(rec.expiresAt) <= now()) return null
+  rec.expiresAt = now() + ADMIN_TOKEN_TTL_MS
+  adminSessions.set(token, rec)
+  persistAdminSessionsToDisk()
+  return rec
+}
+
+function touchLegacyAdminSession(token) {
+  if (!token) return null
+  pruneLegacyAdminSessions()
+  const rec = adminLegacySessions.get(token)
+  if (!rec || Number(rec.expiresAt) <= now()) return null
+  rec.expiresAt = now() + ADMIN_TOKEN_TTL_MS
+  adminLegacySessions.set(token, rec)
+  persistAdminSessionsToDisk()
+  return rec
+}
+
+function persistAdminSessionsToDisk() {
+  try {
+    pruneAdminSessions()
+    pruneLegacyAdminSessions()
+    const payload = {
+      admin: Object.fromEntries(adminSessions.entries()),
+      legacy: Object.fromEntries(adminLegacySessions.entries()),
+    }
+    fs.mkdirSync(PERSISTENT_DATA_DIR, { recursive: true })
+    fs.writeFileSync(ADMIN_SESSIONS_FILE, JSON.stringify(payload), 'utf8')
+  } catch (error) {
+    console.warn('[admin-sessions] persist failed:', error?.message || error)
+  }
+}
+
+function loadAdminSessionsFromDisk() {
+  try {
+    if (!fs.existsSync(ADMIN_SESSIONS_FILE)) return
+    const parsed = JSON.parse(fs.readFileSync(ADMIN_SESSIONS_FILE, 'utf8'))
+    const t = now()
+    const adminObj = parsed?.admin && typeof parsed.admin === 'object' ? parsed.admin : {}
+    const legacyObj = parsed?.legacy && typeof parsed.legacy === 'object' ? parsed.legacy : {}
+    for (const [token, rec] of Object.entries(adminObj)) {
+      if (token && rec && Number(rec.expiresAt) > t) adminSessions.set(token, rec)
+    }
+    for (const [token, rec] of Object.entries(legacyObj)) {
+      if (token && rec && Number(rec.expiresAt) > t) adminLegacySessions.set(token, rec)
+    }
+  } catch (error) {
+    console.warn('[admin-sessions] load failed:', error?.message || error)
+  }
+}
+
 function requireLegacyAdmin(req, res) {
   const token = extractBearerToken(req)
   if (isLegacyAdminTokenValid(token) || isAdminTokenValid(token)) return token
@@ -2377,12 +2433,13 @@ const server = http.createServer(async (req, res) => {
     }
     const token = crypto.randomBytes(24).toString('hex')
     adminSessions.set(token, { username, createdAt: now(), expiresAt: now() + ADMIN_TOKEN_TTL_MS })
+    persistAdminSessionsToDisk()
     return sendJson(res, 200, { ok: true, token, username, expiresInMs: ADMIN_TOKEN_TTL_MS })
   }
 
   if (req.method === 'GET' && url.pathname === '/api/admin/session') {
     const token = extractBearerToken(req)
-    const session = getAdminSession(token)
+    const session = touchAdminSession(token)
     if (!session) return sendJson(res, 401, { ok: false, error: 'admin unauthorized' })
     return sendJson(res, 200, { ok: true, username: String(session.username || ADMIN_USER) })
   }
@@ -2390,6 +2447,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/admin/logout') {
     const token = extractBearerToken(req)
     if (token) adminSessions.delete(token)
+    persistAdminSessionsToDisk()
     return sendJson(res, 200, { ok: true })
   }
 
@@ -2414,12 +2472,13 @@ const server = http.createServer(async (req, res) => {
     }
     const token = crypto.randomBytes(24).toString('hex')
     adminLegacySessions.set(token, { username, createdAt: now(), expiresAt: now() + ADMIN_TOKEN_TTL_MS })
+    persistAdminSessionsToDisk()
     return sendJson(res, 200, { ok: true, token, username, expiresInMs: ADMIN_TOKEN_TTL_MS })
   }
 
   if (req.method === 'GET' && url.pathname === '/api/admin-legacy/session') {
     const token = extractBearerToken(req)
-    const session = getLegacyAdminSession(token)
+    const session = touchLegacyAdminSession(token)
     if (!session) return sendJson(res, 401, { ok: false, error: 'legacy admin unauthorized' })
     return sendJson(res, 200, { ok: true, username: String(session.username || ADMIN_LEGACY_USER) })
   }
@@ -2435,6 +2494,8 @@ const server = http.createServer(async (req, res) => {
       createdAt: now(),
       expiresAt: now() + ADMIN_TOKEN_TTL_MS,
     })
+    touchAdminSession(token)
+    persistAdminSessionsToDisk()
     return sendJson(res, 200, {
       ok: true,
       token: legacyToken,
@@ -2446,6 +2507,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/admin-legacy/logout') {
     const token = extractBearerToken(req)
     if (token) adminLegacySessions.delete(token)
+    persistAdminSessionsToDisk()
     return sendJson(res, 200, { ok: true })
   }
 
@@ -2955,6 +3017,7 @@ initAppFiltersStore()
 initNovelVisibilityStore()
 initOrdersStore()
 loadPersistedMembers()
+loadAdminSessionsFromDisk()
 initNovelCoverUpload()
 initNovelsStore()
   .then(() => {
