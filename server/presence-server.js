@@ -1397,44 +1397,49 @@ function isPlausibleTelegramUserId(telegramUserId) {
   const id = normalizeTelegramUserId(telegramUserId)
   if (!id) return false
   if (ADMIN_TEST_TELEGRAM_IDS.has(id)) return false
-  // 真实 Telegram 用户 ID 通常 ≥ 8 位
-  if (id.length < 8) return false
+  if (id.length < 6) return false
   return true
 }
 
-function isTelegramMiniAppUser(profile) {
-  if (!profile || !isPlausibleTelegramUserId(profile.telegramUserId)) return false
-
-  const id = normalizeTelegramUserId(profile.telegramUserId)
-  const memberId = String(profile.memberId || `tg_${id}`).trim()
-
-  // 必须出现在 presence 已知成员（打开过 APP / 同步过会话）
+/** 曾通过 Telegram 端打开 APP：knownMembers 中有 tg_* 且有进入记录 */
+function isTelegramAppEnteredUser(telegramUserId) {
+  if (!isPlausibleTelegramUserId(telegramUserId)) return false
+  const id = normalizeTelegramUserId(telegramUserId)
+  const memberId = `tg_${id}`
   if (!knownMembers.has(memberId)) return false
-
   const firstSeen = Number(memberFirstSeenAt.get(memberId) || 0)
   const lastLogin = Number(memberLastLoginAt.get(memberId) || 0)
-  const lastSeen = Number(profile.lastSeenAt || 0)
-  if (!(firstSeen > 0 || lastLogin > 0 || lastSeen > 0)) return false
+  const presence = records.get(memberId)
+  const presenceSeen = Number(presence?.lastSeenAt || 0)
+  return firstSeen > 0 || lastLogin > 0 || presenceSeen > 0
+}
 
-  const authMode = String(profile.authMode || '').trim().toLowerCase()
-  const hasTelegramAuth =
-    profile.authVerified === true ||
-    authMode.includes('telegram') ||
-    authMode === 'unverified-fallback'
-
-  const displayName = String(profile.displayName || '').trim()
-  const genericName = displayName === `User ${id}` || displayName === `用户 ${id}`
-  const hasTgIdentity = Boolean(
-    String(profile.username || '').trim() ||
-      String(profile.photoUrl || '').trim() ||
-      (displayName && !genericName),
+function resolveAdminListUserProfile(telegramUserId) {
+  const id = normalizeTelegramUserId(telegramUserId)
+  if (!id) return null
+  const memberId = `tg_${id}`
+  const stored = memberProfiles.get(id)
+  const lastLogin = Number(memberLastLoginAt.get(memberId) || 0)
+  const firstSeen = Number(memberFirstSeenAt.get(memberId) || 0)
+  const presenceSeen = Number(records.get(memberId)?.lastSeenAt || 0)
+  const lastSeenAt = Math.max(
+    Number(stored?.lastSeenAt || 0),
+    lastLogin,
+    firstSeen,
+    presenceSeen,
   )
-
-  if (TELEGRAM_BOT_TOKEN) {
-    return profile.authVerified === true
+  if (stored) {
+    if (lastSeenAt > Number(stored.lastSeenAt || 0)) {
+      return normalizeMemberProfileIn({ ...stored, lastSeenAt }, id)
+    }
+    return stored
   }
-
-  return hasTelegramAuth && hasTgIdentity
+  if (!lastSeenAt) return null
+  return normalizeMemberProfileIn({
+    telegramUserId: id,
+    lastSeenAt,
+    authMode: 'telegram-app-presence',
+  }, id)
 }
 
 function formatAdminUserRow(profile) {
@@ -1451,7 +1456,12 @@ function formatAdminUserRow(profile) {
   const stats = computeAdminUserStats(profile)
   const packageName = resolveUserPackageLabel(profile)
   const vipExpireAtMs = Number(profile?.vipExpireAtMs || 0)
-  const lastSeenAt = Number(profile.lastSeenAt || 0)
+  const lastSeenAt = Math.max(
+    Number(profile.lastSeenAt || 0),
+    Number(memberLastLoginAt.get(memberId) || 0),
+    Number(memberFirstSeenAt.get(memberId) || 0),
+    Number(records.get(memberId)?.lastSeenAt || 0),
+  )
   const isOnline = lastSeenAt > 0 && lastSeenAt >= now() - ONLINE_WINDOW_MS
   return {
     id: telegramUserId,
@@ -2115,10 +2125,11 @@ function buildAdminUsersList() {
     if (!matched) continue
     const id = matched[1]
     if (seen.has(id)) continue
+    if (!isTelegramAppEnteredUser(id)) continue
     seen.add(id)
 
-    const profile = memberProfiles.get(id) || resolveViewerProfileByTelegramUserId(id)
-    if (!profile || !isTelegramMiniAppUser(profile)) continue
+    const profile = resolveAdminListUserProfile(id)
+    if (!profile) continue
     users.push(formatAdminUserRow(profile))
   }
 
