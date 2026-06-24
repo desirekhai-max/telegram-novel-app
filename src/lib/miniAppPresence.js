@@ -123,10 +123,12 @@ export async function reportMetricEvent(type) {
 /** 写入阅读记录（管理端「阅读记录管理」列表）；成功后会派发 `tg-admin-records-changed` */
 export async function appendReadingRecord(record) {
   try {
+    const device = String(record?.device || detectMiniAppBucket() || '').trim()
+    const payload = device ? { ...record, device } : record
     const res = await fetch(apiUrl('/api/reading-records/append'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(record),
+      body: JSON.stringify(payload),
     })
     if (res.ok) {
       window.dispatchEvent(new CustomEvent('tg-admin-records-changed'))

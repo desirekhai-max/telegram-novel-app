@@ -87,6 +87,7 @@ const memberRegisterGeo = new Map()
 const memberLastLoginIp = new Map()
 const memberLastLoginGeo = new Map()
 const memberLastLoginAt = new Map()
+const memberLastDevice = new Map()
 const txMetrics = {
   readEvents: [],
   orderEvents: [],
@@ -301,7 +302,7 @@ function normalizeReportIn(raw, novelId = '') {
   }
 }
 
-function normalizeReadRecordIn(raw) {
+function normalizeReadRecordIn(raw, req = null) {
   if (!raw || typeof raw !== 'object') return null
   const readChapter = String(raw.readChapter || '').slice(0, 250)
   const novelId = String(raw.novelId || '').trim().slice(0, 80)
@@ -310,9 +311,10 @@ function normalizeReadRecordIn(raw) {
     Number.isFinite(chapterIndexRaw) && chapterIndexRaw >= 0
       ? Math.floor(chapterIndexRaw)
       : null
+  const memberId = String(raw.memberId || '').slice(0, 64)
   const out = {
     memberName: String(raw.memberName || '').slice(0, 120),
-    memberId: String(raw.memberId || '').slice(0, 64),
+    memberId,
     memberAccount: String(raw.memberAccount || '').slice(0, 120),
     memberLevel: String(raw.memberLevel || '').slice(0, 64),
     memberOrder: String(raw.memberOrder || '').slice(0, 32),
@@ -324,6 +326,12 @@ function normalizeReadRecordIn(raw) {
     ...(chapterIndex != null ? { chapterIndex } : {}),
   }
   if (!out.shelfTitle) return null
+  const deviceRaw = String(raw.device || raw.os || raw.platform || raw.clientDevice || '').trim()
+  const device = deviceRaw ? normalizeDevice(deviceRaw) : getMemberLastDevice(memberId)
+  if (device) out.device = device
+  const reqIp = req ? getRequestIp(req) : ''
+  const ip = normalizeIp(raw.ip || raw.clientIp || raw.loginIp) || reqIp || ''
+  if (ip) out.ip = ip
   return out
 }
 
@@ -587,7 +595,7 @@ function resolveViewerProfileByTelegramUserId(telegramUserId) {
   return created
 }
 
-function ensurePresenceMemberKnown(memberId, req, atMs = now()) {
+function ensurePresenceMemberKnown(memberId, req, atMs = now(), device = '') {
   const mid = String(memberId || '').trim()
   if (!mid) return
   const reqIp = getRequestIp(req)
@@ -601,6 +609,7 @@ function ensurePresenceMemberKnown(memberId, req, atMs = now()) {
   if (reqIp) memberLastLoginIp.set(mid, reqIp)
   if (reqGeo) memberLastLoginGeo.set(mid, reqGeo)
   memberLastLoginAt.set(mid, atMs)
+  if (String(device || '').trim()) setMemberLastDevice(mid, device)
 }
 
 function upsertViewerProfile(telegramUser, req, authMeta = {}) {
@@ -873,6 +882,9 @@ function loadPersistedMembers() {
     const loginAtObj = parsed?.memberLastLoginAt && typeof parsed.memberLastLoginAt === 'object'
       ? parsed.memberLastLoginAt
       : {}
+    const lastDeviceObj = parsed?.memberLastDevice && typeof parsed.memberLastDevice === 'object'
+      ? parsed.memberLastDevice
+      : {}
     const memberProfilesObj = parsed?.memberProfiles && typeof parsed.memberProfiles === 'object'
       ? parsed.memberProfiles
       : {}
@@ -914,6 +926,12 @@ function loadPersistedMembers() {
     }
     for (const [id, ts] of Object.entries(loginAtObj)) {
       if (id && Number(ts)) memberLastLoginAt.set(String(id), Number(ts))
+    }
+    for (const [id, device] of Object.entries(lastDeviceObj)) {
+      const dev = String(device || '').trim().toLowerCase()
+      if (id && (dev === 'android' || dev === 'ios' || dev === 'web')) {
+        memberLastDevice.set(String(id), dev)
+      }
     }
     for (const [telegramUserId, row] of Object.entries(memberProfilesObj)) {
       const normalized = normalizeMemberProfileIn(row, telegramUserId)
@@ -1072,6 +1090,7 @@ function persistMembers() {
       memberLastLoginIp: Object.fromEntries(memberLastLoginIp),
       memberLastLoginGeo: Object.fromEntries(memberLastLoginGeo),
       memberLastLoginAt: Object.fromEntries(memberLastLoginAt),
+      memberLastDevice: Object.fromEntries(memberLastDevice),
       memberProfiles: Object.fromEntries(memberProfiles),
       vipOrdersByUser: Object.fromEntries(vipOrdersByUser),
       pendingVipOrdersByTranId: Object.fromEntries(pendingVipOrdersByTranId),
@@ -1472,6 +1491,30 @@ function normalizeDevice(input) {
   if (v === 'android') return 'android'
   if (v === 'ios') return 'ios'
   return 'web'
+}
+
+function memberIdAliasKeys(memberId) {
+  const raw = String(memberId || '').trim()
+  if (!raw) return []
+  const stripped = raw.replace(/^tg_/, '')
+  return [...new Set([raw, stripped, stripped ? `tg_${stripped}` : ''].filter(Boolean))]
+}
+
+function setMemberLastDevice(memberId, device) {
+  const raw = String(device || '').trim().toLowerCase()
+  if (!raw) return
+  const dev = normalizeDevice(raw)
+  for (const key of memberIdAliasKeys(memberId)) {
+    memberLastDevice.set(key, dev)
+  }
+}
+
+function getMemberLastDevice(memberId) {
+  for (const key of memberIdAliasKeys(memberId)) {
+    const dev = memberLastDevice.get(key)
+    if (dev) return dev
+  }
+  return ''
 }
 
 function normalizeIp(raw) {
@@ -2381,6 +2424,7 @@ const server = http.createServer(async (req, res) => {
     if (reqIp) memberLastLoginIp.set(memberId, reqIp)
     if (reqGeo) memberLastLoginGeo.set(memberId, reqGeo)
     memberLastLoginAt.set(memberId, now())
+    if (String(body.device || '').trim()) setMemberLastDevice(memberId, body.device)
     if (body.paidSuccess) {
       applyPaymentSuccessPayload(body, req)
       persistMembers()
@@ -2461,11 +2505,12 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && url.pathname === '/api/reading-records/append') {
     const body = await parseJsonBody(req)
-    const rec = normalizeReadRecordIn(body)
+    const rec = normalizeReadRecordIn(body, req)
     if (!rec) return sendJson(res, 400, { ok: false, error: 'invalid record' })
     if (!isReadRecordForLiveNovel(rec)) {
       return sendJson(res, 404, { ok: false, error: 'novel not found' })
     }
+    if (rec.device) setMemberLastDevice(rec.memberId, rec.device)
     readRecords = readRecords.filter((it) => {
       const rid = String(it?.novelId || '').trim()
       const recId = String(rec.novelId || '').trim()
@@ -2812,6 +2857,9 @@ const server = http.createServer(async (req, res) => {
         const registerLocation = String(memberRegisterGeo.get(memberId) || '')
         const loginIp = String(memberLastLoginIp.get(memberId) || '')
         const loginLocation = String(memberLastLoginGeo.get(memberId) || '')
+        const lastDevice = String(
+          memberLastDevice.get(memberId) || rec?.device || getMemberLastDevice(memberId) || '',
+        )
         return {
           memberId,
           registerAt: Number(memberFirstSeenAt.get(memberId) || 0),
@@ -2820,6 +2868,8 @@ const server = http.createServer(async (req, res) => {
           loginAt: Number(memberLastLoginAt.get(memberId) || Number(rec?.lastSeenAt || 0)),
           loginIp,
           loginLocation,
+          device: lastDevice,
+          lastDevice,
           online: Number(rec?.lastSeenAt || 0) >= now() - ONLINE_WINDOW_MS,
         }
       })
