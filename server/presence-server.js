@@ -1500,6 +1500,32 @@ function memberIdAliasKeys(memberId) {
   return [...new Set([raw, stripped, stripped ? `tg_${stripped}` : ''].filter(Boolean))]
 }
 
+function readRecordMemberKeysOverlap(memberA, memberB) {
+  const keysB = new Set(memberIdAliasKeys(memberB))
+  for (const key of memberIdAliasKeys(memberA)) {
+    if (keysB.has(key)) return true
+  }
+  return false
+}
+
+function readRecordSameNovel(existing, incoming) {
+  const existingNovelId = String(existing?.novelId || '').trim()
+  const incomingNovelId = String(incoming?.novelId || '').trim()
+  if (existingNovelId && incomingNovelId && existingNovelId === incomingNovelId) return true
+  const existingShelf = String(existing?.shelfTitle || '').trim()
+  const incomingShelf = String(incoming?.shelfTitle || '').trim()
+  return Boolean(existingShelf && incomingShelf && existingShelf === incomingShelf)
+}
+
+/** 同一用户 + 同一本小说只保留最新一条；不同用户各保留一条 */
+function shouldReplaceReadRecordOnAppend(existing, incoming) {
+  if (!existing || !incoming) return false
+  return (
+    readRecordMemberKeysOverlap(existing?.memberId, incoming?.memberId) &&
+    readRecordSameNovel(existing, incoming)
+  )
+}
+
 function setMemberLastDevice(memberId, device) {
   const raw = String(device || '').trim().toLowerCase()
   if (!raw) return
@@ -2511,17 +2537,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 404, { ok: false, error: 'novel not found' })
     }
     if (rec.device) setMemberLastDevice(rec.memberId, rec.device)
-    readRecords = readRecords.filter((it) => {
-      const rid = String(it?.novelId || '').trim()
-      const recId = String(rec.novelId || '').trim()
-      if (rid && recId && rid === recId) return false
-      if (!recId) {
-        const shelf = String(it?.shelfTitle || '').trim()
-        const recShelf = String(rec.shelfTitle || '').trim()
-        if (shelf && recShelf && shelf === recShelf) return false
-      }
-      return true
-    })
+    readRecords = readRecords.filter((it) => !shouldReplaceReadRecordOnAppend(it, rec))
     readRecords.unshift(rec)
     readRecords = readRecords.slice(0, READ_RECORDS_CAP)
     pruneExpiredReadRecords()
