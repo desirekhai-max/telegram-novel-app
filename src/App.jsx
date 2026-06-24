@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import AmbientBackdrop from './components/AmbientBackdrop.jsx'
+import BannedUserGate from './components/BannedUserGate.jsx'
 import AppBottomNavDock from './components/AppBottomNavDock.jsx'
 import { AppChromeProvider } from './contexts/AppChromeProvider.jsx'
 import { ViewerProfileProvider } from './contexts/ViewerProfileProvider.jsx'
@@ -10,6 +11,7 @@ import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
 import { registerPresencePing } from './lib/miniAppPresence.js'
 import { normalizeAppPathname, shouldRenderAppBottomNavDock } from './lib/bottomNavRoutes.js'
 import { loadCatalogNovels } from './lib/novelsRuntime.js'
+import { loadVipPlansCatalog } from './lib/vipPlansRuntime.js'
 import PageTransitionLayout from './layouts/PageTransitionLayout.jsx'
 import AboutPage from './pages/AboutPage.jsx'
 import AccountPage from './pages/AccountPage.jsx'
@@ -105,6 +107,17 @@ function AppShell() {
 
   useEffect(() => {
     void loadCatalogNovels()
+    void loadVipPlansCatalog({ force: true })
+  }, [])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void loadVipPlansCatalog({ force: true })
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [])
 
   useEffect(() => {
@@ -188,9 +201,11 @@ export default function App() {
     <BrowserRouter unstable_useTransitions={false}>
       <AppChromeProvider>
         <ViewerProfileProvider>
-          <SwipeBackProvider>
-            <AppShell />
-          </SwipeBackProvider>
+          <BannedUserGate>
+            <SwipeBackProvider>
+              <AppShell />
+            </SwipeBackProvider>
+          </BannedUserGate>
         </ViewerProfileProvider>
       </AppChromeProvider>
     </BrowserRouter>

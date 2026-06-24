@@ -317,6 +317,12 @@ function normalizeReadRecordIn(raw, req = null) {
       ? Math.floor(chapterIndexRaw)
       : null
   const memberId = String(raw.memberId || '').slice(0, 64)
+  const readMinutesRaw = Number(raw.readMinutes)
+  const readMinutes =
+    Number.isFinite(readMinutesRaw) && readMinutesRaw >= 0 ? Math.floor(readMinutesRaw) : 0
+  const readSecondsRaw = Number(raw.readSeconds ?? raw.read_seconds)
+  const readSeconds =
+    Number.isFinite(readSecondsRaw) && readSecondsRaw >= 0 ? Math.floor(readSecondsRaw) : 0
   const out = {
     memberName: String(raw.memberName || '').slice(0, 120),
     memberId,
@@ -327,6 +333,8 @@ function normalizeReadRecordIn(raw, req = null) {
     readChapter,
     readAt: String(raw.readAt || '').slice(0, 32),
     ts: Number(raw.ts) && Number.isFinite(Number(raw.ts)) ? Number(raw.ts) : now(),
+    readMinutes,
+    readSeconds,
     ...(novelId ? { novelId } : {}),
     ...(chapterIndex != null ? { chapterIndex } : {}),
   }
@@ -651,6 +659,13 @@ function rejectIfViewerBanned(profile, res) {
   if (!isViewerBanned(profile)) return false
   sendJson(res, 403, { ok: false, error: 'user_banned' })
   return true
+}
+
+function rejectIfUserIdBanned(userId, res) {
+  const tgId = parseMemberIdToTelegramUserId(userId) || normalizeTelegramUserId(userId)
+  if (!tgId) return false
+  const profile = resolveViewerProfileByTelegramUserId(tgId)
+  return rejectIfViewerBanned(profile, res)
 }
 
 function buildViewerProfileResponse(profile) {
@@ -2248,6 +2263,18 @@ function resolveDisplayStatus(order, atMs = now()) {
   return status || 'pending'
 }
 
+function estimateRecordReadMinutes(rec) {
+  const existing = Number(rec?.readMinutes)
+  if (Number.isFinite(existing) && existing > 0) return existing
+  const novelId = String(rec?.novelId || '').trim()
+  const chapterIndex = Number(rec?.chapterIndex)
+  if (novelId && Number.isFinite(chapterIndex) && chapterIndex >= 0) {
+    const novel = getStoredNovelById(novelId)
+    const wc = Number(novel?.chapters?.[chapterIndex]?.wordCount) || 0
+    if (wc > 0) return Math.max(1, Math.round(wc / 400))
+  }
+  return 1
+}
 
 function buildAdminReports() {
   const out = []
@@ -2583,6 +2610,240 @@ function makeCounts(rangeStartMs, rangeEndMs) {
     manualTotal: txMetrics.manualEvents.length,
     readTotal: txMetrics.readEvents.length,
     payoutSuccessUsdTotal: txMetrics.withdrawalUsdEvents.reduce((sum, e) => sum + Number(e?.amount || 0), 0),
+  }
+}
+
+const DASHBOARD_WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+function formatDashboardDateLabel(startMs) {
+  const tzOffsetMs = PHNOM_PENH_UTC_OFFSET_HOURS * 60 * 60 * 1000
+  const shifted = new Date(Number(startMs) + tzOffsetMs)
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(shifted.getUTCDate()).padStart(2, '0')
+  return `${m}-${d}`
+}
+
+function formatDashboardWeekdayLabel(startMs) {
+  const tzOffsetMs = PHNOM_PENH_UTC_OFFSET_HOURS * 60 * 60 * 1000
+  const shifted = new Date(Number(startMs) + tzOffsetMs)
+  return DASHBOARD_WEEKDAY_LABELS[shifted.getUTCDay()]
+}
+
+function inSettlementRange(ts, startMs, endMs) {
+  const value = Number(ts)
+  if (!Number.isFinite(value)) return false
+  return value >= startMs && value < endMs
+}
+
+function collectAllCommentItems() {
+  const items = []
+  const novelIds = new Set([...novelReviews.keys(), ...novelReplies.keys()])
+  for (const novelId of novelIds) {
+    const title = String(getStoredNovelById(novelId)?.title || novelId)
+    for (const row of resolveNovelReviews(novelId)) {
+      items.push({
+        id: row.id,
+        type: 'review',
+        novelId,
+        novelTitle: title,
+        userName: row.userName,
+        text: row.text,
+        at: Number(row.at || 0),
+      })
+    }
+    for (const row of resolveNovelReplies(novelId)) {
+      items.push({
+        id: row.id,
+        type: 'reply',
+        novelId,
+        novelTitle: title,
+        userName: row.userName,
+        text: row.text,
+        at: Number(row.at || 0),
+      })
+    }
+  }
+  return items.sort((a, b) => Number(b.at || 0) - Number(a.at || 0))
+}
+
+function collectAllPaidRevenueEvents() {
+  const events = []
+  for (const order of listAllOrdersSorted()) {
+    if (String(order.status || '').toLowerCase() !== 'paid') continue
+    const atMs = Number(order.paid_at || order.created_at || 0)
+    if (!atMs) continue
+    events.push({
+      atMs,
+      amountUsd: parseOrderAmountUsd(order),
+      source: 'store',
+      orderNo: order.order_no,
+      telegramUserId: order.telegram_user_id,
+      planId: order.plan_id,
+      paymentChannel: order.payment_channel,
+    })
+  }
+  for (const orders of vipOrdersByUser.values()) {
+    const list = Array.isArray(orders) ? orders : []
+    for (const order of list) {
+      if (String(order?.status || '').toLowerCase() !== 'success') continue
+      const atMs = Number(order?.atMs || 0)
+      if (!atMs) continue
+      events.push({
+        atMs,
+        amountUsd: parseOrderAmountUsd(order),
+        source: 'vip',
+        orderNo: order.id,
+        telegramUserId: '',
+        planId: order.planId,
+        paymentChannel: 'vip',
+      })
+    }
+  }
+  return events.sort((a, b) => Number(b.atMs) - Number(a.atMs))
+}
+
+function buildLast7SettlementRanges(nowMs = now()) {
+  const todayStart = getSettlementStartMs(nowMs)
+  const ranges = []
+  for (let i = 6; i >= 0; i -= 1) {
+    const startMs = todayStart - i * 24 * 60 * 60 * 1000
+    const endMs = startMs + 24 * 60 * 60 * 1000
+    ranges.push({
+      startMs,
+      endMs,
+      label: formatDashboardWeekdayLabel(startMs),
+      dateLabel: formatDashboardDateLabel(startMs),
+    })
+  }
+  return ranges
+}
+
+function countChaptersTotal() {
+  const novels = getNovelsCatalogPayload().novels || []
+  return novels.reduce((sum, novel) => sum + Number(novel?.chapterCount || 0), 0)
+}
+
+function buildAdminDashboardPayload() {
+  const nowMs = now()
+  const todayStart = getSettlementStartMs(nowMs)
+  const todayEnd = todayStart + 24 * 60 * 60 * 1000
+  const liveCounts = makeCounts()
+  const todayCounts = makeCounts(todayStart, todayEnd)
+  const users = buildAdminUsersList()
+  const reports = buildAdminReports()
+  const comments = collectAllCommentItems()
+  const revenueEvents = collectAllPaidRevenueEvents()
+  const storeOrders = listAllOrdersSorted()
+
+  const onlineCount = Number(liveCounts.android || 0) + Number(liveCounts.ios || 0) + Number(liveCounts.web || 0)
+  const todayNewUsers = Number(todayCounts.registeredToday || 0)
+  const vipUsers = users.filter((row) => row.userType === 'vip').length
+  const normalUsers = users.filter((row) => row.userType !== 'vip').length
+
+  const todayComments = comments.filter((row) => inSettlementRange(row.at, todayStart, todayEnd)).length
+  const todayReports = reports.filter((row) => inSettlementRange(row.at, todayStart, todayEnd)).length
+  const pendingReports = reports.length
+
+  const pendingOrders = storeOrders.filter((order) => {
+    if (String(order.status || '').toLowerCase() !== 'pending') return false
+    const expireAt = Number(order.expire_at || 0)
+    return !expireAt || expireAt > nowMs
+  }).length
+
+  const todayPaidStoreOrders = storeOrders.filter(
+    (order) =>
+      String(order.status || '').toLowerCase() === 'paid' &&
+      inSettlementRange(order.paid_at || order.created_at, todayStart, todayEnd),
+  )
+  const todayRevenueFromStore = todayPaidStoreOrders.reduce(
+    (sum, order) => sum + parseOrderAmountUsd(order),
+    0,
+  )
+  const todayRevenueFromVip = revenueEvents
+    .filter((row) => row.source === 'vip' && inSettlementRange(row.atMs, todayStart, todayEnd))
+    .reduce((sum, row) => sum + row.amountUsd, 0)
+  const todayRevenueUsd = todayRevenueFromStore + todayRevenueFromVip + Number(todayCounts.payUsdToday || 0)
+  const todayOrderKeys = new Set()
+  todayPaidStoreOrders.forEach((order) => todayOrderKeys.add(String(order.order_no || order.tran_id)))
+  revenueEvents
+    .filter((row) => inSettlementRange(row.atMs, todayStart, todayEnd))
+    .forEach((row) => todayOrderKeys.add(String(row.orderNo || `${row.atMs}`)))
+  const todayOrders = todayOrderKeys.size
+
+  const ranges7d = buildLast7SettlementRanges(nowMs)
+  const revenueLast7Days = ranges7d.map(({ startMs, endMs, label, dateLabel }) => {
+    const amount = revenueEvents
+      .filter((row) => inSettlementRange(row.atMs, startMs, endMs))
+      .reduce((sum, row) => sum + row.amountUsd, 0)
+    return { label, dateLabel, amountUsd: Number(amount.toFixed(2)) }
+  })
+
+  const activityLast7Days = ranges7d.map(({ startMs, endMs, label, dateLabel }) => {
+    const activeIds = new Set()
+    readRecords.forEach((row) => {
+      const memberId = String(row?.memberId || '').trim()
+      if (!memberId) return
+      if (!inSettlementRange(row?.ts, startMs, endMs)) return
+      activeIds.add(memberId)
+    })
+    for (const [memberId, ts] of memberLastLoginAt.entries()) {
+      if (inSettlementRange(ts, startMs, endMs)) activeIds.add(String(memberId))
+    }
+    return { label, dateLabel, activeUsers: activeIds.size }
+  })
+
+  const latestOrders = storeOrders.slice(0, 8).map((order) => ({
+    orderNo: order.order_no,
+    tranId: order.tran_id,
+    telegramUserId: order.telegram_user_id,
+    amount: order.amount,
+    amountUsd: parseOrderAmountUsd(order),
+    status: order.status,
+    paymentChannel: order.payment_channel,
+    planId: order.plan_id,
+    createdAtMs: Number(order.created_at || 0),
+    paidAtMs: Number(order.paid_at || 0),
+  }))
+
+  const latestUsers = users.slice(0, 8).map((row) => ({
+    tgId: row.tgId,
+    firstName: row.firstName,
+    username: row.username,
+    userType: row.userType,
+    lastSeenAt: row.lastSeenAt,
+    ipLocation: row.ipLocation,
+  }))
+
+  const latestComments = comments.slice(0, 8).map((row) => ({
+    id: row.id,
+    type: row.type,
+    novelId: row.novelId,
+    novelTitle: row.novelTitle,
+    userName: row.userName,
+    text: row.text,
+    at: row.at,
+  }))
+
+  return {
+    stats: {
+      onlineCount,
+      todayNewUsers,
+      vipUsers,
+      normalUsers,
+      todayOrders,
+      todayRevenueUsd: Number(todayRevenueUsd.toFixed(2)),
+      todayComments,
+      todayReports,
+      novelTotal: getNovelsCount(),
+      chapterTotal: countChaptersTotal(),
+      pendingReports,
+      pendingOrders,
+    },
+    revenueLast7Days,
+    activityLast7Days,
+    latestOrders,
+    latestUsers,
+    latestComments,
   }
 }
 
@@ -3560,6 +3821,9 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 404, { ok: false, error: 'novel not found' })
     }
     if (rec.device) setMemberLastDevice(rec.memberId, rec.device)
+    if (Number(rec.readSeconds) <= 0 && Number(rec.readMinutes) <= 0) {
+      rec.readMinutes = estimateRecordReadMinutes(rec)
+    }
     readRecords = readRecords.filter((it) => !shouldReplaceReadRecordOnAppend(it, rec))
     readRecords.unshift(rec)
     readRecords = readRecords.slice(0, READ_RECORDS_CAP)
@@ -3643,6 +3907,7 @@ const server = http.createServer(async (req, res) => {
     if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
     const item = normalizeReviewIn(applyViewerSnapshotFields(body.entry ?? body), novelId)
     if (!item) return sendJson(res, 400, { ok: false, error: 'invalid review entry' })
+    if (rejectIfUserIdBanned(item?.userId, res)) return
     const items = resolveNovelReviews(novelId).slice()
     items.push(item)
     novelReviews.set(novelId, { items })
@@ -3658,6 +3923,7 @@ const server = http.createServer(async (req, res) => {
     if (!commentId) return sendJson(res, 400, { ok: false, error: 'commentId required' })
     const voterId = String(body.voterId || '').trim()
     if (!voterId) return sendJson(res, 400, { ok: false, error: 'voterId required' })
+    if (rejectIfUserIdBanned(voterId, res)) return
     const action = String(body.action || '').toLowerCase()
     if (action !== 'up' && action !== 'down' && action !== 'clear') {
       return sendJson(res, 400, { ok: false, error: 'action must be up/down/clear' })
@@ -3720,6 +3986,7 @@ const server = http.createServer(async (req, res) => {
     if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
     const userId = String(body.userId || '').trim()
     if (!userId) return sendJson(res, 400, { ok: false, error: 'userId required' })
+    if (rejectIfUserIdBanned(userId, res)) return
     const shouldLike = Boolean(body.like)
     const users = new Set(resolveNovelLikeUsers(novelId))
     if (shouldLike) users.add(userId)
@@ -3757,6 +4024,7 @@ const server = http.createServer(async (req, res) => {
     if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
     const userId = String(body.userId || '').trim()
     if (!userId) return sendJson(res, 400, { ok: false, error: 'userId required' })
+    if (rejectIfUserIdBanned(userId, res)) return
     const shouldFavorite = Boolean(body.favorite)
     const prev = normalizeNovelFavoritesRow(novelFavorites.get(novelId))
     const users = new Set(prev.users)
@@ -3820,7 +4088,9 @@ const server = http.createServer(async (req, res) => {
     if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
     const parentCommentId = String(body.parentCommentId || body.entry?.parentCommentId || '').trim()
     if (!parentCommentId) return sendJson(res, 400, { ok: false, error: 'parentCommentId required' })
-    let item = normalizeReplyIn(applyViewerSnapshotFields(body.entry ?? body), novelId, parentCommentId)
+    const replyEntry = body.entry ?? body
+    if (rejectIfUserIdBanned(replyEntry?.userId, res)) return
+    let item = normalizeReplyIn(applyViewerSnapshotFields(replyEntry), novelId, parentCommentId)
     if (!item) return sendJson(res, 400, { ok: false, error: 'invalid reply entry' })
     item = enrichReplyNotificationTargets(item, novelId)
     const items = resolveNovelReplies(novelId).slice()
@@ -3834,7 +4104,9 @@ const server = http.createServer(async (req, res) => {
     const body = await parseJsonBody(req)
     const novelId = String(body.novelId || '').trim()
     if (!novelId) return sendJson(res, 400, { ok: false, error: 'novelId required' })
-    const item = normalizeReportIn(applyViewerSnapshotFields(body.entry ?? body), novelId)
+    const entry = applyViewerSnapshotFields(body.entry ?? body)
+    if (rejectIfUserIdBanned(entry?.userId, res)) return
+    const item = normalizeReportIn(entry, novelId)
     if (!item) return sendJson(res, 400, { ok: false, error: 'invalid report entry' })
     const items = resolveNovelReports(novelId).slice()
     items.push(item)
@@ -3924,6 +4196,11 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/admin/reports') {
     if (!requireAdmin(req, res)) return
     return sendJson(res, 200, { ok: true, items: buildAdminReports() })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin/dashboard') {
+    if (!requireAdmin(req, res)) return
+    return sendJson(res, 200, { ok: true, ...buildAdminDashboardPayload() })
   }
 
   if (req.method === 'GET' && url.pathname === '/api/users') {

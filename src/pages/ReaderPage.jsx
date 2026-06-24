@@ -55,6 +55,7 @@ import {
   appendNovelReportVerbose,
   appendReadingRecord,
   appendNovelReviewVerbose,
+  detectMiniAppBucket,
   fetchNovelFavoriteState,
   fetchNovelLikeState,
   fetchNovelReplies,
@@ -62,6 +63,7 @@ import {
   fetchNovelViewCount,
   getPresenceMemberId,
   incrementNovelViewCount,
+  registerPresencePing,
   reportMetricEvent,
   toggleNovelFavoriteVerbose,
   toggleNovelLikeVerbose,
@@ -161,9 +163,10 @@ function displayMemberIdForRecord(tgUser) {
   return raw.length > 24 ? `${raw.slice(0, 20)}…` : raw
 }
 
-function reportReadOnChapterOpen(novel, chapterIndex, tgUser, isVipReader) {
-  if (!chapterHasReadableBody(novel, chapterIndex)) return
-  void reportMetricEvent('read')
+let activeReadingSession = null
+const READING_SYNC_MS = 10_000
+
+function buildReadingRecordPayload(novel, chapterIndex, tgUser, isVipReader, readSeconds) {
   const readAt = formatReadingRecordInstant()
   const ts = Date.now()
   const seq = Math.floor(Math.random() * 100)
@@ -173,7 +176,8 @@ function reportReadOnChapterOpen(novel, chapterIndex, tgUser, isVipReader) {
     ch?.title && String(ch.title).trim()
       ? String(ch.title).trim()
       : `ភាគទី${chapterIndex + 1}`
-  void appendReadingRecord({
+  const safeSeconds = Math.max(1, Math.floor(Number(readSeconds) || 0))
+  const payload = {
     memberName: tgUser ? formatTelegramDisplayName(tgUser) : 'ភ្ញៀវ',
     memberId: displayMemberIdForRecord(tgUser),
     memberAccount: tgUser?.username ? `@${tgUser.username}` : '',
@@ -185,15 +189,61 @@ function reportReadOnChapterOpen(novel, chapterIndex, tgUser, isVipReader) {
     readAt,
     ts,
     chapterIndex,
-  })
+    readSeconds: safeSeconds,
+    device: detectMiniAppBucket(),
+  }
+  if (safeSeconds >= 60) {
+    payload.readMinutes = Math.floor(safeSeconds / 60)
+  }
+  return payload
+}
+
+function syncReadingSessionToServer() {
+  const session = activeReadingSession
+  if (!session) return
+  const { novel, chapterIndex, tgUser, isVipReader, startedAt } = session
+  if (!novel || !chapterHasReadableBody(novel, chapterIndex)) return
+  const readSeconds = Math.max(1, Math.floor((Date.now() - startedAt) / 1000))
+  void appendReadingRecord(
+    buildReadingRecordPayload(novel, chapterIndex, tgUser, isVipReader, readSeconds),
+  )
+}
+
+function flushReadingSessionToServer() {
+  syncReadingSessionToServer()
+  activeReadingSession = null
+}
+
+function beginReadingSession(novel, chapterIndex, tgUser, isVipReader) {
+  if (!chapterHasReadableBody(novel, chapterIndex)) return
+  flushReadingSessionToServer()
+  void reportMetricEvent('read')
+  void registerPresencePing(`/reader/${novel?.id || ''}`)
+  activeReadingSession = {
+    novel,
+    chapterIndex,
+    tgUser,
+    isVipReader,
+    startedAt: Date.now(),
+  }
+  syncReadingSessionToServer()
+  const ch = novel.chapters?.[chapterIndex]
+  const readChapter =
+    ch?.title && String(ch.title).trim()
+      ? String(ch.title).trim()
+      : `ភាគទី${chapterIndex + 1}`
   appendReadingHistoryLocal({
     novelId: String(novel?.id || ''),
     shelfTitle: String(novel?.title || ''),
     readChapter,
-    readAt,
-    ts,
+    readAt: formatReadingRecordInstant(),
+    ts: Date.now(),
     chapterIndex,
   })
+}
+
+function reportReadOnChapterOpen(novel, chapterIndex, tgUser, isVipReader) {
+  beginReadingSession(novel, chapterIndex, tgUser, isVipReader)
 }
 
 function formatCommentTimeAgo(ts, nowMs = Date.now()) {
@@ -752,9 +802,33 @@ export default function ReaderPage() {
       if (articleSwipeResetTimerRef.current) {
         window.clearTimeout(articleSwipeResetTimerRef.current)
       }
+      flushReadingSessionToServer()
     },
     [],
   )
+  useEffect(() => {
+    if (readingChapterIndex == null) {
+      flushReadingSessionToServer()
+    }
+  }, [readingChapterIndex])
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') syncReadingSessionToServer()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+  useEffect(() => {
+    const isActive =
+      novel &&
+      Number.isInteger(readingChapterIndex) &&
+      readingChapterIndex >= 0
+    if (!isActive) return undefined
+    const timer = window.setInterval(() => {
+      syncReadingSessionToServer()
+    }, READING_SYNC_MS)
+    return () => window.clearInterval(timer)
+  }, [novel, readingChapterIndex])
   const applyArticleLayerTransform = (dx, animate) => {
     const el = articleLayerRef.current
     if (!el) {

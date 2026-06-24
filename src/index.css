@@ -9439,3 +9439,36 @@ body.tg-desktop-admin #root {
   background: var(--tg-row-active);
   color: var(--tg-text-body);
 }
+
+.banned-user-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.banned-user-gate__card {
+  width: min(420px, 100%);
+  padding: 24px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+}
+
+.banned-user-gate__title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.banned-user-gate__desc {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #334155;
+}

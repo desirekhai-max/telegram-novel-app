@@ -35,6 +35,8 @@ export function getDefaultViewerProfile(tgUser = null) {
     canReadVipChapters: false,
     authVerified: false,
     authMode: '',
+    isBanned: false,
+    whitelist: false,
   }
 }
 
@@ -51,6 +53,8 @@ export function normalizeViewerProfile(raw, tgUser = null) {
     canReadVipChapters: Boolean(raw.canReadVipChapters),
     authVerified: Boolean(raw.authVerified),
     authMode: String(raw.authMode || ''),
+    isBanned: Boolean(raw.isBanned),
+    whitelist: Boolean(raw.whitelist),
   }
 }
 
