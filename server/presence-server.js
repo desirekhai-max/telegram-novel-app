@@ -1738,11 +1738,9 @@ function getLegacyAdminSession(token) {
 
 function requireLegacyAdmin(req, res) {
   const token = extractBearerToken(req)
-  if (!isLegacyAdminTokenValid(token)) {
-    sendJson(res, 401, { ok: false, error: 'legacy admin unauthorized' })
-    return null
-  }
-  return token
+  if (isLegacyAdminTokenValid(token) || isAdminTokenValid(token)) return token
+  sendJson(res, 401, { ok: false, error: 'legacy admin unauthorized' })
+  return null
 }
 
 const server = http.createServer(async (req, res) => {
@@ -2424,6 +2422,25 @@ const server = http.createServer(async (req, res) => {
     const session = getLegacyAdminSession(token)
     if (!session) return sendJson(res, 401, { ok: false, error: 'legacy admin unauthorized' })
     return sendJson(res, 200, { ok: true, username: String(session.username || ADMIN_LEGACY_USER) })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/admin-legacy/session/refresh') {
+    const token = extractBearerToken(req)
+    const adminSession = getAdminSession(token)
+    if (!adminSession) return sendJson(res, 401, { ok: false, error: 'admin unauthorized' })
+    const legacyToken = crypto.randomBytes(24).toString('hex')
+    const username = String(adminSession.username || ADMIN_USER)
+    adminLegacySessions.set(legacyToken, {
+      username,
+      createdAt: now(),
+      expiresAt: now() + ADMIN_TOKEN_TTL_MS,
+    })
+    return sendJson(res, 200, {
+      ok: true,
+      token: legacyToken,
+      username,
+      expiresInMs: ADMIN_TOKEN_TTL_MS,
+    })
   }
 
   if (req.method === 'POST' && url.pathname === '/api/admin-legacy/logout') {
