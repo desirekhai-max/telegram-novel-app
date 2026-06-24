@@ -2,6 +2,7 @@
 
 import { buildAbaKhqrPageUrl } from './vipAbaKhqrSession.js'
 import { getAppPublicOrigin } from './appPublicUrl.js'
+import { reportVipAbaKhqrDeeplinkOpened } from './vipAbaKhqrSession.js'
 
 const ABA_DEEPLINK_PREFIX = 'abamobilebank://'
 const ABA_BRIDGE_PATH = '/aba-open.html'
@@ -202,6 +203,15 @@ function launchViaExternalOpenLink(url) {
 /**
  * @param {{ onLaunched?: () => void, onFailed?: () => void, timeoutMs?: number, bounceMs?: number }} [opts]
  */
+function resolveSummonReportCallback(input = {}) {
+  const tranId = String(input.session?.tranId || input.tranId || '').trim()
+  const handoff = String(input.session?.browserHandoffToken || input.handoff || '').trim()
+  if (!tranId) return undefined
+  return () => {
+    void reportVipAbaKhqrDeeplinkOpened({ tranId, handoff: handoff || undefined })
+  }
+}
+
 export function watchAbaMobileSummonOutcome(opts = {}) {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     opts.onFailed?.()
@@ -279,7 +289,11 @@ export function trySummonAbaMobile(input = {}) {
     return { attempted: false, method: 'bridge_open_failed' }
   }
 
-  watchAbaMobileSummonOutcome({ onFailed })
+  const reportLaunched = resolveSummonReportCallback({ session, tranId: session?.tranId, handoff: session?.browserHandoffToken })
+  watchAbaMobileSummonOutcome({
+    onLaunched: () => reportLaunched?.(),
+    onFailed,
+  })
 
   return { attempted: true, method: 'external_bridge' }
 }
@@ -302,6 +316,7 @@ export function trySummonAbaMobileInBrowser(input = {}) {
   const onFailed = () => {
     if (typeof input.onSummonFailed === 'function') input.onSummonFailed()
   }
+  const reportLaunched = resolveSummonReportCallback(input)
 
   const summonTarget = buildAbaMobileOpenHref(input)
   if (!summonTarget) {
@@ -316,7 +331,11 @@ export function trySummonAbaMobileInBrowser(input = {}) {
       onFailed()
       return { attempted: false, method: 'ios_href_failed' }
     }
-    watchAbaMobileSummonOutcome({ onFailed, timeoutMs: 1800 })
+    watchAbaMobileSummonOutcome({
+      onLaunched: () => reportLaunched?.(),
+      onFailed,
+      timeoutMs: 1800,
+    })
     return { attempted: true, method: 'ios_browser_deeplink' }
   }
 
@@ -346,7 +365,10 @@ export function trySummonAbaMobileInBrowser(input = {}) {
     }, 80)
   }
 
-  watchAbaMobileSummonOutcome({ onFailed })
+  watchAbaMobileSummonOutcome({
+    onLaunched: () => reportLaunched?.(),
+    onFailed,
+  })
   return { attempted: true, method: 'browser_direct' }
 }
 

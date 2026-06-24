@@ -31,6 +31,15 @@ function normalizeTelegramUserId(raw) {
   return id || ''
 }
 
+function resolvePaymentEntryFromRaw(raw) {
+  const explicit = String(raw?.payment_entry || raw?.paymentEntry || '').trim().toLowerCase()
+  if (explicit === 'aba_deeplink' || explicit === 'khqr_qr') return explicit
+  if (Boolean(raw?.aba_app_launched || raw?.abaAppLaunched)) return 'aba_deeplink'
+  const channel = String(raw?.payment_channel || raw?.paymentChannel || '').toLowerCase()
+  if (channel === 'aba_khqr') return 'khqr_qr'
+  return ''
+}
+
 function normalizeOrderIn(raw) {
   const orderNo = String(raw?.order_no || raw?.orderNo || '').trim().slice(0, 32)
   const tranId = String(raw?.tran_id || raw?.tranId || '').trim().slice(0, 20)
@@ -54,6 +63,10 @@ function normalizeOrderIn(raw) {
     paid_at: paidAt,
     payway_env: String(raw?.payway_env || raw?.paywayEnv || 'sandbox').trim().slice(0, 16),
     fail_reason: String(raw?.fail_reason || raw?.failReason || '').trim().slice(0, 240),
+    refunded_at: Number(raw?.refunded_at || raw?.refundedAt || 0) || 0,
+    aba_app_launched: Boolean(raw?.aba_app_launched || raw?.abaAppLaunched),
+    aba_app_launched_at: Number(raw?.aba_app_launched_at || raw?.abaAppLaunchedAt || 0) || 0,
+    payment_entry: resolvePaymentEntryFromRaw(raw),
   }
 }
 
@@ -142,6 +155,7 @@ export function createPaymentOrder(input) {
     return existingNo ? ordersByOrderNo.get(existingNo) || null : null
   }
   const createdAt = Number(input.created_at || 0) || now()
+  const channel = String(input.payment_channel || '').trim().slice(0, 32)
   const order = normalizeOrderIn({
     order_no: allocateOrderNo(createdAt),
     tran_id: tranId,
@@ -151,7 +165,8 @@ export function createPaymentOrder(input) {
     amount: input.amount,
     currency: input.currency || 'USD',
     status: 'pending',
-    payment_channel: input.payment_channel,
+    payment_channel: channel,
+    payment_entry: input.payment_entry || (channel === 'aba_khqr' ? 'khqr_qr' : ''),
     created_at: createdAt,
     expire_at: Number(input.expire_at || 0) || 0,
     paid_at: 0,
@@ -177,6 +192,22 @@ export function getOrderByOrderNo(orderNo) {
   const no = String(orderNo || '').trim()
   if (!no) return null
   return ordersByOrderNo.get(no) || null
+}
+
+export function markOrderAbaAppLaunched(tranId, atMs = now()) {
+  initOrdersStore()
+  const order = getOrderByTranId(tranId)
+  if (!order) return null
+  if (order.aba_app_launched) return order
+  const next = {
+    ...order,
+    aba_app_launched: true,
+    aba_app_launched_at: Number(atMs) || now(),
+    payment_entry: 'aba_deeplink',
+  }
+  registerOrder(next)
+  persistOrders()
+  return next
 }
 
 export function markOrderPaid(tranId, paidAt = now()) {

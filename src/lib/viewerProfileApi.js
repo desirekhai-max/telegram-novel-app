@@ -312,6 +312,53 @@ export async function purchaseViewerVipPlan(planId) {
   }
 }
 
+export async function reportViewerVipAbaAppOpened({ tranId, handoff } = {}) {
+  const { telegramUser, initDataRaw } = getTelegramAuthPayload()
+  const tid = String(tranId || '').trim()
+  const token = String(handoff || '').trim()
+  if (!tid) return { ok: false, error: 'tran_id_required' }
+
+  if (token) {
+    try {
+      const res = await fetch(apiUrl('/api/vip-orders/aba-app-opened'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tranId: tid, handoff: token }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.ok) {
+        return { ok: false, error: String(data?.error || `aba_app_opened failed: ${res.status}`) }
+      }
+      return { ok: true, error: '' }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'network error' }
+    }
+  }
+
+  if (!telegramUser?.id) return { ok: false, error: 'telegram_user_required' }
+  try {
+    const res = await fetch(apiUrl('/api/vip-orders/aba-app-opened'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegramUser,
+        initDataRaw,
+        tranId: tid,
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data?.ok) {
+      return { ok: false, error: String(data?.error || `aba_app_opened failed: ${res.status}`) }
+    }
+    return { ok: true, error: '' }
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'network error',
+    }
+  }
+}
+
 export async function fetchViewerVipOrders(options = {}) {
   const { signal } = options
   const { telegramUser, initDataRaw } = getTelegramAuthPayload()

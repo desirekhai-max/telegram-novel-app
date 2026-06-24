@@ -240,6 +240,7 @@ export default function VipAbaKhqrPage() {
       qrString,
       abapayDeeplink: deeplink,
       returnToQrUrl,
+      session,
       onSummonFailed: () => {
         setStatusNote(ABA_SUMMON_FAILED_NOTE)
         setShowQrAfterAutoSummon(true)
@@ -460,6 +461,7 @@ export default function VipAbaKhqrPage() {
       qrString,
       abapayDeeplink: deeplink,
       returnToQrUrl,
+      session: qrSessionRef.current || displaySession,
       onSummonFailed: () => {
         setStatusNote(ABA_SUMMON_FAILED_NOTE)
       },

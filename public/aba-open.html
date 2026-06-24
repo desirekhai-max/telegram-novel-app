@@ -16,6 +16,19 @@
         var summonParam = String(params.get('summon') || '').trim()
         var cancelled = false
         var backTimer = 0
+        var abaReportSent = false
+
+        function reportAbaAppOpened() {
+          if (abaReportSent || !tranId) return
+          abaReportSent = true
+          var payload = { tranId: tranId }
+          if (handoff) payload.handoff = handoff
+          fetch(API_BASE + '/api/vip-orders/aba-app-opened', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }).catch(function () {})
+        }
 
         function isAndroid() {
           return /android/i.test(String(navigator.userAgent || ''))
@@ -189,7 +202,10 @@
         }
 
         document.addEventListener('visibilitychange', function () {
-          if (document.visibilityState === 'hidden') cancelBack()
+          if (document.visibilityState === 'hidden') {
+            cancelBack()
+            reportAbaAppOpened()
+          }
         })
         window.addEventListener('pagehide', cancelBack)
 

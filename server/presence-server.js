@@ -29,6 +29,7 @@ import {
   filterAndPaginateAdminOrders,
   getAdminOrderByKey,
   markOrderRefunded,
+  markOrderAbaAppLaunched,
 } from './orders-store.js'
 import { buildPayWayCustomFields, getNeutralVipOrderProductLabel } from './paywayNeutralCopy.js'
 import { filterCheckoutFormFieldsForClient, stripSensitivePaymentFields } from './payway-security.js'
@@ -2223,13 +2224,15 @@ function buildAdminOrderRow(order) {
   const plan = getVipPlanForRole(order.plan_id, profile?.role || 'normal')
   const packageName = String(plan?.durationKm || plan?.planId || order.plan_id || '—')
   const channel = String(order.payment_channel || '').toLowerCase()
-  const payAba = channel === 'aba_khqr'
+  const isAbaKhqr = channel === 'aba_khqr'
+  const paymentEntry = String(order.payment_entry || '').trim().toLowerCase()
+  const payAba = paymentEntry === 'aba_deeplink' || Boolean(order.aba_app_launched)
   const payPayway = channel === 'payway_hosted' || channel.includes('payway')
   const payVipGift = channel === 'vip_gift'
   const payVipPurchase = channel === 'vip_purchase' || order.source === 'vip'
   const status = resolveDisplayStatus(order, now())
   const timeMs = Number(order.paid_at || order.created_at || 0)
-  const paymentMethod = payAba
+  const paymentMethod = isAbaKhqr
     ? 'ABA KHQR'
     : payPayway
       ? 'PayWay'
@@ -2258,6 +2261,8 @@ function buildAdminOrderRow(order) {
     payment_method: paymentMethod,
     pay_aba: payAba,
     pay_payway: payPayway,
+    aba_app_launched: payAba,
+    payment_entry: paymentEntry || (isAbaKhqr ? 'khqr_qr' : ''),
     can_refund: status === 'paid',
     refund_label: status === 'refunded' ? '已退款' : '—',
     payment_channel: order.payment_channel,
@@ -3572,6 +3577,39 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 404, { ok: false, error: 'khqr_session_missing' })
     }
     return sendJson(res, 200, { ok: true, session })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/vip-orders/aba-app-opened') {
+    const body = stripSensitivePaymentFields(await parseJsonBody(req))
+    const tranId = String(body.tranId || body.tran_id || '').trim().slice(0, 20)
+    if (!tranId) return sendJson(res, 400, { ok: false, error: 'tranId required' })
+
+    const handoff = String(body.handoff || body.browserHandoffToken || '').trim().slice(0, 64)
+    if (handoff) {
+      const pending = pendingVipOrdersByTranId.get(tranId)
+      if (!pending || String(pending.browserHandoffToken || '') !== handoff) {
+        return sendJson(res, 403, { ok: false, error: 'handoff_not_found' })
+      }
+      const order = markOrderAbaAppLaunched(tranId)
+      if (!order) return sendJson(res, 404, { ok: false, error: 'order_not_found' })
+      return sendJson(res, 200, { ok: true, order })
+    }
+
+    const auth = resolveViewerAuth(body)
+    if (!auth.telegramUser?.telegramUserId) {
+      return sendJson(res, 401, { ok: false, error: 'telegram user required' })
+    }
+    if (TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
+      return sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
+    }
+    const storedOrder = getOrderByTranId(tranId)
+    const orderOwnerId = normalizeTelegramUserId(storedOrder?.telegram_user_id)
+    if (orderOwnerId && orderOwnerId !== auth.telegramUser.telegramUserId) {
+      return sendJson(res, 403, { ok: false, error: 'tran_id owner mismatch' })
+    }
+    const order = markOrderAbaAppLaunched(tranId)
+    if (!order) return sendJson(res, 404, { ok: false, error: 'order_not_found' })
+    return sendJson(res, 200, { ok: true, order })
   }
 
   if (req.method === 'POST' && url.pathname === '/api/vip-orders/confirm-payment') {

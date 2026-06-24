@@ -1,4 +1,5 @@
 import { getAppPublicOrigin } from './appPublicUrl.js'
+import { reportViewerVipAbaAppOpened } from './viewerProfileApi.js'
 
 export const VIP_ABA_KHQR_SESSION_KEY = 'tg_vip_aba_khqr_session_v1'
 export const VIP_ABA_KHQR_LAST_IMAGE_KEY = 'tg_vip_aba_khqr_last_image_v1'
@@ -357,6 +358,11 @@ export function markVipAbaKhqrBrowserFlowOpen(session) {
   } catch {
     return false
   }
+}
+
+/** 成功唤起 ABA App 后上报 payment_entry=aba_deeplink（失败/仅打开浏览器不上报） */
+export function reportVipAbaKhqrDeeplinkOpened({ tranId, handoff } = {}) {
+  void reportViewerVipAbaAppOpened({ tranId, handoff })
 }
 
 export function markVipAbaKhqrConfirmingUiDismissed() {
