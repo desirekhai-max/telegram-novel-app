@@ -218,3 +218,10 @@ export function listOrdersByTelegramUserId(telegramUserId) {
     .filter((row) => row.telegram_user_id === id)
     .sort((a, b) => Number(b.created_at) - Number(a.created_at))
 }
+
+export function listAllOrdersSorted() {
+  initOrdersStore()
+  return [...ordersByOrderNo.values()].sort(
+    (a, b) => Number(b.created_at) - Number(a.created_at),
+  )
+}

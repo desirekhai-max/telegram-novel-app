@@ -23,6 +23,8 @@ import {
   markOrderPaid,
   markOrderFailed,
   getOrderByTranId,
+  listOrdersByTelegramUserId,
+  listAllOrdersSorted,
 } from './orders-store.js'
 import { buildPayWayCustomFields, getNeutralVipOrderProductLabel } from './paywayNeutralCopy.js'
 import { filterCheckoutFormFieldsForClient, stripSensitivePaymentFields } from './payway-security.js'
@@ -133,6 +135,9 @@ const ADMIN_LEGACY_OTP = String(process.env.ADMIN_LEGACY_OTP || '123456')
 const ADMIN_TOKEN_TTL_MS = 12 * 60 * 60 * 1000
 const adminSessions = new Map()
 const adminLegacySessions = new Map()
+const ADMIN_AUDIT_LOG_CAP = 2000
+/** @type {object[]} */
+let adminAuditLogs = []
 
 function decodeBase32Secret(secret) {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
@@ -452,6 +457,8 @@ function normalizeMemberProfileIn(raw, telegramUserIdHint = '') {
     lastSeenAt: Number(raw?.lastSeenAt || 0) || updatedAt,
     authVerified: raw?.authVerified === true,
     authMode: String(raw?.authMode || '').trim().slice(0, 64),
+    isBanned: raw?.isBanned === true,
+    whitelist: raw?.whitelist === true,
   }
 }
 
@@ -636,9 +643,20 @@ function isViewerVipActive(profile, atMs = now()) {
   return Number(profile?.vipExpireAtMs || 0) > atMs
 }
 
+function isViewerBanned(profile) {
+  return Boolean(profile?.isBanned)
+}
+
+function rejectIfViewerBanned(profile, res) {
+  if (!isViewerBanned(profile)) return false
+  sendJson(res, 403, { ok: false, error: 'user_banned' })
+  return true
+}
+
 function buildViewerProfileResponse(profile) {
   const p = profile || null
-  const vipActive = isViewerVipActive(p)
+  const banned = isViewerBanned(p)
+  const vipActive = isViewerVipActive(p) && !banned
   const role = normalizeViewerRole(p?.role)
   return {
     telegramUserId: Number(p?.telegramUserId || 0),
@@ -649,6 +667,8 @@ function buildViewerProfileResponse(profile) {
     canReadVipChapters: vipActive,
     authVerified: p?.authVerified === true,
     authMode: String(p?.authMode || ''),
+    isBanned: banned,
+    whitelist: Boolean(p?.whitelist),
   }
 }
 
@@ -939,6 +959,8 @@ function loadPersistedMembers() {
       if (!normalized) continue
       memberProfiles.set(normalized.telegramUserId, normalized)
     }
+    const auditRaw = Array.isArray(parsed?.adminAuditLogs) ? parsed.adminAuditLogs : []
+    adminAuditLogs = auditRaw.map(normalizeAdminAuditLogIn).filter(Boolean).slice(0, ADMIN_AUDIT_LOG_CAP)
     for (const [telegramUserId, rows] of Object.entries(vipOrdersByUserObj)) {
       const id = normalizeTelegramUserId(telegramUserId)
       if (!id) continue
@@ -1106,6 +1128,7 @@ function persistMembers() {
       novelFavorites: Object.fromEntries(novelFavorites),
       novelReports: Object.fromEntries(novelReports),
       readRecords: readRecords.slice(0, READ_RECORDS_CAP),
+      adminAuditLogs: adminAuditLogs.slice(0, ADMIN_AUDIT_LOG_CAP),
     })
     fs.writeFileSync(DATA_FILE, payload, 'utf8')
   } catch {
@@ -1307,6 +1330,836 @@ function pruneOrphanNovelRelations() {
 
   if (changed) persistMembers()
 }
+
+
+function memberIdLookupKeys(memberId) {
+  const raw = String(memberId || '').trim()
+  if (!raw) return []
+  const stripped = raw.replace(/^tg_/, '')
+  return [...new Set([raw, stripped, stripped ? `tg_${stripped}` : ''].filter(Boolean))]
+}
+
+function formatReadingDeviceLabel(device) {
+  const d = String(device || '').toLowerCase()
+  if (d === 'android') return 'Android'
+  if (d === 'ios') return 'iOS'
+  if (d === 'web') return '电脑'
+  return d || '—'
+}
+
+function enrichReadingRecordForAdmin(rec) {
+  const keys = memberIdLookupKeys(rec?.memberId)
+  let device = String(rec?.device || '').trim()
+  let ip = normalizeIp(rec?.ip)
+  if (!ip) {
+    for (const key of keys) {
+      const hit = normalizeIp(memberLastLoginIp.get(key))
+      if (hit) { ip = hit; break }
+    }
+  }
+  if (!device) {
+    for (const key of keys) {
+      const presence = records.get(key)
+      if (presence?.device) { device = presence.device; break }
+    }
+  }
+  if (!device) {
+    for (const key of keys) {
+      const lastDevice = memberLastDevice.get(key)
+      if (lastDevice) { device = lastDevice; break }
+    }
+  }
+  return { ...rec, ip: ip || '—', device: formatReadingDeviceLabel(device) }
+}
+
+function enrichAdminReportRow(it, novelId) {
+  const novel = getStoredNovelById(novelId)
+  return {
+    ...it,
+    novelId: String(novelId || ''),
+    novelTitle: String(it?.novelTitle || novel?.title || novelId || '—').slice(0, 200),
+    reason: String(it?.text || '').trim(),
+    status: String(it?.status || 'pending'),
+  }
+}
+
+
+function formatAdminUserRow(profile) {
+  const memberId = String(profile?.memberId || `tg_${profile?.telegramUserId || ''}`).trim()
+  const ipLocation = String(
+    memberLastLoginGeo.get(memberId) || memberRegisterGeo.get(memberId) || '',
+  ).trim()
+  const vipActive = isViewerVipActive(profile)
+  const role = normalizeViewerRole(profile?.role)
+  let userType = 'normal'
+  if (role === 'author') userType = 'author'
+  else if (vipActive) userType = 'vip'
+  const telegramUserId = String(profile.telegramUserId || '')
+  const stats = computeAdminUserStats(profile)
+  const packageName = resolveUserPackageLabel(profile)
+  const vipExpireAtMs = Number(profile?.vipExpireAtMs || 0)
+  const lastSeenAt = Number(profile.lastSeenAt || 0)
+  const isOnline = lastSeenAt > 0 && lastSeenAt >= now() - ONLINE_WINDOW_MS
+  return {
+    id: telegramUserId,
+    tgId: telegramUserId,
+    telegramId: telegramUserId,
+    firstName: profile.displayName || '',
+    nickname: profile.displayName || '',
+    username: profile.username || '',
+    avatar: profile.photoUrl || '',
+    photoUrl: profile.photoUrl || '',
+    userType,
+    role,
+    vipActive,
+    packageName,
+    vipExpireAtMs,
+    vipExpiresAt: vipExpireAtMs > 0 ? formatAdminOrderTime(vipExpireAtMs) : '—',
+    spendUsd: stats.spendUsd,
+    commentCount: stats.commentCount,
+    favoriteCount: stats.favoriteCount,
+    readCount: stats.readCount,
+    isBanned: Boolean(profile.isBanned),
+    whitelist: Boolean(profile.whitelist),
+    ipLocation: ipLocation || '-',
+    lastSeenAt,
+    isOnline,
+    statusLabel: profile.isBanned ? '已封禁' : userType === 'author' ? '作者' : vipActive ? 'VIP' : isOnline ? '在线' : '普通',
+  }
+}
+
+function userTelegramIdKeys(telegramUserId) {
+  const id = normalizeTelegramUserId(telegramUserId)
+  if (!id) return new Set()
+  return new Set([id, `tg_${id}`])
+}
+
+function countUserComments(telegramUserId) {
+  const keys = userTelegramIdKeys(telegramUserId)
+  if (!keys.size) return 0
+  let count = 0
+  const novelIds = new Set([...novelReviews.keys(), ...novelReplies.keys()])
+  for (const novelId of novelIds) {
+    for (const row of resolveNovelReviews(novelId)) {
+      const uid = normalizeTelegramUserIdIn(row?.userId)
+      if (uid && keys.has(uid)) count += 1
+    }
+    for (const row of resolveNovelReplies(novelId)) {
+      const uid = normalizeTelegramUserIdIn(row?.userId)
+      if (uid && keys.has(uid)) count += 1
+    }
+  }
+  return count
+}
+
+function countUserFavorites(telegramUserId) {
+  const keys = userTelegramIdKeys(telegramUserId)
+  if (!keys.size) return 0
+  const novelIds = new Set()
+  for (const key of keys) {
+    for (const item of resolveUserFavoritedNovels(key)) {
+      novelIds.add(String(item.novelId))
+    }
+  }
+  return novelIds.size
+}
+
+function countUserReads(telegramUserId) {
+  const keys = new Set([...memberIdLookupKeys(telegramUserId), ...userTelegramIdKeys(telegramUserId)])
+  if (!keys.size) return 0
+  return readRecords.filter((row) => {
+    const memberKey = String(row?.memberId || '').trim()
+    if (!memberKey) return false
+    if (keys.has(memberKey)) return true
+    const stripped = memberKey.replace(/^tg_/, '')
+    return keys.has(stripped)
+  }).length
+}
+
+function computeUserSpendUsd(telegramUserId) {
+  const id = normalizeTelegramUserId(telegramUserId)
+  if (!id) return 0
+  let total = 0
+  for (const order of listOrdersByTelegramUserId(id)) {
+    const status = String(order?.status || '').toLowerCase()
+    if (status === 'paid') total += parseOrderAmountUsd(order)
+  }
+  for (const order of resolveVipOrdersForUser(id)) {
+    const status = String(order?.status || '').toLowerCase()
+    if (status === 'success') total += parseOrderAmountUsd(order)
+  }
+  return Number(total.toFixed(2))
+}
+
+function resolveUserPackageLabel(profile) {
+  if (!profile?.telegramUserId) return '—'
+  const orders = resolveVipOrdersForUser(profile.telegramUserId)
+  const lastPaid = orders.find((row) => String(row?.status || '').toLowerCase() === 'success') || orders[0]
+  if (lastPaid?.planId) {
+    const plan = getVipPlanForRole(lastPaid.planId, profile.role || 'normal')
+    return String(plan?.durationKm || lastPaid.planId)
+  }
+  if (isViewerVipActive(profile)) return 'VIP 生效中'
+  return '—'
+}
+
+function computeAdminUserStats(profile) {
+  const telegramUserId = profile?.telegramUserId
+  return {
+    spendUsd: computeUserSpendUsd(telegramUserId),
+    commentCount: countUserComments(telegramUserId),
+    favoriteCount: countUserFavorites(telegramUserId),
+    readCount: countUserReads(telegramUserId),
+  }
+}
+
+function normalizeAdminAuditLogIn(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const at = Number(raw.at || raw.createdAt || 0) || now()
+  return {
+    id: String(raw.id || `alog-${at}-${Math.floor(Math.random() * 100000)}`).slice(0, 80),
+    at,
+    adminName: String(raw.adminName || 'admin').slice(0, 80),
+    action: String(raw.action || '').slice(0, 80),
+    targetUserId: String(raw.targetUserId || '').slice(0, 32),
+    before: raw.before ?? null,
+    after: raw.after ?? null,
+    note: String(raw.note || '').slice(0, 500),
+    ip: normalizeIp(raw.ip) || '',
+    device: String(raw.device || '').slice(0, 160),
+  }
+}
+
+function appendAdminAuditLog(entry, req) {
+  const adminToken = req ? extractBearerToken(req) : ''
+  const session = adminToken ? getAdminSession(adminToken) : null
+  const row = normalizeAdminAuditLogIn({
+    ...entry,
+    adminName: entry?.adminName || session?.username || 'admin',
+    ip: entry?.ip || (req ? getRequestIp(req) : ''),
+    device: entry?.device || String(req?.headers?.['user-agent'] || '').slice(0, 160),
+  })
+  if (!row) return null
+  adminAuditLogs.unshift(row)
+  if (adminAuditLogs.length > ADMIN_AUDIT_LOG_CAP) {
+    adminAuditLogs = adminAuditLogs.slice(0, ADMIN_AUDIT_LOG_CAP)
+  }
+  return row
+}
+
+function userIdMatchesTelegramKeys(rawUserId, keys) {
+  const id = normalizeTelegramUserId(rawUserId)
+  if (!id) {
+    const numeric = normalizeTelegramUserIdIn(rawUserId)
+    if (numeric == null) return false
+    return keys.has(String(numeric)) || keys.has(`tg_${numeric}`)
+  }
+  return keys.has(id) || keys.has(`tg_${id}`)
+}
+
+function collectUserMemberKeys(telegramUserId) {
+  const id = normalizeTelegramUserId(telegramUserId)
+  if (!id) return []
+  return [...new Set([`tg_${id}`, id])]
+}
+
+function filterUserReadRecords(telegramUserId) {
+  const keys = new Set(collectUserMemberKeys(telegramUserId))
+  pruneExpiredReadRecords()
+  return readRecords
+    .filter((row) => keys.has(String(row?.memberId || '').trim()))
+    .filter((it) => isReadRecordForLiveNovel(it))
+    .map(enrichReadingRecordForAdmin)
+    .sort((a, b) => Number(b?.ts || 0) - Number(a?.ts || 0))
+}
+
+function countUserReviewOnly(telegramUserId) {
+  const keys = userTelegramIdKeys(telegramUserId)
+  let count = 0
+  for (const novelId of novelReviews.keys()) {
+    for (const row of resolveNovelReviews(novelId)) {
+      if (userIdMatchesTelegramKeys(row?.userId, keys)) count += 1
+    }
+  }
+  return count
+}
+
+function countUserReplyOnly(telegramUserId) {
+  const keys = userTelegramIdKeys(telegramUserId)
+  let count = 0
+  for (const novelId of novelReplies.keys()) {
+    for (const row of resolveNovelReplies(novelId)) {
+      if (userIdMatchesTelegramKeys(row?.userId, keys)) count += 1
+    }
+  }
+  return count
+}
+
+function countUserLikesGiven(telegramUserId) {
+  const keys = userTelegramIdKeys(telegramUserId)
+  let count = 0
+  for (const votes of novelReviewVotes.values()) {
+    if (!votes || typeof votes !== 'object') continue
+    for (const voteRow of Object.values(votes)) {
+      const normalized = normalizeVoteEntryIn(voteRow)
+      for (const uid of normalized.up) {
+        if (userIdMatchesTelegramKeys(uid, keys)) count += 1
+      }
+    }
+  }
+  return count
+}
+
+function collectUserReports(telegramUserId) {
+  const keys = userTelegramIdKeys(telegramUserId)
+  const out = []
+  for (const [novelId, row] of novelReports.entries()) {
+    for (const it of Array.isArray(row?.items) ? row.items : []) {
+      if (!userIdMatchesTelegramKeys(it?.userId, keys)) continue
+      out.push(enrichAdminReportRow(it, novelId))
+    }
+  }
+  return out.sort((a, b) => Number(b?.at || 0) - Number(a?.at || 0))
+}
+
+function findLatestUserComment(telegramUserId) {
+  const keys = userTelegramIdKeys(telegramUserId)
+  let latest = null
+  const novelIds = new Set([...novelReviews.keys(), ...novelReplies.keys()])
+  for (const novelId of novelIds) {
+    for (const row of resolveNovelReviews(novelId)) {
+      if (!userIdMatchesTelegramKeys(row?.userId, keys)) continue
+      const at = Number(row?.at || row?.createdAt || 0)
+      if (!latest || at > latest.at) latest = { at, text: String(row?.text || '').trim(), type: 'comment' }
+    }
+    for (const row of resolveNovelReplies(novelId)) {
+      if (!userIdMatchesTelegramKeys(row?.userId, keys)) continue
+      const at = Number(row?.at || row?.createdAt || 0)
+      if (!latest || at > latest.at) latest = { at, text: String(row?.text || '').trim(), type: 'reply' }
+    }
+  }
+  return latest
+}
+
+function findLatestUserFavorite(telegramUserId) {
+  const keys = new Set([...userTelegramIdKeys(telegramUserId), ...collectUserMemberKeys(telegramUserId)])
+  let latest = null
+  for (const key of keys) {
+    for (const item of resolveUserFavoritedNovels(key)) {
+      const at = Number(item?.at || 0)
+      if (!latest || at > latest.at) {
+        const novel = getStoredNovelById(item.novelId)
+        latest = { at, title: novel?.title || item.novelId, novelId: item.novelId }
+      }
+    }
+  }
+  return latest
+}
+
+function computeReadingAnalytics(records) {
+  const novelSet = new Set()
+  let chapterCount = 0
+  let totalMinutes = 0
+  const daySet = new Set()
+  let latest = null
+  for (const rec of records) {
+    const novelKey = String(rec?.novelId || rec?.shelfTitle || '').trim()
+    if (novelKey) novelSet.add(novelKey)
+    chapterCount += 1
+    totalMinutes += Number(rec?.readMinutes || 0)
+    const ts = Number(rec?.ts || 0)
+    if (ts > 0) {
+      const d = new Date(ts)
+      daySet.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`)
+      if (!latest || ts > latest.ts) {
+        latest = {
+          ts,
+          novel: rec?.shelfTitle || '—',
+          chapter: rec?.readChapter || '—',
+        }
+      }
+    }
+  }
+  const activeDays = daySet.size
+  let streakDays = 0
+  if (daySet.size) {
+    const sortedDays = [...daySet]
+      .map((k) => {
+        const [y, m, d] = k.split('-').map(Number)
+        return new Date(y, m, d).getTime()
+      })
+      .sort((a, b) => b - a)
+    streakDays = 1
+    for (let i = 1; i < sortedDays.length; i += 1) {
+      if (sortedDays[i - 1] - sortedDays[i] === 86400000) streakDays += 1
+      else break
+    }
+  }
+  return {
+    novelCount: novelSet.size,
+    chapterCount,
+    totalMinutes,
+    avgDailyMinutes: activeDays > 0 ? Math.round(totalMinutes / activeDays) : 0,
+    activeDays,
+    streakDays,
+    latest,
+  }
+}
+
+function formatDurationMinutes(totalMinutes) {
+  const minutes = Math.max(0, Math.floor(Number(totalMinutes) || 0))
+  if (!minutes) return '0 分钟'
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  if (!hours) return `${rest} 分钟`
+  if (!rest) return `${hours} 小时`
+  return `${hours} 小时 ${rest} 分钟`
+}
+
+function formatRemainingVipLabel(vipExpireAtMs, atMs = now()) {
+  const expire = Number(vipExpireAtMs || 0)
+  if (!Number.isFinite(expire) || expire <= atMs) return '—'
+  const minutes = Math.ceil((expire - atMs) / 60000)
+  return formatDurationMinutes(minutes)
+}
+
+function buildUserLoginRecords(profile, memberId) {
+  const loginAt = Number(memberLastLoginAt.get(memberId) || profile?.lastSeenAt || 0)
+  const loginIp = String(memberLastLoginIp.get(memberId) || '')
+  const loginGeo = String(memberLastLoginGeo.get(memberId) || '')
+  const presence = records.get(memberId) || {}
+  const authMode = String(profile?.authMode || '').toLowerCase()
+  const loginMethod = authMode.includes('web') ? 'Telegram Web' : 'Telegram Mini App'
+  if (!loginAt) return []
+  return [
+    {
+      at: loginAt,
+      atLabel: formatAdminOrderTime(loginAt),
+      device: formatReadingDeviceLabel(presence.device),
+      os: formatReadingDeviceLabel(presence.device),
+      ip: loginIp || '—',
+      ipLocation: loginGeo || '—',
+      loginMethod,
+      status: profile?.isBanned ? '已封禁' : '成功',
+    },
+  ]
+}
+
+function buildUserOrderSummary(telegramUserId) {
+  const paymentOrders = listOrdersByTelegramUserId(telegramUserId)
+    .map((row) => buildAdminOrderRow(row))
+    .filter(Boolean)
+  const vipOrders = resolveVipOrdersForUser(telegramUserId).map((row) => ({
+    id: row.id,
+    order_no: row.id,
+    amount: parseOrderAmountUsd(row),
+    status: String(row.status || '').toLowerCase() === 'success' ? 'paid' : row.status,
+    time_at: Number(row.atMs || 0),
+    time_label: formatAdminOrderTime(row.atMs),
+    payment_method: 'VIP 内购',
+    package_name: row.planId || '—',
+    pay_aba: false,
+    pay_payway: false,
+    refund_label: '—',
+    source: 'vip',
+  }))
+  const merged = [...paymentOrders, ...vipOrders].sort(
+    (a, b) => Number(b?.time_at || 0) - Number(a?.time_at || 0),
+  )
+  const paidOrders = merged.filter((row) => ['paid', 'success'].includes(String(row?.status || '').toLowerCase()))
+  const refunded = merged.filter((row) => String(row?.status || '').toLowerCase() === 'refunded')
+  const abnormal = merged.filter((row) => ['failed', 'expired', 'pending'].includes(String(row?.status || '').toLowerCase()))
+  const latestPaid = paidOrders[0] || null
+  const totalSpend = computeUserSpendUsd(telegramUserId)
+  return {
+    totalCount: merged.length,
+    totalSpendUsd: totalSpend,
+    latestPaid,
+    refunded,
+    abnormal,
+    orders: merged.slice(0, 50),
+  }
+}
+
+function buildAdminUserProfileDetail(telegramUserId) {
+  const id = normalizeTelegramUserId(telegramUserId)
+  if (!id) return null
+  const profile = resolveViewerProfileByTelegramUserId(id)
+  if (!profile) return null
+  const memberId = profile.memberId || `tg_${id}`
+  const memberKeys = collectUserMemberKeys(id)
+  const registerAt = Number(memberFirstSeenAt.get(memberId) || profile.createdAt || 0)
+  const registerIp = String(memberRegisterIp.get(memberId) || '')
+  const registerGeo = String(memberRegisterGeo.get(memberId) || '')
+  const loginIp = String(memberLastLoginIp.get(memberId) || '')
+  const loginGeo = String(memberLastLoginGeo.get(memberId) || '')
+  const loginAt = Number(memberLastLoginAt.get(memberId) || profile.lastSeenAt || 0)
+  const presence = records.get(memberId) || {}
+  const vipActive = isViewerVipActive(profile)
+  const role = normalizeViewerRole(profile.role)
+  const stats = computeAdminUserStats(profile)
+  const userReads = filterUserReadRecords(id)
+  const reading = computeReadingAnalytics(userReads)
+  const reports = collectUserReports(id)
+  const latestComment = findLatestUserComment(id)
+  const latestFavorite = findLatestUserFavorite(id)
+  const orderSummary = buildUserOrderSummary(id)
+  const vipOrders = resolveVipOrdersForUser(id)
+  const successVipOrders = vipOrders.filter((row) => String(row?.status || '').toLowerCase() === 'success')
+  const latestVipOrder = successVipOrders[0] || vipOrders[0] || null
+  const plan = latestVipOrder?.planId
+    ? getVipPlanForRole(latestVipOrder.planId, profile.role)
+    : null
+  const vipStartAt = successVipOrders.length
+    ? Number(successVipOrders[successVipOrders.length - 1]?.atMs || 0)
+    : Number(memberPaidAt.get(memberId) || 0)
+  const auditForUser = adminAuditLogs.filter((row) => String(row?.targetUserId || '') === id)
+  const vipGiftLogs = auditForUser.filter((row) => String(row.action || '').includes('gift'))
+  const vipChangeLogs = auditForUser.filter((row) =>
+    /vip|ban|unban|role|extend|reduce|deduct/i.test(String(row.action || '')),
+  )
+  const systemLogs = auditForUser.slice(0, 50).map((row) => ({
+    id: row.id,
+    adminName: row.adminName,
+    at: row.at,
+    atLabel: formatAdminOrderTime(row.at),
+    action: row.action,
+    before: row.before,
+    after: row.after,
+    note: row.note || '—',
+    ip: row.ip || '—',
+    device: row.device || '—',
+  }))
+
+  return {
+    tgId: id,
+    basic: {
+      avatar: profile.photoUrl || '',
+      nickname: profile.displayName || '—',
+      telegramId: id,
+      username: profile.username ? `@${profile.username}` : '—',
+      registeredAt: registerAt ? formatAdminOrderTime(registerAt) : '—',
+      registeredAtMs: registerAt,
+      lastOnlineAt: loginAt ? formatAdminOrderTime(loginAt) : '—',
+      lastOnlineAtMs: loginAt,
+      lastDevice: formatReadingDeviceLabel(
+        presence.device || memberLastDevice.get(memberId) || '',
+      ),
+      currentIp: loginIp || '—',
+      ipLocation: loginGeo || registerGeo || '—',
+      accountStatus: profile.isBanned ? '封禁' : '正常',
+      isBanned: Boolean(profile.isBanned),
+      isOnline: loginAt > now() - ONLINE_WINDOW_MS,
+    },
+    vip: {
+      membershipStatus: vipActive ? '会员生效中' : '非会员',
+      membershipType: vipActive ? (role === 'author' ? '作者VIP' : '普通VIP') : '—',
+      role,
+      vipActive,
+      packageName: plan?.durationKm || latestVipOrder?.planId || resolveUserPackageLabel(profile),
+      packagePrice: plan?.priceUsdLabel || latestVipOrder?.amount || '—',
+      startAt: vipStartAt ? formatAdminOrderTime(vipStartAt) : '—',
+      startAtMs: vipStartAt,
+      expireAt: profile.vipExpireAtMs ? formatAdminOrderTime(profile.vipExpireAtMs) : '—',
+      expireAtMs: Number(profile.vipExpireAtMs || 0),
+      remainingLabel: formatRemainingVipLabel(profile.vipExpireAtMs),
+      remainingMinutes: vipActive
+        ? Math.max(0, Math.ceil((Number(profile.vipExpireAtMs || 0) - now()) / 60000))
+        : 0,
+      purchaseCount: successVipOrders.length + orderSummary.orders.filter((o) => o.status === 'paid').length,
+      renewalCount: Math.max(0, successVipOrders.length - 1),
+      totalSpendUsd: stats.spendUsd,
+      latestOrder: latestVipOrder
+        ? {
+            id: latestVipOrder.id,
+            amount: latestVipOrder.amount,
+            time: formatAdminOrderTime(latestVipOrder.atMs),
+            planId: latestVipOrder.planId,
+          }
+        : orderSummary.latestPaid,
+      giftRecords: vipGiftLogs.map((row) => ({
+        id: row.id,
+        atLabel: formatAdminOrderTime(row.at),
+        action: row.action,
+        note: row.note || '—',
+      })),
+      changeRecords: vipChangeLogs.map((row) => ({
+        id: row.id,
+        atLabel: formatAdminOrderTime(row.at),
+        action: row.action,
+        before: row.before,
+        after: row.after,
+        note: row.note || '—',
+      })),
+    },
+    reading: {
+      novelCount: reading.novelCount,
+      chapterCount: reading.chapterCount,
+      totalMinutes: reading.totalMinutes,
+      totalDurationLabel: formatDurationMinutes(reading.totalMinutes),
+      avgDailyMinutes: reading.avgDailyMinutes,
+      avgDailyLabel: formatDurationMinutes(reading.avgDailyMinutes),
+      lastReadAt: reading.latest?.ts ? formatAdminOrderTime(reading.latest.ts) : '—',
+      lastNovel: reading.latest?.novel || '—',
+      lastChapter: reading.latest?.chapter || '—',
+      activeDays: reading.activeDays,
+      streakDays: reading.streakDays,
+      records: userReads.slice(0, 30),
+    },
+    interaction: {
+      commentCount: countUserReviewOnly(id),
+      replyCount: countUserReplyOnly(id),
+      favoriteCount: stats.favoriteCount,
+      likeCount: countUserLikesGiven(id),
+      reportCount: reports.length,
+      lastCommentAt: latestComment?.at ? formatAdminOrderTime(latestComment.at) : '—',
+      lastCommentText: latestComment?.text || '—',
+      lastFavoriteNovel: latestFavorite?.title || '—',
+      reports: reports.slice(0, 20),
+    },
+    orders: {
+      totalCount: orderSummary.totalCount,
+      totalSpendUsd: orderSummary.totalSpendUsd,
+      latestRechargeAt: orderSummary.latestPaid?.time_label || '—',
+      latestRechargeAmount: orderSummary.latestPaid?.amount ?? '—',
+      latestPaymentMethod: orderSummary.latestPaid?.payment_method || '—',
+      latestOrderNo: orderSummary.latestPaid?.order_no || orderSummary.latestPaid?.id || '—',
+      latestOrderStatus: orderSummary.latestPaid?.status || '—',
+      payAba: Boolean(orderSummary.latestPaid?.pay_aba),
+      payPayway: Boolean(orderSummary.latestPaid?.pay_payway),
+      refundRecords: orderSummary.refunded,
+      abnormalRecords: orderSummary.abnormal,
+      orders: orderSummary.orders,
+    },
+    loginRecords: buildUserLoginRecords(profile, memberId),
+    systemLogs,
+    registerIp,
+    registerLocation: registerGeo || '—',
+  }
+}
+
+function handleAdminUserAction(telegramUserId, body, req) {
+  const id = normalizeTelegramUserId(telegramUserId)
+  if (!id) return { error: 'invalid user id', status: 400 }
+  const action = String(body?.action || '').trim()
+  const profile = resolveViewerProfileByTelegramUserId(id)
+  if (!profile) return { error: 'user not found', status: 404 }
+  const before = {
+    vipExpireAtMs: profile.vipExpireAtMs,
+    isBanned: profile.isBanned,
+    role: profile.role,
+  }
+  const note = String(body?.note || '').trim()
+
+  switch (action) {
+    case 'ban':
+      updateMemberUserFlags(id, { isBanned: true })
+      break
+    case 'unban':
+      updateMemberUserFlags(id, { isBanned: false })
+      break
+    case 'gift_vip': {
+      const planId = String(body?.planId || 'vip_entry').trim()
+      const current = resolveViewerProfileByTelegramUserId(id)
+      const result = createSuccessfulVipOrderForViewer(current, planId)
+      if (!result) return { error: 'gift vip failed', status: 400 }
+      break
+    }
+    case 'deduct_vip': {
+      const updated = normalizeMemberProfileIn(
+        { ...profile, vipExpireAtMs: now(), updatedAt: now() },
+        id,
+      )
+      memberProfiles.set(id, updated)
+      break
+    }
+    case 'extend_vip':
+    case 'reduce_vip': {
+      const minutes = Math.max(
+        0,
+        Number(body?.minutes) || Math.max(0, Number(body?.hours) || 0) * 60,
+      )
+      if (!minutes) return { error: 'minutes required', status: 400 }
+      const deltaMs = (action === 'extend_vip' ? 1 : -1) * minutes * 60000
+      const base = Math.max(now(), Number(profile.vipExpireAtMs || 0))
+      const nextExpire = action === 'extend_vip' ? base + deltaMs : Math.max(now(), base + deltaMs)
+      const updated = normalizeMemberProfileIn(
+        { ...profile, vipExpireAtMs: nextExpire, updatedAt: now() },
+        id,
+      )
+      memberProfiles.set(id, updated)
+      break
+    }
+    case 'set_role': {
+      const nextRole = String(body?.role || '').toLowerCase() === 'author' ? 'author' : 'normal'
+      const updated = normalizeMemberProfileIn({ ...profile, role: nextRole, updatedAt: now() }, id)
+      memberProfiles.set(id, updated)
+      break
+    }
+    case 'manual_vip_adjust': {
+      let p = { ...profile }
+      const membershipType = String(body?.membershipType || '').trim().toLowerCase()
+      if (membershipType === 'normal') {
+        p = { ...p, role: 'normal', vipExpireAtMs: now() }
+      } else if (membershipType === 'author') {
+        p = { ...p, role: 'author' }
+        if (!isViewerVipActive(p)) p = { ...p, vipExpireAtMs: now() + 24 * 3600000 }
+      } else if (membershipType === 'vip') {
+        p = { ...p, role: 'normal' }
+        if (!isViewerVipActive(p)) p = { ...p, vipExpireAtMs: now() + 24 * 3600000 }
+      }
+
+      const preset = String(body?.preset || '').trim()
+      const presetDays = { gift_30: 30, gift_90: 90, gift_180: 180, gift_365: 365 }
+      if (preset === 'clear') {
+        p = { ...p, vipExpireAtMs: now() }
+      } else if (preset === 'permanent') {
+        p = { ...p, vipExpireAtMs: now() + 100 * 365 * 24 * 3600000 }
+      } else if (presetDays[preset]) {
+        const base = Math.max(now(), Number(p.vipExpireAtMs || 0))
+        p = { ...p, vipExpireAtMs: base + presetDays[preset] * 24 * 3600000 }
+      }
+
+      const td = body?.timeDelta || {}
+      const sub = td.direction === 'sub'
+      const minutes =
+        (Number(td.hours) || 0) * 60 +
+        (Number(td.days) || 0) * 24 * 60 +
+        (Number(td.months) || 0) * 30 * 24 * 60 +
+        (Number(td.years) || 0) * 365 * 24 * 60
+      if (minutes > 0) {
+        const base = Math.max(now(), Number(p.vipExpireAtMs || 0))
+        p = { ...p, vipExpireAtMs: sub ? Math.max(now(), base - minutes * 60000) : base + minutes * 60000 }
+      }
+
+      const updated = normalizeMemberProfileIn({ ...p, updatedAt: now() }, id)
+      memberProfiles.set(id, updated)
+      break
+    }
+    default:
+      return { error: 'unsupported action', status: 400 }
+  }
+
+  const afterProfile = resolveViewerProfileByTelegramUserId(id)
+  const after = {
+    vipExpireAtMs: afterProfile?.vipExpireAtMs,
+    isBanned: afterProfile?.isBanned,
+    role: afterProfile?.role,
+  }
+  appendAdminAuditLog({ action, targetUserId: id, before, after, note }, req)
+  persistMembers()
+  return { profile: buildAdminUserProfileDetail(id) }
+}
+
+function buildAdminUsersList() {
+  const seen = new Set()
+  const users = []
+  for (const profile of memberProfiles.values()) {
+    if (!profile?.telegramUserId) continue
+    seen.add(String(profile.telegramUserId))
+    users.push(formatAdminUserRow(profile))
+  }
+  for (const memberId of knownMembers) {
+    const m = String(memberId || '').match(/^tg_(\d+)$/i)
+    if (!m) continue
+    const id = m[1]
+    if (seen.has(id)) continue
+    const profile = resolveViewerProfileByTelegramUserId(id)
+    if (!profile) continue
+    users.push(formatAdminUserRow(profile))
+  }
+  users.sort((a, b) => Number(b.lastSeenAt || 0) - Number(a.lastSeenAt || 0))
+  return users
+}
+
+function updateMemberUserFlags(telegramUserId, patch = {}) {
+  const id = normalizeTelegramUserId(telegramUserId)
+  if (!id) return null
+  const existing = resolveViewerProfileByTelegramUserId(id)
+  const next = normalizeMemberProfileIn({
+    ...existing,
+    isBanned: patch.isBanned !== undefined ? Boolean(patch.isBanned) : existing?.isBanned,
+    whitelist: patch.whitelist !== undefined ? Boolean(patch.whitelist) : existing?.whitelist,
+    updatedAt: now(),
+  }, id)
+  if (!next) return null
+  memberProfiles.set(id, next)
+  return next
+}
+
+// ---
+function parseOrderAmountUsd(order) {
+  const raw = order?.amount ?? order?.priceUsdLabel ?? order?.price ?? 0
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+  const text = String(raw || '').replace(/[^0-9.-]/g, '')
+  const num = Number(text)
+  return Number.isFinite(num) ? num : 0
+}
+
+// ---
+function formatAdminOrderTime(ms) {
+  const value = Number(ms)
+  if (!Number.isFinite(value) || value <= 0) return '—'
+  return new Date(value).toLocaleString('zh-CN', { hour12: false })
+}
+
+function buildAdminOrderRow(order) {
+  if (!order) return null
+  const profile = resolveViewerProfileByTelegramUserId(order.telegram_user_id)
+  const username = String(profile?.username || '').trim()
+  const displayName = String(profile?.displayName || '').trim()
+  const userLabel = username ? `@${username}` : displayName || String(order.telegram_user_id || '—')
+  const plan = getVipPlanForRole(order.plan_id, profile?.role || 'normal')
+  const packageName = String(plan?.durationKm || plan?.planId || order.plan_id || '—')
+  const channel = String(order.payment_channel || '').toLowerCase()
+  const payAba = channel === 'aba_khqr'
+  const payPayway = channel === 'payway_hosted' || channel.includes('payway')
+  const status = resolveDisplayStatus(order, now())
+  const timeMs = Number(order.paid_at || order.created_at || 0)
+  const paymentMethod = payAba ? 'ABA KHQR' : payPayway ? 'PayWay' : order.payment_channel || '—'
+  return {
+    id: order.order_no,
+    order_no: order.order_no,
+    tran_id: order.tran_id,
+    telegram_user_id: order.telegram_user_id,
+    telegram_username: userLabel,
+    user_label: userLabel,
+    package_name: packageName,
+    plan_id: order.plan_id,
+    amount: parseOrderAmountUsd(order),
+    status,
+    created_at: order.created_at,
+    paid_at: order.paid_at,
+    expire_at: order.expire_at,
+    refunded_at: order.refunded_at || 0,
+    time_at: timeMs,
+    time_label: formatAdminOrderTime(timeMs),
+    payment_method: paymentMethod,
+    pay_aba: payAba,
+    pay_payway: payPayway,
+    can_refund: status === 'paid',
+    refund_label: status === 'refunded' ? '已退款' : '—',
+    payment_channel: order.payment_channel,
+    payway_env: order.payway_env,
+    fail_reason: order.fail_reason,
+    currency: order.currency,
+    member_id: order.member_id,
+  }
+}
+
+function resolveDisplayStatus(order, atMs = now()) {
+  const status = String(order?.status || '').trim().toLowerCase()
+  if (status === 'refunded') return 'refunded'
+  if (status === 'paid') return 'paid'
+  if (status === 'failed') return 'failed'
+  if (status === 'pending') {
+    const expireAt = Number(order?.expire_at || 0)
+    if (expireAt && expireAt <= atMs) return 'expired'
+    return 'pending'
+  }
+  return status || 'pending'
+}
+
 
 function buildAdminReports() {
   const out = []
@@ -1956,6 +2809,7 @@ const server = http.createServer(async (req, res) => {
     const planId = String(body.planId || '').trim()
     if (!planId) return sendJson(res, 400, { ok: false, error: 'planId required' })
     const profile = upsertViewerProfile(auth.telegramUser, req, auth)
+    if (rejectIfViewerBanned(profile, res)) return
     const plan = getVipPlanForRole(planId, profile.role)
     if (!plan || plan.durationHours <= 0) {
       return sendJson(res, 400, { ok: false, error: 'invalid vip plan' })
@@ -2025,6 +2879,7 @@ const server = http.createServer(async (req, res) => {
     const planId = String(body.planId || '').trim()
     if (!planId) return sendJson(res, 400, { ok: false, error: 'planId required' })
     const profile = upsertViewerProfile(auth.telegramUser, req, auth)
+    if (rejectIfViewerBanned(profile, res)) return
     const plan = getVipPlanForRole(planId, profile.role)
     if (!plan || plan.durationHours <= 0) {
       return sendJson(res, 400, { ok: false, error: 'invalid vip plan' })
@@ -2203,6 +3058,7 @@ const server = http.createServer(async (req, res) => {
     const planId = String(body.planId || '').trim()
     if (!planId) return sendJson(res, 400, { ok: false, error: 'planId required' })
     const profile = upsertViewerProfile(auth.telegramUser, req, auth)
+    if (rejectIfViewerBanned(profile, res)) return
     const result = createSuccessfulVipOrderForViewer(profile, planId)
     if (!result) return sendJson(res, 400, { ok: false, error: 'invalid vip plan' })
     persistMembers()
@@ -2980,6 +3836,51 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/admin/reports') {
     if (!requireAdmin(req, res)) return
     return sendJson(res, 200, { ok: true, items: buildAdminReports() })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/users') {
+    if (!requireAdmin(req, res)) return
+    return sendJson(res, 200, { ok: true, users: buildAdminUsersList() })
+  }
+
+  const adminUserProfileMatch = url.pathname.match(/^\/api\/admin\/users\/([^/]+)\/profile$/)
+  if (adminUserProfileMatch && req.method === 'GET') {
+    if (!requireAdmin(req, res)) return
+    const profile = buildAdminUserProfileDetail(decodeURIComponent(adminUserProfileMatch[1]))
+    if (!profile) return sendJson(res, 404, { ok: false, error: 'user not found' })
+    return sendJson(res, 200, { ok: true, profile })
+  }
+
+  const adminUserActionsMatch = url.pathname.match(/^\/api\/admin\/users\/([^/]+)\/actions$/)
+  if (adminUserActionsMatch && req.method === 'POST') {
+    if (!requireAdmin(req, res)) return
+    try {
+      const body = await parseJsonBody(req)
+      const result = handleAdminUserAction(decodeURIComponent(adminUserActionsMatch[1]), body, req)
+      if (result?.error) {
+        return sendJson(res, Number(result.status) || 400, { ok: false, error: result.error })
+      }
+      return sendJson(res, 200, { ok: true, profile: result.profile })
+    } catch (err) {
+      return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
+    }
+  }
+
+  const userFlagsMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/flags$/)
+  if (req.method === 'PATCH' && userFlagsMatch) {
+    if (!requireAdmin(req, res)) return
+    try {
+      const body = await parseJsonBody(req)
+      const patch = {}
+      if (body?.isBanned !== undefined) patch.isBanned = Boolean(body.isBanned)
+      if (body?.whitelist !== undefined) patch.whitelist = Boolean(body.whitelist)
+      const updated = updateMemberUserFlags(decodeURIComponent(userFlagsMatch[1]), patch)
+      if (!updated) return sendJson(res, 404, { ok: false, error: 'user not found' })
+      persistMembers()
+      return sendJson(res, 200, { ok: true, user: formatAdminUserRow(updated) })
+    } catch (err) {
+      return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
+    }
   }
 
   if (req.method === 'GET' && url.pathname === '/api/presence/online') {
