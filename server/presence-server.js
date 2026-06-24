@@ -1384,6 +1384,59 @@ function enrichAdminReportRow(it, novelId) {
 }
 
 
+/** 后台用户列表：仅含通过 Telegram Mini App 打开过 APP 的真实用户 */
+const ADMIN_TEST_TELEGRAM_IDS = new Set([
+  '123',
+  '123456789',
+  '22334455',
+  '998877665',
+  '887766554',
+])
+
+function isPlausibleTelegramUserId(telegramUserId) {
+  const id = normalizeTelegramUserId(telegramUserId)
+  if (!id) return false
+  if (ADMIN_TEST_TELEGRAM_IDS.has(id)) return false
+  // 真实 Telegram 用户 ID 通常 ≥ 8 位
+  if (id.length < 8) return false
+  return true
+}
+
+function isTelegramMiniAppUser(profile) {
+  if (!profile || !isPlausibleTelegramUserId(profile.telegramUserId)) return false
+
+  const id = normalizeTelegramUserId(profile.telegramUserId)
+  const memberId = String(profile.memberId || `tg_${id}`).trim()
+
+  // 必须出现在 presence 已知成员（打开过 APP / 同步过会话）
+  if (!knownMembers.has(memberId)) return false
+
+  const firstSeen = Number(memberFirstSeenAt.get(memberId) || 0)
+  const lastLogin = Number(memberLastLoginAt.get(memberId) || 0)
+  const lastSeen = Number(profile.lastSeenAt || 0)
+  if (!(firstSeen > 0 || lastLogin > 0 || lastSeen > 0)) return false
+
+  const authMode = String(profile.authMode || '').trim().toLowerCase()
+  const hasTelegramAuth =
+    profile.authVerified === true ||
+    authMode.includes('telegram') ||
+    authMode === 'unverified-fallback'
+
+  const displayName = String(profile.displayName || '').trim()
+  const genericName = displayName === `User ${id}` || displayName === `用户 ${id}`
+  const hasTgIdentity = Boolean(
+    String(profile.username || '').trim() ||
+      String(profile.photoUrl || '').trim() ||
+      (displayName && !genericName),
+  )
+
+  if (TELEGRAM_BOT_TOKEN) {
+    return profile.authVerified === true
+  }
+
+  return hasTelegramAuth && hasTgIdentity
+}
+
 function formatAdminUserRow(profile) {
   const memberId = String(profile?.memberId || `tg_${profile?.telegramUserId || ''}`).trim()
   const ipLocation = String(
@@ -1424,6 +1477,8 @@ function formatAdminUserRow(profile) {
     ipLocation: ipLocation || '-',
     lastSeenAt,
     isOnline,
+    authVerified: profile.authVerified === true,
+    fromTelegramApp: true,
     statusLabel: profile.isBanned ? '已封禁' : userType === 'author' ? '作者' : vipActive ? 'VIP' : isOnline ? '在线' : '普通',
   }
 }
@@ -2054,20 +2109,19 @@ function handleAdminUserAction(telegramUserId, body, req) {
 function buildAdminUsersList() {
   const seen = new Set()
   const users = []
-  for (const profile of memberProfiles.values()) {
-    if (!profile?.telegramUserId) continue
-    seen.add(String(profile.telegramUserId))
-    users.push(formatAdminUserRow(profile))
-  }
+
   for (const memberId of knownMembers) {
-    const m = String(memberId || '').match(/^tg_(\d+)$/i)
-    if (!m) continue
-    const id = m[1]
+    const matched = String(memberId || '').match(/^tg_(\d+)$/i)
+    if (!matched) continue
+    const id = matched[1]
     if (seen.has(id)) continue
-    const profile = resolveViewerProfileByTelegramUserId(id)
-    if (!profile) continue
+    seen.add(id)
+
+    const profile = memberProfiles.get(id) || resolveViewerProfileByTelegramUserId(id)
+    if (!profile || !isTelegramMiniAppUser(profile)) continue
     users.push(formatAdminUserRow(profile))
   }
+
   users.sort((a, b) => Number(b.lastSeenAt || 0) - Number(a.lastSeenAt || 0))
   return users
 }
