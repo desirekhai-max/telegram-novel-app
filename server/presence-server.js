@@ -25,6 +25,10 @@ import {
   getOrderByTranId,
   listOrdersByTelegramUserId,
   listAllOrdersSorted,
+  searchAdminOrders,
+  filterAndPaginateAdminOrders,
+  getAdminOrderByKey,
+  markOrderRefunded,
 } from './orders-store.js'
 import { buildPayWayCustomFields, getNeutralVipOrderProductLabel } from './paywayNeutralCopy.js'
 import { filterCheckoutFormFieldsForClient, stripSensitivePaymentFields } from './payway-security.js'
@@ -486,6 +490,8 @@ function normalizeVipOrderIn(raw) {
     audience: normalizeViewerRole(raw?.audience),
     durationHours: Math.max(0, Number(raw?.durationHours || 0)),
     priceUsdLabel: String(raw?.priceUsdLabel || '').trim().slice(0, 40),
+    sourceType: String(raw?.sourceType || raw?.source_type || 'vip_purchase').trim().slice(0, 32),
+    refundedAtMs: Number(raw?.refundedAtMs || raw?.refunded_at_ms || 0) || 0,
   }
 }
 
@@ -710,12 +716,13 @@ function resolveVipOrdersForUser(telegramUserId) {
   return Array.isArray(vipOrdersByUser.get(id)) ? vipOrdersByUser.get(id).slice() : []
 }
 
-function createSuccessfulVipOrderForViewer(profile, planId) {
+function createSuccessfulVipOrderForViewer(profile, planId, options = {}) {
   if (!profile?.telegramUserId) return null
   const plan = getVipPlanForRole(planId, profile.role)
   if (!plan || !plan.planId || plan.durationHours <= 0) return null
   const atMs = now()
   const currentOrders = resolveVipOrdersForUser(profile.telegramUserId)
+  const sourceType = String(options.sourceType || 'vip_purchase').trim() || 'vip_purchase'
   const order = normalizeVipOrderIn({
     id: buildVipOrderId(atMs, currentOrders.length),
     planId: plan.planId,
@@ -728,6 +735,7 @@ function createSuccessfulVipOrderForViewer(profile, planId) {
     audience: profile.role,
     durationHours: plan.durationHours,
     priceUsdLabel: plan.priceUsdLabel,
+    sourceType,
   })
   const addMs = plan.durationHours * 60 * 60 * 1000
   const currentExpire = Math.max(0, Number(profile.vipExpireAtMs || 0))
@@ -2054,7 +2062,7 @@ function handleAdminUserAction(telegramUserId, body, req) {
     case 'gift_vip': {
       const planId = String(body?.planId || 'vip_entry').trim()
       const current = resolveViewerProfileByTelegramUserId(id)
-      const result = createSuccessfulVipOrderForViewer(current, planId)
+      const result = createSuccessfulVipOrderForViewer(current, planId, { sourceType: 'vip_gift' })
       if (!result) return { error: 'gift vip failed', status: 400 }
       break
     }
@@ -2217,9 +2225,19 @@ function buildAdminOrderRow(order) {
   const channel = String(order.payment_channel || '').toLowerCase()
   const payAba = channel === 'aba_khqr'
   const payPayway = channel === 'payway_hosted' || channel.includes('payway')
+  const payVipGift = channel === 'vip_gift'
+  const payVipPurchase = channel === 'vip_purchase' || order.source === 'vip'
   const status = resolveDisplayStatus(order, now())
   const timeMs = Number(order.paid_at || order.created_at || 0)
-  const paymentMethod = payAba ? 'ABA KHQR' : payPayway ? 'PayWay' : order.payment_channel || '—'
+  const paymentMethod = payAba
+    ? 'ABA KHQR'
+    : payPayway
+      ? 'PayWay'
+      : payVipGift
+        ? 'VIP 赠送'
+        : payVipPurchase
+          ? 'VIP 内购'
+          : order.payment_channel || '—'
   return {
     id: order.order_no,
     order_no: order.order_no,
@@ -2247,13 +2265,225 @@ function buildAdminOrderRow(order) {
     fail_reason: order.fail_reason,
     currency: order.currency,
     member_id: order.member_id,
+    source: String(order.source || 'payment'),
+  }
+}
+
+function vipOrderToAdminStoreRow(vipOrder, telegramUserId) {
+  if (!vipOrder?.id) return null
+  const atMs = Number(vipOrder.atMs || 0) || now()
+  const sourceType = String(vipOrder.sourceType || 'vip_purchase').trim() || 'vip_purchase'
+  const rawStatus = String(vipOrder.status || 'success').toLowerCase()
+  return {
+    order_no: String(vipOrder.id),
+    tran_id: String(vipOrder.id),
+    telegram_user_id: normalizeTelegramUserId(telegramUserId),
+    member_id: `tg_${normalizeTelegramUserId(telegramUserId)}`,
+    plan_id: String(vipOrder.planId || ''),
+    amount: vipOrder.amount || vipOrder.priceUsdLabel || '$0',
+    currency: 'USD',
+    status: rawStatus === 'refunded' ? 'refunded' : 'paid',
+    payment_channel: sourceType === 'vip_gift' ? 'vip_gift' : 'vip_purchase',
+    created_at: atMs,
+    expire_at: 0,
+    paid_at: atMs,
+    refunded_at: Number(vipOrder.refundedAtMs || 0),
+    payway_env: '',
+    fail_reason: '',
+    source: 'vip',
+    duration_hours: Number(vipOrder.durationHours || 0),
+    vip_order_id: String(vipOrder.id),
+  }
+}
+
+function listAllVipStoreOrdersSorted() {
+  const rows = []
+  for (const [telegramUserId, orders] of vipOrdersByUser.entries()) {
+    const list = Array.isArray(orders) ? orders : []
+    for (const order of list) {
+      const row = vipOrderToAdminStoreRow(order, telegramUserId)
+      if (row) rows.push(row)
+    }
+  }
+  return rows.sort((a, b) => Number(b.paid_at || b.created_at) - Number(a.paid_at || a.created_at))
+}
+
+function searchMergedAdminOrders(filters = {}) {
+  const merged = [...listAllOrdersSorted(), ...listAllVipStoreOrdersSorted()]
+  merged.sort((a, b) => Number(b.paid_at || b.created_at) - Number(a.paid_at || a.created_at))
+  return filterAndPaginateAdminOrders(merged, filters)
+}
+
+function findVipOrderByKey(key) {
+  const id = String(key || '').trim()
+  if (!id) return null
+  for (const [telegramUserId, orders] of vipOrdersByUser.entries()) {
+    const list = Array.isArray(orders) ? orders : []
+    for (const order of list) {
+      if (String(order?.id || '') === id) {
+        return { telegramUserId, order }
+      }
+    }
+  }
+  return null
+}
+
+function resolveOrderDurationHours(order) {
+  const hours = Number(order?.duration_hours || 0)
+  if (hours > 0) return hours
+  const plan = getVipPlanForRole(order?.plan_id, 'normal')
+  return Number(plan?.durationHours || 0)
+}
+
+function revokeVipDurationForUser(telegramUserId, durationHours, atMs = now()) {
+  const id = normalizeTelegramUserId(telegramUserId)
+  const hours = Number(durationHours || 0)
+  if (!id || hours <= 0) return null
+  const profile = resolveViewerProfileByTelegramUserId(id)
+  if (!profile) return null
+  const deductMs = hours * 60 * 60 * 1000
+  const base = Math.max(atMs, Number(profile.vipExpireAtMs || 0))
+  const nextExpire = Math.max(atMs, base - deductMs)
+  const updated = normalizeMemberProfileIn({ ...profile, vipExpireAtMs: nextExpire, updatedAt: atMs }, id)
+  memberProfiles.set(id, updated)
+  return updated
+}
+
+function findVipOrderForPaymentRefund(paymentOrder) {
+  const tgId = normalizeTelegramUserId(paymentOrder?.telegram_user_id)
+  if (!tgId) return null
+  const paidAt = Number(paymentOrder?.paid_at || paymentOrder?.created_at || 0)
+  const planId = String(paymentOrder?.plan_id || '')
+  const orders = resolveVipOrdersForUser(tgId)
+  const active = orders.filter((row) => String(row?.status || '').toLowerCase() !== 'refunded')
+  return (
+    active.find(
+      (row) =>
+        String(row?.planId || '') === planId &&
+        paidAt > 0 &&
+        Math.abs(Number(row?.atMs || 0) - paidAt) <= 10 * 60 * 1000,
+    ) ||
+    active.find((row) => String(row?.planId || '') === planId) ||
+    null
+  )
+}
+
+function markVipOrderRefunded(telegramUserId, vipOrder) {
+  const id = normalizeTelegramUserId(telegramUserId)
+  const orderId = String(vipOrder?.id || '')
+  if (!id || !orderId) return null
+  const list = resolveVipOrdersForUser(id)
+  const idx = list.findIndex((row) => String(row?.id || '') === orderId)
+  if (idx < 0) return null
+  const current = list[idx]
+  if (String(current?.status || '').toLowerCase() === 'refunded') return current
+  if (String(current?.status || '').toLowerCase() !== 'success') {
+    throw new Error('only successful vip orders can be refunded')
+  }
+  const atMs = now()
+  const next = normalizeVipOrderIn({ ...current, status: 'refunded', refundedAtMs: atMs })
+  const nextList = list.slice()
+  nextList[idx] = next
+  vipOrdersByUser.set(id, nextList)
+  revokeVipDurationForUser(id, resolveOrderDurationHours({ ...vipOrderToAdminStoreRow(next, id), duration_hours: next.durationHours }), atMs)
+  persistMembers()
+  return next
+}
+
+function refundAdminOrderByKey(key, req) {
+  const paymentOrder = getAdminOrderByKey(key)
+  if (paymentOrder) {
+    const beforeProfile = resolveViewerProfileByTelegramUserId(paymentOrder.telegram_user_id)
+    const raw = markOrderRefunded(key)
+    if (!raw) return null
+    const linkedVip = findVipOrderForPaymentRefund(paymentOrder)
+    if (linkedVip) {
+      markVipOrderRefunded(paymentOrder.telegram_user_id, linkedVip)
+    } else {
+      revokeVipDurationForUser(paymentOrder.telegram_user_id, resolveOrderDurationHours(paymentOrder))
+    }
+    appendAdminAuditLog(
+      {
+        action: 'refund_order',
+        targetUserId: paymentOrder.telegram_user_id,
+        before: { vipExpireAtMs: beforeProfile?.vipExpireAtMs, orderNo: paymentOrder.order_no },
+        after: {
+          vipExpireAtMs: resolveViewerProfileByTelegramUserId(paymentOrder.telegram_user_id)?.vipExpireAtMs,
+          orderNo: paymentOrder.order_no,
+          status: 'refunded',
+        },
+        note: 'payment order refund with vip revoke',
+      },
+      req,
+    )
+    persistMembers()
+    return raw
+  }
+
+  const vipHit = findVipOrderByKey(key)
+  if (!vipHit) return null
+  const beforeProfile = resolveViewerProfileByTelegramUserId(vipHit.telegramUserId)
+  const raw = markVipOrderRefunded(vipHit.telegramUserId, vipHit.order)
+  appendAdminAuditLog(
+    {
+      action: 'refund_vip_order',
+      targetUserId: vipHit.telegramUserId,
+      before: { vipExpireAtMs: beforeProfile?.vipExpireAtMs, orderId: vipHit.order?.id },
+      after: {
+        vipExpireAtMs: resolveViewerProfileByTelegramUserId(vipHit.telegramUserId)?.vipExpireAtMs,
+        orderId: vipHit.order?.id,
+        status: 'refunded',
+      },
+      note: 'vip order refund with vip revoke',
+    },
+    req,
+  )
+  return vipOrderToAdminStoreRow(raw, vipHit.telegramUserId)
+}
+
+function getAdminOrderRawByKey(key) {
+  const paymentOrder = getAdminOrderByKey(key)
+  if (paymentOrder) return paymentOrder
+  const vipHit = findVipOrderByKey(key)
+  if (!vipHit) return null
+  return vipOrderToAdminStoreRow(vipHit.order, vipHit.telegramUserId)
+}
+
+function buildAdminOrdersSummary(filters = {}) {
+  const merged = searchMergedAdminOrders({ ...filters, page: 1, pageSize: 100000 })
+  const rows = merged.items.map((row) => buildAdminOrderRow(row)).filter(Boolean)
+  const paidRows = rows.filter((row) => row.status === 'paid')
+  const refundedRows = rows.filter((row) => row.status === 'refunded')
+  const pendingRows = rows.filter((row) => row.status === 'pending' || row.status === 'expired')
+  const failedRows = rows.filter((row) => row.status === 'failed')
+  const totalRevenueUsd = paidRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
+  const byPaymentMethod = {}
+  for (const row of paidRows) {
+    const key = String(row.payment_method || '—')
+    byPaymentMethod[key] = (byPaymentMethod[key] || 0) + Number(row.amount || 0)
+  }
+  const bySource = {}
+  for (const row of rows) {
+    const key = String(row.source || 'payment')
+    bySource[key] = (bySource[key] || 0) + 1
+  }
+  return {
+    totalCount: rows.length,
+    paidCount: paidRows.length,
+    refundedCount: refundedRows.length,
+    pendingCount: pendingRows.length,
+    failedCount: failedRows.length,
+    totalRevenueUsd: Number(totalRevenueUsd.toFixed(2)),
+    byPaymentMethod,
+    bySource,
+    dateField: String(filters.date_field || filters.dateField || 'created'),
   }
 }
 
 function resolveDisplayStatus(order, atMs = now()) {
   const status = String(order?.status || '').trim().toLowerCase()
   if (status === 'refunded') return 'refunded'
-  if (status === 'paid') return 'paid'
+  if (status === 'paid' || status === 'success') return 'paid'
   if (status === 'failed') return 'failed'
   if (status === 'pending') {
     const expireAt = Number(order?.expire_at || 0)
@@ -4191,6 +4421,74 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/admin-legacy/reading-records') {
     if (!requireLegacyAdmin(req, res)) return
     return sendJson(res, 200, { ok: true, items: readRecords })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin/orders') {
+    if (!requireAdmin(req, res)) return
+    const result = searchMergedAdminOrders({
+      status: url.searchParams.get('status'),
+      payment_method: url.searchParams.get('payment_method'),
+      date_from: url.searchParams.get('date_from'),
+      date_to: url.searchParams.get('date_to'),
+      date_field: url.searchParams.get('date_field'),
+      keyword: url.searchParams.get('keyword'),
+      page: url.searchParams.get('page'),
+      pageSize: url.searchParams.get('pageSize'),
+    })
+    const orders = result.items.map((row) => buildAdminOrderRow(row)).filter(Boolean)
+    return sendJson(res, 200, { ok: true, orders, ...result })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/admin/orders/search') {
+    if (!requireAdmin(req, res)) return
+    try {
+      const body = await parseJsonBody(req)
+      const result = searchMergedAdminOrders(body || {})
+      const orders = result.items.map((row) => buildAdminOrderRow(row)).filter(Boolean)
+      return sendJson(res, 200, { ok: true, orders, ...result })
+    } catch (err) {
+      return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin/orders/summary') {
+    if (!requireAdmin(req, res)) return
+    return sendJson(res, 200, {
+      ok: true,
+      summary: buildAdminOrdersSummary({
+        status: url.searchParams.get('status'),
+        payment_method: url.searchParams.get('payment_method'),
+        date_from: url.searchParams.get('date_from'),
+        date_to: url.searchParams.get('date_to'),
+        date_field: url.searchParams.get('date_field'),
+        keyword: url.searchParams.get('keyword'),
+      }),
+    })
+  }
+
+  const adminOrderMatch = url.pathname.match(/^\/api\/admin\/orders\/([^/]+)$/)
+  if (adminOrderMatch && req.method === 'GET') {
+    if (!requireAdmin(req, res)) return
+    const raw = getAdminOrderRawByKey(decodeURIComponent(adminOrderMatch[1]))
+    if (!raw) return sendJson(res, 404, { ok: false, error: 'order not found' })
+    return sendJson(res, 200, { ok: true, order: buildAdminOrderRow(raw) })
+  }
+
+  if (adminOrderMatch && req.method === 'PATCH') {
+    if (!requireAdmin(req, res)) return
+    try {
+      const body = await parseJsonBody(req)
+      if (String(body?.action || '').toLowerCase() !== 'refund') {
+        return sendJson(res, 400, { ok: false, error: 'unsupported action' })
+      }
+      const raw = refundAdminOrderByKey(decodeURIComponent(adminOrderMatch[1]), req)
+      if (!raw) return sendJson(res, 404, { ok: false, error: 'order not found' })
+      const row = getAdminOrderRawByKey(decodeURIComponent(adminOrderMatch[1]))
+      return sendJson(res, 200, { ok: true, order: buildAdminOrderRow(row || raw) })
+    } catch (err) {
+      const code = String(err?.message || '').includes('not found') ? 404 : 400
+      return sendJson(res, code, { ok: false, error: String(err?.message || err) })
+    }
   }
 
   if (req.method === 'GET' && url.pathname === '/api/admin/reports') {

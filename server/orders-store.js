@@ -225,3 +225,141 @@ export function listAllOrdersSorted() {
     (a, b) => Number(b.created_at) - Number(a.created_at),
   )
 }
+
+function parseDateStartMs(value) {
+  const matched = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!matched) return NaN
+  const [, y, m, d] = matched
+  return new Date(Number(y), Number(m) - 1, Number(d), 0, 0, 0, 0).getTime()
+}
+
+function parseDateEndMs(value) {
+  const matched = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!matched) return NaN
+  const [, y, m, d] = matched
+  return new Date(Number(y), Number(m) - 1, Number(d), 23, 59, 59, 999).getTime()
+}
+
+function normalizePaymentChannelFilter(raw) {
+  const text = String(raw || '').trim().toLowerCase()
+  if (!text || text === 'all') return ''
+  if (text === 'aba_khqr' || text === 'aba' || text === 'aba khqr') return 'aba_khqr'
+  if (text === 'payway_hosted' || text === 'payway') return 'payway_hosted'
+  if (text === 'vip_purchase' || text === 'vip purchase' || text === 'vip内购') return 'vip_purchase'
+  if (text === 'vip_gift' || text === 'vip gift' || text === 'vip赠送') return 'vip_gift'
+  return text
+}
+
+function resolveDisplayStatus(order, atMs = now()) {
+  const status = String(order?.status || '').trim().toLowerCase()
+  if (status === 'refunded') return 'refunded'
+  if (status === 'paid' || status === 'success') return 'paid'
+  if (status === 'failed') return 'failed'
+  if (status === 'pending') {
+    const expireAt = Number(order?.expire_at || 0)
+    if (expireAt && expireAt <= atMs) return 'expired'
+    return 'pending'
+  }
+  return status || 'pending'
+}
+
+function includesOrderKeyword(order, keyword) {
+  const key = String(keyword || '').trim().toLowerCase()
+  if (!key) return true
+  const fields = [
+    order.order_no,
+    order.tran_id,
+    order.telegram_user_id,
+    order.member_id,
+    order.plan_id,
+    order.vip_order_id,
+  ]
+  return fields.some((field) => String(field || '').toLowerCase().includes(key))
+}
+
+function resolveOrderDateMs(order, dateField = 'created') {
+  const field = String(dateField || 'created').toLowerCase()
+  if (field === 'paid') {
+    return Number(order.paid_at || order.created_at || 0)
+  }
+  return Number(order.created_at || order.paid_at || 0)
+}
+
+function filterAdminOrders(orders, filters = {}) {
+  const status = String(filters.status || '').trim().toLowerCase()
+  const paymentChannel = normalizePaymentChannelFilter(filters.payment_method || filters.paymentMethod)
+  const dateFromMs = parseDateStartMs(filters.date_from || filters.dateFrom)
+  const dateToMs = parseDateEndMs(filters.date_to || filters.dateTo)
+  const dateField = String(filters.date_field || filters.dateField || 'created').toLowerCase()
+  const keyword = filters.keyword || filters.q || filters.search || ''
+  const atMs = now()
+
+  return orders.filter((order) => {
+    const displayStatus = resolveDisplayStatus(order, atMs)
+    if (status && displayStatus !== status) return false
+    if (paymentChannel && String(order.payment_channel || '').toLowerCase() !== paymentChannel) {
+      return false
+    }
+    const dateMs = resolveOrderDateMs(order, dateField)
+    if (Number.isFinite(dateFromMs) && Number.isFinite(dateMs) && dateMs < dateFromMs) return false
+    if (Number.isFinite(dateToMs) && Number.isFinite(dateMs) && dateMs > dateToMs) return false
+    if (!includesOrderKeyword(order, keyword)) return false
+    return true
+  })
+}
+
+function paginateAdminOrders(orders, { page = 1, pageSize = 50 } = {}) {
+  const size = Math.min(100, Math.max(1, Number(pageSize) || 50))
+  const total = orders.length
+  const totalPages = Math.max(1, Math.ceil(total / size))
+  const currentPage = Math.min(totalPages, Math.max(1, Number(page) || 1))
+  const start = (currentPage - 1) * size
+  return {
+    items: orders.slice(start, start + size),
+    total,
+    page: currentPage,
+    pageSize: size,
+    totalPages,
+  }
+}
+
+export function filterAndPaginateAdminOrders(orders, filters = {}) {
+  const filtered = filterAdminOrders(orders, filters)
+  return paginateAdminOrders(filtered, filters)
+}
+
+export function searchAdminOrders(filters = {}) {
+  initOrdersStore()
+  return filterAndPaginateAdminOrders(listAllOrdersSorted(), filters)
+}
+
+export function getAdminOrderByKey(idOrNo) {
+  initOrdersStore()
+  const key = String(idOrNo || '').trim()
+  if (!key) return null
+  const direct = ordersByOrderNo.get(key)
+  if (direct) return direct
+  const byTran = orderNoByTranId.get(key)
+  if (byTran) return ordersByOrderNo.get(byTran) || null
+  for (const order of ordersByOrderNo.values()) {
+    if (order.tran_id === key) return order
+  }
+  return null
+}
+
+export function markOrderRefunded(idOrNo) {
+  initOrdersStore()
+  const order = getAdminOrderByKey(idOrNo)
+  if (!order) return null
+  if (String(order.status || '').toLowerCase() !== 'paid') {
+    throw new Error('only paid orders can be refunded')
+  }
+  const next = {
+    ...order,
+    status: 'refunded',
+    refunded_at: now(),
+  }
+  registerOrder(next)
+  persistOrders()
+  return next
+}
