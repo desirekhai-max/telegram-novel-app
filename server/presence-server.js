@@ -1401,17 +1401,30 @@ function isPlausibleTelegramUserId(telegramUserId) {
   return true
 }
 
-/** 曾通过 Telegram 端打开 APP：knownMembers 中有 tg_* 且有进入记录 */
-function isTelegramAppEnteredUser(telegramUserId) {
-  if (!isPlausibleTelegramUserId(telegramUserId)) return false
-  const id = normalizeTelegramUserId(telegramUserId)
+/** 曾通过 Telegram 进入 APP（presence 或 viewer 同步） */
+function shouldShowInAdminUserList(profile) {
+  if (!profile) return false
+  const id = normalizeTelegramUserId(profile.telegramUserId)
+  if (!id || !isPlausibleTelegramUserId(id)) return false
+
   const memberId = `tg_${id}`
-  if (!knownMembers.has(memberId)) return false
-  const firstSeen = Number(memberFirstSeenAt.get(memberId) || 0)
-  const lastLogin = Number(memberLastLoginAt.get(memberId) || 0)
-  const presence = records.get(memberId)
-  const presenceSeen = Number(presence?.lastSeenAt || 0)
-  return firstSeen > 0 || lastLogin > 0 || presenceSeen > 0
+  if (knownMembers.has(memberId)) return true
+
+  const lastSeen = Math.max(
+    Number(profile.lastSeenAt || 0),
+    Number(memberLastLoginAt.get(memberId) || 0),
+    Number(memberFirstSeenAt.get(memberId) || 0),
+  )
+  if (lastSeen > 0) return true
+
+  if (profile.authVerified === true) return true
+  if (String(profile.authMode || '').toLowerCase().includes('telegram')) return true
+  if (String(profile.username || '').trim()) return true
+  if (String(profile.photoUrl || '').trim()) return true
+  const name = String(profile.displayName || '').trim()
+  if (name && name !== `User ${id}` && name !== `用户 ${id}`) return true
+
+  return false
 }
 
 function resolveAdminListUserProfile(telegramUserId) {
@@ -2120,17 +2133,27 @@ function buildAdminUsersList() {
   const seen = new Set()
   const users = []
 
+  const pushUser = (profile) => {
+    if (!profile?.telegramUserId) return
+    const id = normalizeTelegramUserId(profile.telegramUserId)
+    if (!id || seen.has(id)) return
+    if (!shouldShowInAdminUserList(profile)) return
+    seen.add(id)
+    users.push(formatAdminUserRow(profile))
+  }
+
+  for (const profile of memberProfiles.values()) {
+    const resolved = resolveAdminListUserProfile(profile.telegramUserId) || profile
+    pushUser(resolved)
+  }
+
   for (const memberId of knownMembers) {
     const matched = String(memberId || '').match(/^tg_(\d+)$/i)
     if (!matched) continue
     const id = matched[1]
     if (seen.has(id)) continue
-    if (!isTelegramAppEnteredUser(id)) continue
-    seen.add(id)
-
     const profile = resolveAdminListUserProfile(id)
-    if (!profile) continue
-    users.push(formatAdminUserRow(profile))
+    if (profile) pushUser(profile)
   }
 
   users.sort((a, b) => Number(b.lastSeenAt || 0) - Number(a.lastSeenAt || 0))
