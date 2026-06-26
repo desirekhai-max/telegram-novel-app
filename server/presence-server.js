@@ -82,6 +82,7 @@ import {
   notifyComment,
   notifyReport,
   notifyUserRegister,
+  notifyVipInAppPurchase,
   notifyVipOrder,
 } from './telegram-system-notify.js'
 
@@ -660,7 +661,7 @@ function upsertViewerProfile(telegramUser, req, authMeta = {}) {
   }, normalizedUser.telegramUserId)
   memberProfiles.set(normalizedUser.telegramUserId, next)
   ensurePresenceMemberKnown(next.memberId, req, atMs)
-  if (isNewUser) notifyUserRegister(next)
+  if (isNewUser) notifyUserRegister(next, { onlineCount: resolveLiveOnlineCount() })
   return next
 }
 
@@ -771,7 +772,12 @@ function createSuccessfulVipOrderForViewer(profile, planId, options = {}) {
   txMetrics.orderEvents.push(atMs)
   txMetrics.successEvents.push(atMs)
   if (sourceType !== 'vip_gift') {
-    notifyVipOrder({ profile: updatedProfile, order })
+    const payload = { profile: updatedProfile, order, tranId: String(options.tranId || '').trim() }
+    if (options.notifyVipAs === 'inapp') {
+      notifyVipInAppPurchase(payload)
+    } else {
+      notifyVipOrder(payload)
+    }
   }
   return { order, profile: updatedProfile }
 }
@@ -865,7 +871,10 @@ function fulfillVipAfterPayment(input = {}) {
     return { ok: false, error: 'profile not found', profile: null, order: null, alreadyFulfilled: false }
   }
 
-  const result = createSuccessfulVipOrderForViewer(profile, planId)
+  const result = createSuccessfulVipOrderForViewer(profile, planId, {
+    notifyVipAs: 'order',
+    tranId,
+  })
   if (!result) {
     return { ok: false, error: 'invalid vip plan', profile: null, order: null, alreadyFulfilled: false }
   }
@@ -2868,6 +2877,11 @@ function makeCounts(rangeStartMs, rangeEndMs) {
   }
 }
 
+function resolveLiveOnlineCount() {
+  const liveCounts = makeCounts()
+  return Number(liveCounts.android || 0) + Number(liveCounts.ios || 0) + Number(liveCounts.web || 0)
+}
+
 const DASHBOARD_WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
 function formatDashboardDateLabel(startMs) {
@@ -3696,7 +3710,7 @@ const server = http.createServer(async (req, res) => {
     if (!planId) return sendJson(res, 400, { ok: false, error: 'planId required' })
     const profile = upsertViewerProfile(auth.telegramUser, req, auth)
     if (rejectIfViewerBanned(profile, res)) return
-    const result = createSuccessfulVipOrderForViewer(profile, planId)
+    const result = createSuccessfulVipOrderForViewer(profile, planId, { notifyVipAs: 'inapp' })
     if (!result) return sendJson(res, 400, { ok: false, error: 'invalid vip plan' })
     persistMembers()
     return sendJson(res, 200, {
@@ -4412,9 +4426,8 @@ const server = http.createServer(async (req, res) => {
     persistMembers()
     notifyReport({
       novelTitle: resolveNotifyNovelTitle(novelId, item.novelTitle),
-      chapterTitle: item.chapterTitle,
-      chapterIndex: item.chapterIndex,
       userName: item.userName,
+      content: item.text,
     })
     return sendJson(res, 200, { ok: true, novelId, item })
   }

@@ -1,15 +1,6 @@
 import { getTelegramBotToken, getTelegramNotifyChatId, saveTelegramNotifyChatId } from './app-settings-store.js'
 
-const ENABLED_TYPES = new Set(['user_register', 'vip_order', 'report', 'comment'])
-
-const NOTIFY_BORDER = '━━━━━━━━━━━━━━'
-
-const TYPE_ICONS = {
-  user_register: '👤',
-  vip_order: '👑',
-  report: '🚩',
-  comment: '💬',
-}
+const ENABLED_TYPES = new Set(['user_register', 'vip_order', 'vip_inapp', 'report', 'comment'])
 
 async function callTelegramApi(method, payload = {}, { get = false } = {}) {
   const token = getTelegramBotToken()
@@ -56,18 +47,17 @@ function formatPhnomPenhTime(ms = Date.now()) {
   }
 }
 
-function clip(text, max = 120) {
+function clip(text, max = 500) {
   const value = String(text || '').trim()
   if (!value) return ''
   return value.length > max ? `${value.slice(0, max - 1)}…` : value
 }
 
-function buildNotifyCard(titleLine, bodyLines = []) {
+function buildNotifyMessage(titleLine, bodyLines = []) {
   const body = bodyLines
-    .flatMap((line) => (Array.isArray(line) ? line : [line]))
     .filter((line) => line != null && line !== false && String(line).trim() !== '')
     .join('\n')
-  return [NOTIFY_BORDER, '', titleLine, '', body, '', NOTIFY_BORDER].join('\n')
+  return body ? `${titleLine}\n${body}` : titleLine
 }
 
 function formatNickname({ username, displayName, telegramUserId, userName } = {}) {
@@ -92,21 +82,27 @@ function formatUsdAmount(raw) {
   return `${label} USD`
 }
 
-function formatChapterLabel(chapterTitle, chapterIndex) {
-  const index = Number(chapterIndex)
-  if (Number.isFinite(index) && index > 0) return String(Math.floor(index))
-  const title = String(chapterTitle || '').trim()
-  if (!title) return '—'
-  const matched = title.match(/(\d+)/)
-  return matched ? matched[1] : clip(title, 40)
-}
-
 function formatVipPlanLabel(order = {}) {
+  const hours = Number(order?.durationHours || 0)
+  if (Number.isFinite(hours) && hours > 0) {
+    return clip(`VIP ${hours}小时`, 80)
+  }
   return clip(order?.product || order?.planId || 'VIP套餐', 80) || '—'
 }
 
 function formatOrderNo(order = {}, tranId = '') {
   return clip(order?.id || tranId || '', 60) || '—'
+}
+
+function buildVipNotifyLines({ profile, order, tranId = '' } = {}) {
+  const atMs = Number(order?.atMs || Date.now())
+  return [
+    `用户：${formatNickname(profile)}`,
+    `套餐：${formatVipPlanLabel(order)}`,
+    `金额：${formatUsdAmount(order?.priceUsdLabel || order?.amount)}`,
+    `订单号：${formatOrderNo(order, tranId)}`,
+    `时间：${formatPhnomPenhTime(atMs)}`,
+  ]
 }
 
 export async function discoverTelegramNotifyChatId(options = {}) {
@@ -129,39 +125,33 @@ export async function discoverTelegramNotifyChatId(options = {}) {
   const matches = []
   const seen = new Set()
 
-  const pushChat = (chat, atMs = 0, source = '') => {
+  const pushChat = (chat, atMs = 0) => {
     if (!chat) return
     if (chat.type !== 'group' && chat.type !== 'supergroup') return
     const id = String(chat.id || '')
     if (!id || seen.has(id)) return
     seen.add(id)
-    const title = String(chat.title || '').trim()
-    matches.push({ chatId: chat.id, title, type: chat.type, atMs, source })
+    matches.push({ chatId: chat.id, title: String(chat.title || '').trim(), type: chat.type, atMs })
   }
 
   for (const update of rows) {
     const msg = update?.message || update?.channel_post || update?.edited_message
-    if (msg?.chat) pushChat(msg.chat, Number(msg?.date || 0) * 1000, 'message')
+    if (msg?.chat) pushChat(msg.chat, Number(msg?.date || 0) * 1000)
     const member = update?.my_chat_member
-    if (member?.chat) pushChat(member.chat, Number(member?.date || 0) * 1000, 'my_chat_member')
+    if (member?.chat) pushChat(member.chat, Number(member?.date || 0) * 1000)
   }
 
-  const titleMatched = titleHint
-    ? matches.filter((row) => row.title.includes(titleHint))
-    : matches
+  const titleMatched = titleHint ? matches.filter((row) => row.title.includes(titleHint)) : matches
   const notifyMatched = matches.filter(
     (row) => row.title.includes('系统通知') || row.title.includes('🔔'),
   )
-  const picked = titleMatched.length ? titleMatched : notifyMatched.length ? notifyMatched : matches
-
-  if (!picked.length) {
-    throw new Error(
-      `未在 getUpdates 中找到通知群。请在「69KKH 系统通知🔔」发一条消息后再重试。`,
-    )
+  const pick = titleMatched.length ? titleMatched : notifyMatched.length ? notifyMatched : matches
+  if (!pick.length) {
+    throw new Error('未在 getUpdates 中找到通知群。请在「69KKH 系统通知🔔」发一条消息后再重试。')
   }
 
-  picked.sort((a, b) => Number(b.atMs || 0) - Number(a.atMs || 0))
-  const best = picked[0]
+  pick.sort((a, b) => Number(b.atMs || 0) - Number(a.atMs || 0))
+  const best = pick[0]
   return {
     chatId: String(best.chatId),
     title: best.title,
@@ -186,46 +176,42 @@ export async function bootstrapTelegramNotifyChatId() {
   return ''
 }
 
-export function notifyUserRegister(profile) {
-  const nickname = formatNickname(profile)
-  const tgId = String(profile?.telegramUserId || '').trim() || '—'
-  const text = buildNotifyCard(`${TYPE_ICONS.user_register} 新用户注册`, [
-    `昵称：${nickname}`,
-    `TG ID：${tgId}`,
+export function notifyUserRegister(profile, { onlineCount } = {}) {
+  const online = Number(onlineCount)
+  const text = buildNotifyMessage('👤 新用户注册', [
+    `昵称：${formatNickname(profile)}`,
+    `TG ID：${String(profile?.telegramUserId || '').trim() || '—'}`,
+    `在线人数：${Number.isFinite(online) && online >= 0 ? online : '—'}`,
     `时间：${formatPhnomPenhTime()}`,
   ])
   void sendSystemTelegramNotify('user_register', text)
 }
 
-export function notifyVipOrder({ profile, order, tranId = '' } = {}) {
-  const atMs = Number(order?.atMs || Date.now())
-  const text = buildNotifyCard(`${TYPE_ICONS.vip_order} 新VIP订单`, [
-    `用户：${formatNickname(profile)}`,
-    `套餐：${formatVipPlanLabel(order)}`,
-    `金额：${formatUsdAmount(order?.priceUsdLabel || order?.amount)}`,
-    `订单号：${formatOrderNo(order, tranId)}`,
-    `时间：${formatPhnomPenhTime(atMs)}`,
-  ])
+export function notifyVipOrder(payload = {}) {
+  const text = buildNotifyMessage('👑 新VIP订单', buildVipNotifyLines(payload))
   void sendSystemTelegramNotify('vip_order', text)
 }
 
-export function notifyReport({ novelTitle, chapterTitle, chapterIndex, userName } = {}) {
-  const text = buildNotifyCard(`${TYPE_ICONS.report} 举报通知`, [
+export function notifyVipInAppPurchase(payload = {}) {
+  const text = buildNotifyMessage('📫VIP内购', buildVipNotifyLines(payload))
+  void sendSystemTelegramNotify('vip_inapp', text)
+}
+
+export function notifyReport({ novelTitle, userName, content } = {}) {
+  const text = buildNotifyMessage('🚩 举报通知', [
     `举报人：${formatNickname({ userName })}`,
-    `小说：${clip(novelTitle || '—', 80)}`,
-    `章节：${formatChapterLabel(chapterTitle, chapterIndex)}`,
+    `小说：${clip(novelTitle || '—', 120)}`,
+    `内容：${clip(content || '—', 500) || '—'}`,
     `时间：${formatPhnomPenhTime()}`,
   ])
   void sendSystemTelegramNotify('report', text)
 }
 
 export function notifyComment({ novelTitle, userName, content } = {}) {
-  const commentText = clip(content || '—', 500) || '—'
-  const text = buildNotifyCard(`${TYPE_ICONS.comment} 评论通知`, [
+  const text = buildNotifyMessage('💬 评论通知', [
     `用户：${formatNickname({ userName })}`,
-    `小说：${clip(novelTitle || '—', 80)}`,
-    '评论：',
-    commentText,
+    `小说：${clip(novelTitle || '—', 120)}`,
+    `评论：${clip(content || '—', 500) || '—'}`,
     `时间：${formatPhnomPenhTime()}`,
   ])
   void sendSystemTelegramNotify('comment', text)
@@ -249,4 +235,4 @@ export async function sendSystemTelegramNotify(type, text) {
   }
 }
 
-export { ENABLED_TYPES, TYPE_ICONS }
+export { ENABLED_TYPES }
