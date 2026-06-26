@@ -76,6 +76,14 @@ import {
   matchesVisibilityFilter,
   normalizeVisibility,
 } from './novel-visibility-store.js'
+import { initAppSettingsStore } from './app-settings-store.js'
+import {
+  bootstrapTelegramNotifyChatId,
+  notifyComment,
+  notifyReport,
+  notifyUserRegister,
+  notifyVipOrder,
+} from './telegram-system-notify.js'
 
 const HOST = process.env.HOST || '0.0.0.0'
 const PORT = Number(process.env.PORT || 8787)
@@ -640,6 +648,7 @@ function upsertViewerProfile(telegramUser, req, authMeta = {}) {
   if (!normalizedUser?.telegramUserId) return null
   const atMs = now()
   const existing = resolveViewerProfileByTelegramUserId(normalizedUser.telegramUserId)
+  const isNewUser = !existing
   const next = normalizeMemberProfileIn({
     ...existing,
     ...normalizedUser,
@@ -651,6 +660,7 @@ function upsertViewerProfile(telegramUser, req, authMeta = {}) {
   }, normalizedUser.telegramUserId)
   memberProfiles.set(normalizedUser.telegramUserId, next)
   ensurePresenceMemberKnown(next.memberId, req, atMs)
+  if (isNewUser) notifyUserRegister(next)
   return next
 }
 
@@ -666,6 +676,13 @@ function rejectIfViewerBanned(profile, res) {
   if (!isViewerBanned(profile)) return false
   sendJson(res, 403, { ok: false, error: 'user_banned' })
   return true
+}
+
+function resolveNotifyNovelTitle(novelId, rawTitle = '') {
+  const fromRaw = String(rawTitle || '').trim()
+  if (fromRaw) return fromRaw
+  const novel = getStoredNovelById(String(novelId || '').trim())
+  return String(novel?.title || novelId || '—').trim()
 }
 
 function rejectIfUserIdBanned(userId, res) {
@@ -753,6 +770,9 @@ function createSuccessfulVipOrderForViewer(profile, planId, options = {}) {
   if (!memberPaidAt.has(updatedProfile.memberId)) memberPaidAt.set(updatedProfile.memberId, atMs)
   txMetrics.orderEvents.push(atMs)
   txMetrics.successEvents.push(atMs)
+  if (sourceType !== 'vip_gift') {
+    notifyVipOrder({ profile: updatedProfile, order })
+  }
   return { order, profile: updatedProfile }
 }
 
@@ -4180,6 +4200,11 @@ const server = http.createServer(async (req, res) => {
     items.push(item)
     novelReviews.set(novelId, { items })
     persistMembers()
+    notifyComment({
+      novelTitle: resolveNotifyNovelTitle(novelId, item.novelTitle),
+      userName: item.userName,
+      content: item.text,
+    })
     return sendJson(res, 200, { ok: true, novelId, item })
   }
 
@@ -4365,6 +4390,11 @@ const server = http.createServer(async (req, res) => {
     items.push(item)
     novelReplies.set(novelId, { items })
     persistMembers()
+    notifyComment({
+      novelTitle: resolveNotifyNovelTitle(novelId, item.novelTitle),
+      userName: item.userName,
+      content: item.text,
+    })
     return sendJson(res, 200, { ok: true, novelId, item })
   }
 
@@ -4380,6 +4410,12 @@ const server = http.createServer(async (req, res) => {
     items.push(item)
     novelReports.set(novelId, { items })
     persistMembers()
+    notifyReport({
+      novelTitle: resolveNotifyNovelTitle(novelId, item.novelTitle),
+      chapterTitle: item.chapterTitle,
+      chapterIndex: item.chapterIndex,
+      userName: item.userName,
+    })
     return sendJson(res, 200, { ok: true, novelId, item })
   }
 
@@ -4616,6 +4652,7 @@ const server = http.createServer(async (req, res) => {
 
 const migrationResults = runAllLegacyMigrations()
 initAppFiltersStore()
+initAppSettingsStore()
 initNovelVisibilityStore()
 initOrdersStore()
 loadPersistedMembers()
@@ -4635,6 +4672,7 @@ initNovelsStore()
       console.log(`[orders-store] count: ${getOrdersCount()}`)
       console.log('[payway] sandbox status:', JSON.stringify(getPayWaySandboxStatus()))
       console.log('[migrate] results:', JSON.stringify(migrationResults))
+      void bootstrapTelegramNotifyChatId()
     })
   })
   .catch((err) => {
