@@ -7,7 +7,8 @@ import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import VipPurchaseConsent from '../components/VipPurchaseConsent.jsx'
 import { getVipPlansCatalogForRole, getVipPlanTierClass, VIP_MEMBER_FOOTER_KM } from '../data/vipPlansCatalog.js'
 import { VIP_LOGIN_GATE_DESC_KM, VIP_LOGIN_GATE_TITLE_KM } from '../lib/errorMessagesKm.js'
-import { isAbaKhqrUiMockFlowEnabled } from '../lib/abaKhqrUiMock.js'
+import { buildAbaKhqrUiMockSession, isAbaKhqrUiMockFlowEnabled } from '../lib/abaKhqrUiMock.js'
+import { startAbaKhqrPaymentFlow } from '../lib/abaMobile.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
 import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
@@ -18,15 +19,26 @@ import {
   getActiveVipAbaKhqrPendingExpiry,
   hasActiveVipAbaKhqrBrowserFlow,
   loadActiveVipAbaKhqrPending,
+  loadVipAbaKhqrSession,
   markVipAbaKhqrBrowserFlowBackgrounded,
   markVipAbaKhqrBrowserFlowOpen,
   markVipAbaKhqrBrowserFlowReturned,
   resolveVipAbaKhqrAwaitingUiState,
   saveVipAbaKhqrPendingPayment,
+  saveVipAbaKhqrSession,
   shouldShowVipAbaKhqrConfirmingUi,
 } from '../lib/vipAbaKhqrSession.js'
 import { scheduleVipPaymentSuccessNavigation } from '../lib/vipPaymentSuccessNavigation.js'
+import { startViewerVipAbaKhqr } from '../lib/viewerProfileApi.js'
 import { canAccessVipPurchase } from '../lib/devVipPurchase.js'
+
+function readAbaKhqrSessionForPlan(planId) {
+  const pid = String(planId || '').trim()
+  if (!pid) return null
+  const stored = loadVipAbaKhqrSession()
+  if (!stored?.tranId || String(stored.planId || '') !== pid) return null
+  return stored
+}
 
 function formatKhqrPendingCountdown(remainingMs) {
   const totalSec = Math.max(0, Math.ceil(Number(remainingMs || 0) / 1000))
@@ -105,6 +117,7 @@ export default function VipPage() {
   const refundFooterRef = useRef(null)
   const consentRef = useRef(null)
   const prevTermsAcceptedRef = useRef(false)
+  const abaSessionPrefetchRef = useRef({ planId: '', promise: null })
   const [consentShaking, setConsentShaking] = useState(false)
   const [loginPromptOpen, setLoginPromptOpen] = useState(false)
   const vipPurchaseReady = canAccessVipPurchase(tgUser)
@@ -156,20 +169,80 @@ export default function VipPage() {
   )
 
 
-  /** 同步跳转 launch 页；订单创建与 openLink 在 launch 页完成（保留 Telegram 用户手势）。 */
-  const beginAbaKhqrLaunch = useCallback(
-    (planId) => {
-      navigate('/vip/aba-khqr-launch', {
-        replace: true,
-        state: {
-          planId: String(planId || '').trim(),
-          role: viewerProfile.role,
-          mock: isAbaKhqrUiMockFlowEnabled(),
-        },
-      })
+  const openAbaKhqrBrowser = useCallback((session, planId) => {
+    const pid = String(planId || session?.planId || '').trim()
+    if (!session?.tranId || !pid) return false
+    saveVipAbaKhqrSession(session)
+    const result = startAbaKhqrPaymentFlow(session, pid)
+    if (!result.opened) return false
+    saveVipAbaKhqrPendingPayment(session, { expireAtMs: session.expireAtMs })
+    markVipAbaKhqrBrowserFlowOpen(session)
+    setAbaKhqrAwaitingReturn(true)
+    setPurchaseNotice('កំពុងបើក Browser…')
+    return true
+  }, [])
+
+  const createAbaKhqrSession = useCallback(
+    async (planId) => {
+      const pid = String(planId || '').trim()
+      if (!pid) throw new Error('plan_required')
+
+      if (isAbaKhqrUiMockFlowEnabled()) {
+        const mockSession = buildAbaKhqrUiMockSession(pid, viewerProfile.role)
+        saveVipAbaKhqrSession(mockSession)
+        return mockSession
+      }
+
+      const aba = await startViewerVipAbaKhqr(pid)
+      if (!aba?.ok || !aba.session?.tranId) {
+        throw new Error(String(aba?.error || 'aba_khqr_failed'))
+      }
+      saveVipAbaKhqrSession(aba.session)
+      return aba.session
     },
-    [navigate, viewerProfile.role],
+    [viewerProfile.role],
   )
+
+  const resolveAbaKhqrSession = useCallback(
+    async (planId) => {
+      const cached = readAbaKhqrSessionForPlan(planId)
+      if (cached?.tranId) return cached
+
+      const prefetch = abaSessionPrefetchRef.current
+      if (prefetch.planId === planId && prefetch.promise) {
+        return prefetch.promise
+      }
+
+      return createAbaKhqrSession(planId)
+    },
+    [createAbaKhqrSession],
+  )
+
+  const prefetchAbaKhqrSession = useCallback(
+    (planId) => {
+      const pid = String(planId || '').trim()
+      if (!pid || !vipPurchaseReady) return
+      if (readAbaKhqrSessionForPlan(pid)) return
+      if (abaSessionPrefetchRef.current.planId === pid && abaSessionPrefetchRef.current.promise) return
+
+      abaSessionPrefetchRef.current = {
+        planId: pid,
+        promise: createAbaKhqrSession(pid).catch((err) => {
+          if (abaSessionPrefetchRef.current.planId === pid) {
+            abaSessionPrefetchRef.current = { planId: '', promise: null }
+          }
+          throw err
+        }),
+      }
+    },
+    [createAbaKhqrSession, vipPurchaseReady],
+  )
+
+  useEffect(() => {
+    if (!selectedPlanId || !termsAccepted || !vipPurchaseReady) return undefined
+    prefetchAbaKhqrSession(selectedPlanId)
+    return undefined
+  }, [prefetchAbaKhqrSession, selectedPlanId, termsAccepted, vipPurchaseReady])
 
   const pendingAbaPayment = useMemo(() => loadActiveVipAbaKhqrPending(), [abaKhqrAwaitingReturn])
 
@@ -298,12 +371,40 @@ export default function VipPage() {
       if (!planId || abaKhqrPending) return
 
       setPurchaseError('')
-      setPurchaseNotice('')
-      beginAbaKhqrLaunch(planId)
+
+      const readySession = readAbaKhqrSessionForPlan(planId)
+      if (readySession?.tranId) {
+        setPurchaseNotice('')
+        if (openAbaKhqrBrowser(readySession, planId)) return
+        setPurchaseError('មិនអាចបើក Browser សូមព្យាយាមម្តងទៀត')
+        return
+      }
+
+      setAbaKhqrPending(true)
+      setPurchaseNotice('កំពុងបង្កើត QR…')
+
+      void (async () => {
+        try {
+          const session = await resolveAbaKhqrSession(planId)
+          if (openAbaKhqrBrowser(session, planId)) return
+          setPurchaseNotice('')
+          setPurchaseError('មិនអាចបើក Browser សូមព្យាយាមម្តងទៀត')
+        } catch (err) {
+          setPurchaseNotice('')
+          setPurchaseError(
+            err instanceof Error && err.message
+              ? `មិនអាចបើក ABA KHQR: ${err.message}`
+              : 'មិនអាចទិញបាន សូមព្យាយាមម្តងទៀត',
+          )
+        } finally {
+          setAbaKhqrPending(false)
+        }
+      })()
     },
     [
       abaKhqrPending,
-      beginAbaKhqrLaunch,
+      openAbaKhqrBrowser,
+      resolveAbaKhqrSession,
       selectedPlanId,
       termsAccepted,
       openLoginPrompt,
