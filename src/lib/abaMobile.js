@@ -127,7 +127,12 @@ export function buildAbaQrPageReturnUrl(tranId, planId, session = null) {
   return `${origin}/vip/aba-khqr?tran_id=${encodeURIComponent(tid)}&plan_id=${encodeURIComponent(pid)}`
 }
 
-/** Build QR return URL with failure flag for bridge / Intent fallback. */
+/** Build QR return URL for Android Intent fallback (show QR when ABA not installed). */
+export function buildAbaQrIntentFallbackUrl(returnToQrUrl) {
+  return String(returnToQrUrl || '').trim()
+}
+
+/** Build QR return URL with failure flag for iOS bounce / timer fallback. */
 export function buildAbaQrReturnUrl(returnToQrUrl) {
   const raw = String(returnToQrUrl || '').trim()
   if (!raw) return ''
@@ -145,7 +150,7 @@ export function buildAbaQrReturnUrl(returnToQrUrl) {
 export function buildAbaMobileOpenHref(input = {}) {
   const qrString = String(input.qrString || '').trim()
   const deeplink = String(input.abapayDeeplink || '').trim()
-  const backUrl = buildAbaQrReturnUrl(input.returnToQrUrl)
+  const backUrl = buildAbaQrIntentFallbackUrl(input.returnToQrUrl)
 
   if (isAndroidDevice()) {
     const fromDeeplink = deeplink ? buildPayWayAndroidIntentUrlFromDeeplink(deeplink, backUrl) : ''
@@ -349,37 +354,22 @@ export function trySummonAbaMobileInBrowser(input = {}) {
     return { attempted: true, method: 'ios_browser_deeplink' }
   }
 
-  try {
-    const frame = document.createElement('iframe')
-    frame.style.cssText = 'display:none;width:0;height:0;border:0'
-    frame.src = summonTarget
-    document.documentElement.appendChild(frame)
-    window.setTimeout(() => {
-      try {
-        frame.remove()
-      } catch {
-        /* ignore */
-      }
-    }, IFRAME_CLEANUP_MS)
-  } catch {
-    /* ignore */
-  }
-
   if (isAndroidDevice()) {
-    window.setTimeout(() => {
-      try {
-        window.location.href = summonTarget
-      } catch {
-        onFailed()
-      }
-    }, 80)
+    try {
+      window.location.href = summonTarget
+    } catch {
+      onFailed()
+      return { attempted: false, method: 'android_intent_failed' }
+    }
+    watchAbaMobileSummonOutcome({
+      onLaunched: () => reportLaunched?.(),
+      onFailed,
+    })
+    return { attempted: true, method: 'android_browser_intent' }
   }
 
-  watchAbaMobileSummonOutcome({
-    onLaunched: () => reportLaunched?.(),
-    onFailed,
-  })
-  return { attempted: true, method: 'browser_direct' }
+  onFailed()
+  return { attempted: false, method: 'no_target' }
 }
 
 /**
@@ -394,19 +384,23 @@ export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
   const pid = String(planId || session?.planId || '').trim()
   let targetUrl = ''
 
-  if (shouldUseAbaOpenBridgeInExternalBrowser()) {
-    targetUrl = buildAbaOpenBridgeUrl(session, pid)
-  } else if (isIosDevice()) {
-    targetUrl = buildAbaOpenBridgeUrl(session, pid, { iosImmediateSummon: true })
-  }
-  if (!targetUrl) {
+  if (shouldTryAbaMobileDeeplinkFirst()) {
+    targetUrl = buildAbaOpenBridgeUrl(session, pid, { iosImmediateSummon: isIosDevice() })
+    if (!targetUrl) {
+      targetUrl = buildAbaKhqrPageUrl(session, pid, { auto_summon: '1' })
+    }
+  } else {
     targetUrl = buildAbaKhqrPageUrl(session, pid)
   }
 
   if (targetUrl && launchViaExternalOpenLink(targetUrl)) {
     return {
       opened: true,
-      method: targetUrl.includes('/aba-open.html') ? 'external_aba_bridge' : 'external_qr_page',
+      method: targetUrl.includes('/aba-open.html')
+        ? 'external_aba_bridge'
+        : targetUrl.includes('auto_summon=1')
+          ? 'external_qr_auto_summon'
+          : 'external_qr_page',
     }
   }
 

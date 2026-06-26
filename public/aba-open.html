@@ -122,21 +122,19 @@
             }
             return
           }
-          try {
-            var frame = document.createElement('iframe')
-            frame.style.cssText = 'display:none;width:0;height:0;border:0'
-            frame.src = summonTarget
-            document.documentElement.appendChild(frame)
-          } catch (e) {
-            /* ignore */
-          }
-          window.setTimeout(function () {
+          if (isAndroid()) {
             try {
               location.href = summonTarget
             } catch (e) {
               /* ignore */
             }
-          }, 80)
+            return
+          }
+          try {
+            location.href = summonTarget
+          } catch (e) {
+            /* ignore */
+          }
         }
 
         function fallbackPrimaryMs() {
@@ -215,7 +213,7 @@
         }
 
         function startHandoffFlow() {
-          var qrBack = buildQrPageUrl(true)
+          var qrBack = buildQrPageUrl(false)
           fetch(
             API_BASE +
               '/api/vip-orders/aba-khqr-handoff?tran_id=' +
