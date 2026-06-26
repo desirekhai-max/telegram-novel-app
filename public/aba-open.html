@@ -13,10 +13,25 @@
         var handoff = String(params.get('handoff') || '').trim()
         var target = String(params.get('target') || '').trim()
         var back = String(params.get('back') || '').trim()
-        var summonParam = String(params.get('summon') || '').trim()
         var cancelled = false
         var backTimer = 0
         var abaReportSent = false
+
+        function readSummonParam() {
+          var fromQuery = String(params.get('summon') || '').trim()
+          if (fromQuery) return fromQuery
+          try {
+            var rawHash = String(location.hash || '').replace(/^#/, '')
+            if (rawHash.indexOf('summon=') === 0) {
+              return decodeURIComponent(rawHash.slice(7))
+            }
+          } catch (e) {
+            /* ignore */
+          }
+          return ''
+        }
+
+        var summonParam = readSummonParam()
 
         function reportAbaAppOpened() {
           if (abaReportSent || !tranId) return
@@ -116,9 +131,13 @@
           if (!summonTarget) return
           if (isIos()) {
             try {
-              location.href = summonTarget
+              location.replace(summonTarget)
             } catch (e) {
-              /* ignore */
+              try {
+                location.href = summonTarget
+              } catch (e2) {
+                /* ignore */
+              }
             }
             return
           }
@@ -140,15 +159,15 @@
         }
 
         function fallbackPrimaryMs() {
-          return isIos() ? 1500 : 2800
+          return isIos() ? 1800 : 3200
         }
 
         function fallbackPageshowMs() {
-          return isIos() ? 600 : 900
+          return isIos() ? 700 : 1000
         }
 
         function fallbackFocusMs() {
-          return isIos() ? 500 : 700
+          return isIos() ? 600 : 900
         }
 
         function attachFallbackTimers(failed) {
@@ -161,7 +180,7 @@
           })
         }
 
-        /** iOS: QR only when user returns to Safari without entering ABA (invalid URL OK / Open→Cancel). */
+        /** iOS: QR only when user returns to Safari without entering ABA. */
         function attachIosQrFallbackAfterSummon() {
           var qrDone = false
           var summonAt = Date.now()
@@ -173,7 +192,7 @@
               return
             }
             qrDone = true
-            goBack(false)
+            goBack(true)
           }
 
           function onSafariBounceBack() {
@@ -186,19 +205,6 @@
             if (ev.persisted) return
             onSafariBounceBack()
           })
-        }
-
-        function iosOpenSummonNow(summonTarget) {
-          if (!summonTarget || !isIos()) return
-          try {
-            location.replace(summonTarget)
-          } catch (e) {
-            try {
-              location.href = summonTarget
-            } catch (e2) {
-              /* ignore */
-            }
-          }
         }
 
         document.addEventListener('visibilitychange', function () {
@@ -215,7 +221,7 @@
         }
 
         function startHandoffFlow() {
-          var qrBack = buildQrPageUrl(true)
+          var qrBack = back || buildQrPageUrl(true)
           fetch(
             API_BASE +
               '/api/vip-orders/aba-khqr-handoff?tran_id=' +
@@ -246,11 +252,20 @@
             })
         }
 
-        // iOS: sync deeplink on first paint; QR only after invalid-address OK or Open→Cancel.
-        // Installed + Open→Open: page hides → cancelBack → never show QR.
-        if (summonParam && isIos() && tranId && handoff) {
-          iosOpenSummonNow(summonParam)
-          attachIosQrFallbackAfterSummon()
+        /** First paint: summon from URL param (iOS deeplink / Android intent). Fail → QR. */
+        function startImmediateSummonFlow() {
+          if (!summonParam) return false
+          if (isIos()) {
+            tryOpenTarget(summonParam)
+            attachIosQrFallbackAfterSummon()
+            return true
+          }
+          tryOpenTarget(summonParam)
+          attachFallbackTimers(true)
+          return true
+        }
+
+        if (tranId && handoff && startImmediateSummonFlow()) {
           return
         }
 

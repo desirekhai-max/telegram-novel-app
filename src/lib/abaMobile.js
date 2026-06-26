@@ -137,6 +137,27 @@ function buildLegacyAbaOpenBridgeUrl(summonTarget, returnToQrUrl) {
   return bridge.toString()
 }
 
+function buildBridgeQrFallbackUrl(session, planId = '') {
+  return buildAbaKhqrPageUrl(session, planId)
+}
+
+/** Pre-built deeplink / intent for aba-open.html first-paint summon (no handoff fetch wait). */
+function buildBridgeImmediateSummonTarget(session, planId = '') {
+  const pid = String(planId || session?.planId || '').trim()
+  const qrBack = buildBridgeQrFallbackUrl(session, pid)
+  const deeplink = String(session?.abapayDeeplink || '').trim()
+  const qrString = String(session?.qrString || '').trim()
+
+  if (isAndroidDevice()) {
+    const fromDeeplink = deeplink ? buildPayWayAndroidIntentUrlFromDeeplink(deeplink, qrBack) : ''
+    if (fromDeeplink) return fromDeeplink
+    return buildPayWayAndroidIntentUrl(qrString, qrBack)
+  }
+
+  if (deeplink.toLowerCase().startsWith(ABA_DEEPLINK_PREFIX)) return deeplink
+  return ''
+}
+
 function buildAbaOpenBridgeUrl(session, planId = '', options = {}) {
   const tranId = String(session?.tranId || '').trim()
   const pid = String(planId || session?.planId || '').trim()
@@ -147,12 +168,28 @@ function buildAbaOpenBridgeUrl(session, planId = '', options = {}) {
   bridge.searchParams.set('tran_id', tranId)
   bridge.searchParams.set('plan_id', pid)
   bridge.searchParams.set('handoff', handoff)
-  if (options.iosImmediateSummon) {
+
+  const qrBack = buildBridgeQrFallbackUrl(session, pid)
+  if (qrBack) bridge.searchParams.set('back', qrBack)
+
+  const wantImmediate =
+    options.immediateSummon !== false && (options.immediateSummon === true || shouldTryAbaMobileDeeplinkFirst())
+  if (wantImmediate) {
+    const summonTarget = buildBridgeImmediateSummonTarget(session, pid)
+    if (summonTarget) {
+      bridge.searchParams.set('summon', summonTarget)
+      if (bridge.toString().length > 1900) {
+        bridge.searchParams.delete('summon')
+        bridge.hash = `summon=${encodeURIComponent(summonTarget)}`
+      }
+    }
+  } else if (options.iosImmediateSummon) {
     const deeplink = String(session?.abapayDeeplink || '').trim()
     if (deeplink.toLowerCase().startsWith(ABA_DEEPLINK_PREFIX)) {
       bridge.searchParams.set('summon', deeplink)
     }
   }
+
   return bridge.toString()
 }
 
@@ -269,7 +306,7 @@ export function trySummonAbaMobile(input = {}) {
 
   const session = input.session
   const handoffBridge = session?.browserHandoffToken
-    ? buildAbaOpenBridgeUrl(session, session.planId, { iosImmediateSummon: isIosDevice() })
+    ? buildAbaOpenBridgeUrl(session, session.planId, { immediateSummon: true })
     : ''
 
   let bridgeUrl = handoffBridge
@@ -382,10 +419,9 @@ export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
   const pid = String(planId || session?.planId || '').trim()
   let targetUrl = ''
 
-  if (shouldUseAbaOpenBridgeInExternalBrowser()) {
-    targetUrl = buildAbaOpenBridgeUrl(session, pid)
-  } else if (isIosDevice()) {
-    targetUrl = buildAbaOpenBridgeUrl(session, pid, { iosImmediateSummon: true })
+  if (shouldTryAbaMobileDeeplinkFirst()) {
+    targetUrl = buildAbaOpenBridgeUrl(session, pid, { immediateSummon: true })
+    if (!targetUrl) targetUrl = buildAbaKhqrPageUrl(session, pid)
   } else {
     targetUrl = buildAbaKhqrPageUrl(session, pid)
   }
