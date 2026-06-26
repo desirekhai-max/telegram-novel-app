@@ -668,6 +668,19 @@ function rejectIfViewerBanned(profile, res) {
   return true
 }
 
+/** 正式环境必须校验 initData；本地 dev API 允许 fallback 测试用户。 */
+function rejectIfViewerAuthInvalid(auth, res) {
+  if (!auth.telegramUser?.telegramUserId) {
+    sendJson(res, 401, { ok: false, error: 'telegram user required' })
+    return true
+  }
+  if (process.env.NODE_ENV === 'production' && TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
+    sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
+    return true
+  }
+  return false
+}
+
 function rejectIfUserIdBanned(userId, res) {
   const tgId = parseMemberIdToTelegramUserId(userId) || normalizeTelegramUserId(userId)
   if (!tgId) return false
@@ -1006,6 +1019,9 @@ function loadPersistedMembers() {
         paymentChannel: String(row.paymentChannel || row.payment_channel || '').trim(),
         orderNo: String(row.orderNo || row.order_no || '').trim(),
         expireAt: Number(row.expireAt || row.expire_at || 0) || 0,
+        browserHandoffToken: String(row.browserHandoffToken || '').trim(),
+        khqrSession:
+          row.khqrSession && typeof row.khqrSession === 'object' ? row.khqrSession : null,
       })
     }
     for (const tranId of fulfilledTranIds) {
@@ -3352,12 +3368,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/viewer-profile/resolve') {
     const body = await parseJsonBody(req)
     const auth = resolveViewerAuth(body)
-    if (!auth.telegramUser?.telegramUserId) {
-      return sendJson(res, 401, { ok: false, error: 'telegram user required' })
-    }
-    if (TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
-      return sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
-    }
+    if (rejectIfViewerAuthInvalid(auth, res)) return
     const profile = upsertViewerProfile(auth.telegramUser, req, auth)
     persistMembers()
     return sendJson(res, 200, { ok: true, profile: buildViewerProfileResponse(profile) })
@@ -3366,12 +3377,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/vip-orders/list') {
     const body = await parseJsonBody(req)
     const auth = resolveViewerAuth(body)
-    if (!auth.telegramUser?.telegramUserId) {
-      return sendJson(res, 401, { ok: false, error: 'telegram user required' })
-    }
-    if (TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
-      return sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
-    }
+    if (rejectIfViewerAuthInvalid(auth, res)) return
     const profile = upsertViewerProfile(auth.telegramUser, req, auth)
     const items = resolveVipOrdersForUser(profile.telegramUserId)
     persistMembers()
@@ -3381,12 +3387,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/vip-orders/checkout') {
     const body = await parseJsonBody(req)
     const auth = resolveViewerAuth(body)
-    if (!auth.telegramUser?.telegramUserId) {
-      return sendJson(res, 401, { ok: false, error: 'telegram user required' })
-    }
-    if (TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
-      return sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
-    }
+    if (rejectIfViewerAuthInvalid(auth, res)) return
     if (!isPayWayConfigured()) {
       return sendJson(res, 503, { ok: false, paywayConfigured: false, error: 'payway_not_configured' })
     }
@@ -3451,12 +3452,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/vip-orders/aba-khqr') {
     const body = await parseJsonBody(req)
     const auth = resolveViewerAuth(body)
-    if (!auth.telegramUser?.telegramUserId) {
-      return sendJson(res, 401, { ok: false, error: 'telegram user required' })
-    }
-    if (TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
-      return sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
-    }
+    if (rejectIfViewerAuthInvalid(auth, res)) return
     if (!isPayWayConfigured()) {
       return sendJson(res, 503, { ok: false, paywayConfigured: false, error: 'payway_not_configured' })
     }
@@ -3596,12 +3592,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     const auth = resolveViewerAuth(body)
-    if (!auth.telegramUser?.telegramUserId) {
-      return sendJson(res, 401, { ok: false, error: 'telegram user required' })
-    }
-    if (TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
-      return sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
-    }
+    if (rejectIfViewerAuthInvalid(auth, res)) return
     const storedOrder = getOrderByTranId(tranId)
     const orderOwnerId = normalizeTelegramUserId(storedOrder?.telegram_user_id)
     if (orderOwnerId && orderOwnerId !== auth.telegramUser.telegramUserId) {
@@ -3615,12 +3606,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/vip-orders/confirm-payment') {
     const body = stripSensitivePaymentFields(await parseJsonBody(req))
     const auth = resolveViewerAuth(body)
-    if (!auth.telegramUser?.telegramUserId) {
-      return sendJson(res, 401, { ok: false, error: 'telegram user required' })
-    }
-    if (TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
-      return sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
-    }
+    if (rejectIfViewerAuthInvalid(auth, res)) return
     const tranId = String(body.tranId || body.tran_id || '').trim().slice(0, 20)
     const planId = String(body.planId || body.plan_id || '').trim()
     if (!tranId) return sendJson(res, 400, { ok: false, error: 'tranId required' })
@@ -3666,12 +3652,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/vip-orders/purchase') {
     const body = await parseJsonBody(req)
     const auth = resolveViewerAuth(body)
-    if (!auth.telegramUser?.telegramUserId) {
-      return sendJson(res, 401, { ok: false, error: 'telegram user required' })
-    }
-    if (TELEGRAM_BOT_TOKEN && auth.authVerified !== true) {
-      return sendJson(res, 401, { ok: false, error: 'telegram initData verify failed' })
-    }
+    if (rejectIfViewerAuthInvalid(auth, res)) return
     const planId = String(body.planId || '').trim()
     if (!planId) return sendJson(res, 400, { ok: false, error: 'planId required' })
     const profile = upsertViewerProfile(auth.telegramUser, req, auth)

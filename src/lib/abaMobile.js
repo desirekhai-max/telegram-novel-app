@@ -388,7 +388,8 @@ export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
     targetUrl = buildAbaOpenBridgeUrl(session, pid)
   } else if (isIosDevice()) {
     targetUrl = buildAbaOpenBridgeUrl(session, pid, { iosImmediateSummon: true })
-  } else {
+  }
+  if (!targetUrl) {
     targetUrl = buildAbaKhqrPageUrl(session, pid)
   }
 

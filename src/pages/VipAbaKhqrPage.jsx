@@ -213,6 +213,7 @@ export default function VipAbaKhqrPage() {
           return
         }
         setHandoffError('មិនអាចផ្ទុក QR បាន សូមបិទ Browser ហើយព្យាយាមម្តងទៀត')
+        setShowQrAfterAutoSummon(false)
       },
     )
 

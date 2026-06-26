@@ -11,6 +11,7 @@ export const PATHS_WITH_BOTTOM_NAV = [
   '/notifications',
   '/vip',
   '/vip/checkout-redirect',
+  '/vip/aba-khqr-launch',
   '/vip/payment-return',
   '/account',
   '/account/orders',

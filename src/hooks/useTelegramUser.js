@@ -11,6 +11,8 @@
  * @property {string} [photo_url]
  */
 
+import { getDevVipTestTelegramUser, isDevVipPurchaseEnabled } from '../lib/devVipPurchase.js'
+
 function readUnsafeUser() {
   if (typeof window === 'undefined') return null
   const u = window.Telegram?.WebApp?.initDataUnsafe?.user
@@ -25,9 +27,21 @@ export function getTelegramInitDataRaw() {
 
 export function getTelegramAuthPayload() {
   const user = readUnsafeUser()
+  if (user) {
+    return {
+      telegramUser: user,
+      initDataRaw: getTelegramInitDataRaw(),
+    }
+  }
+  if (isDevVipPurchaseEnabled()) {
+    return {
+      telegramUser: getDevVipTestTelegramUser(),
+      initDataRaw: '',
+    }
+  }
   return {
-    telegramUser: user,
-    initDataRaw: getTelegramInitDataRaw(),
+    telegramUser: null,
+    initDataRaw: '',
   }
 }
 

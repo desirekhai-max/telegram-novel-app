@@ -15,7 +15,6 @@ import {
 } from '../lib/paywayCheckout.js'
 import { buildAbaKhqrUiMockSession, isAbaKhqrUiMockFlowEnabled } from '../lib/abaKhqrUiMock.js'
 import { preloadAbaKhqrPaymentAssets } from '../lib/abaKhqrAssets.js'
-import { startAbaKhqrPaymentFlow } from '../lib/abaMobile.js'
 import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
 import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
 import { useVipAbaKhqrPaymentConfirm } from '../hooks/useVipAbaKhqrPaymentConfirm.js'
@@ -38,6 +37,7 @@ import {
   startViewerVipAbaKhqr,
   startViewerVipPayWayCheckout,
 } from '../lib/viewerProfileApi.js'
+import { canAccessVipPurchase } from '../lib/devVipPurchase.js'
 
 function formatKhqrPendingCountdown(remainingMs) {
   const totalSec = Math.max(0, Math.ceil(Number(remainingMs || 0) / 1000))
@@ -118,6 +118,7 @@ export default function VipPage() {
   const prevTermsAcceptedRef = useRef(false)
   const [consentShaking, setConsentShaking] = useState(false)
   const [loginPromptOpen, setLoginPromptOpen] = useState(false)
+  const vipPurchaseReady = canAccessVipPurchase(tgUser)
 
   const openLoginPrompt = useCallback(() => {
     setPurchaseError('')
@@ -189,27 +190,15 @@ export default function VipPage() {
     [navigate],
   )
 
-  const openAbaKhqrBrowserFlow = useCallback(
+  /** API 完成后写入 session，由 launch 页同步 openLink（避免 async 后 WebView 拦截）。 */
+  const beginAbaKhqrLaunch = useCallback(
     async (session, planId) => {
       await preloadAbaKhqrPaymentAssets()
       saveVipAbaKhqrSession(session)
-
-      const opened = startAbaKhqrPaymentFlow(session, planId)
-      if (opened.opened) {
-        saveVipAbaKhqrPendingPayment(session, { expireAtMs: session.expireAtMs })
-        markVipAbaKhqrBrowserFlowOpen(session)
-        setAbaKhqrAwaitingReturn(true)
-        setConfirmingPaymentReturn(false)
-        paymentWasBackgroundedRef.current = false
-        setPurchaseNotice('')
-        return true
-      }
-
-      clearVipAbaKhqrPendingPayment(session?.tranId)
-      setPurchaseError('មិនអាចបើក Browser បាន សូមព្យាយាមម្តងទៀត')
-      return false
+      setPurchaseNotice('កំពុងបើក Browser…')
+      navigate('/vip/aba-khqr-launch', { replace: true })
     },
-    [],
+    [navigate],
   )
 
   const pendingAbaPayment = useMemo(() => loadActiveVipAbaKhqrPending(), [abaKhqrAwaitingReturn])
@@ -331,7 +320,7 @@ export default function VipPage() {
         setPurchaseError('សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ')
         return
       }
-      if (!tgUser?.id) {
+      if (!vipPurchaseReady) {
         openLoginPrompt()
         return
       }
@@ -345,13 +334,13 @@ export default function VipPage() {
       try {
         if (isAbaKhqrUiMockFlowEnabled()) {
           const mockSession = buildAbaKhqrUiMockSession(planId, viewerProfile.role)
-          await openAbaKhqrBrowserFlow(mockSession, planId)
+          await beginAbaKhqrLaunch(mockSession, planId)
           return
         }
 
         const aba = await startViewerVipAbaKhqr(planId)
         if (aba?.ok && aba.session?.tranId) {
-          await openAbaKhqrBrowserFlow(aba.session, planId)
+          await beginAbaKhqrLaunch(aba.session, planId)
           return
         }
 
@@ -381,12 +370,12 @@ export default function VipPage() {
     [
       abaKhqrPending,
       fallbackHostedCheckout,
-      openAbaKhqrBrowserFlow,
+      beginAbaKhqrLaunch,
       refreshViewerProfile,
       selectedPlanId,
       termsAccepted,
       openLoginPrompt,
-      tgUser?.id,
+      vipPurchaseReady,
       viewerProfile.role,
     ],
   )
@@ -436,7 +425,7 @@ export default function VipPage() {
         nudgeTermsConsent()
         return
       }
-      if (!tgUser?.id) {
+      if (!vipPurchaseReady) {
         openLoginPrompt()
         return
       }
@@ -445,11 +434,11 @@ export default function VipPage() {
       if (!id) return
       setSelectedPlanId(id)
     },
-    [abaKhqrPending, nudgeTermsConsent, openLoginPrompt, termsAccepted, tgUser?.id],
+    [abaKhqrPending, nudgeTermsConsent, openLoginPrompt, termsAccepted, vipPurchaseReady],
   )
 
   useEffect(() => {
-    if (!selectedPlanId || !termsAccepted || !tgUser?.id) return undefined
+    if (!selectedPlanId || !termsAccepted || !vipPurchaseReady) return undefined
     const t = window.setTimeout(() => {
       const root = scrollRef.current
       const target = abaKhqrEntryRef.current || paymentSectionRef.current
@@ -457,7 +446,7 @@ export default function VipPage() {
       scrollWithinVipMainAfterLayout(root, target, { topInset: 8, bottomExtra: 32, settleMs: 520 })
     }, 200)
     return () => window.clearTimeout(t)
-  }, [selectedPlanId, termsAccepted, tgUser?.id])
+  }, [selectedPlanId, termsAccepted, vipPurchaseReady])
 
   return (
     <div className="tg-app tg-app--account tg-app--vip">
@@ -564,7 +553,7 @@ export default function VipPage() {
                             title={
                               !termsAccepted
                                 ? 'សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ'
-                                : !tgUser?.id
+                                : !vipPurchaseReady
                                   ? 'សូមចូលគណនី Telegram'
                                   : ''
                             }
@@ -604,7 +593,7 @@ export default function VipPage() {
             })}
           </div>
 
-          {selectedPlanId && termsAccepted && tgUser?.id ? (
+          {selectedPlanId && termsAccepted && vipPurchaseReady ? (
             <section
               ref={paymentSectionRef}
               className="tg-vip-payment-section"
@@ -635,12 +624,12 @@ export default function VipPage() {
               សូមអានលក្ខខណ្ឌ និងធីកយល់ព្រម មុនពេលទិញសមាជិក VIP
             </p>
           ) : null}
-          {termsAccepted && !tgUser?.id ? (
+          {termsAccepted && !vipPurchaseReady ? (
             <p className="px-1 text-center text-[10px] leading-snug text-amber-200/80" lang="km">
               សូមបើកក្នុង Telegram Mini App ដើម្បីទិញ VIP
             </p>
           ) : null}
-          {termsAccepted && tgUser?.id && !selectedPlanId ? (
+          {termsAccepted && vipPurchaseReady && !selectedPlanId ? (
             <p className="px-1 text-center text-[10px] leading-snug text-white/45" lang="km">
               សូមជ្រើសគម្រោង VIP មួយ រួចចុច ABA KHQR
             </p>
