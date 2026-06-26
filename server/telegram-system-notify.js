@@ -187,8 +187,12 @@ export function logTelegramNotifyStartupStatus() {
   const chatId = getTelegramNotifyChatId()
   const token = getTelegramBotToken()
   const ready = Boolean(chatId && token)
+  const tokenFromEnv = Boolean(
+    String(process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || '').trim(),
+  )
+  const chatFromEnv = Boolean(String(process.env.TELEGRAM_NOTIFY_CHAT_ID || '').trim())
   console.log(
-    `[telegram-notify] ready=${ready} chatId=${chatId ? 'set' : 'missing'} token=${token ? 'set' : 'missing'}`,
+    `[telegram-notify] ready=${ready} chatId=${chatId ? 'set' : 'missing'}(${chatFromEnv ? 'env' : 'file'}) token=${token ? 'set' : 'missing'}(${tokenFromEnv ? 'env' : 'file'})`,
   )
   if (!ready) {
     console.warn(

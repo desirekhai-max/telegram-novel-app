@@ -147,9 +147,9 @@ export function getAppSettings() {
 }
 
 export function getTelegramBotToken() {
-  const token = String(getAppSettings()?.telegram?.botToken || '').trim()
-  if (token) return token
-  return String(process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || '').trim()
+  const fromEnv = String(process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || '').trim()
+  if (fromEnv) return fromEnv
+  return String(getAppSettings()?.telegram?.botToken || '').trim()
 }
 
 export function getTelegramNotifyChatId() {
