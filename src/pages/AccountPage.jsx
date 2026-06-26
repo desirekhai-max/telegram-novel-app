@@ -1,15 +1,16 @@
 import { useMemo, useState } from 'react'
 import { formatVipExpireDateTimeKm } from '../lib/formatVipExpireKm.js'
-import { useVipExpireCountdown } from '../hooks/useVipExpireCountdown.js'
 import { Link } from 'react-router-dom'
 import {
   Bookmark,
+  Calendar,
   Crown,
   FileText,
   Info,
   Library,
   Mail,
   MessageCircle,
+  PenLine,
   ReceiptText,
   Shield,
   Users,
@@ -19,6 +20,7 @@ import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import { CommentMemberBadges } from '../components/CommentMemberBadges.jsx'
 import { ACCOUNT_OPEN_IN_TELEGRAM_KM } from '../lib/errorMessagesKm.js'
 import { tryOpenTelegramMeLink } from '../lib/telegramWebApp.js'
+import { getVipPlanTitleKm } from '../data/vipPlansCatalog.js'
 import { formatTelegramDisplayName, useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
 
@@ -31,8 +33,8 @@ function TelegramProfileAvatar({ photoUrl }) {
         src={photoUrl}
         alt=""
         className="size-full object-cover"
-        width={112}
-        height={112}
+        width={96}
+        height={96}
         decoding="async"
         onError={() => setFailed(true)}
       />
@@ -40,7 +42,7 @@ function TelegramProfileAvatar({ photoUrl }) {
   }
   return (
     <UserRound
-      className="size-14 text-white/95"
+      className="size-12 text-white/95"
       strokeWidth={1.65}
     />
   )
@@ -50,7 +52,7 @@ function TelegramProfileAvatar({ photoUrl }) {
 function ProfileAvatarBlock({ user, avatarKey }) {
   return (
     <div
-      className="relative flex size-28 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#3390ec]/45 via-cyan-400/20 to-fuchsia-500/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_0_20px_rgba(51,144,236,0.35),0_0_32px_rgba(168,85,247,0.22)] ring-2 ring-cyan-300/35"
+      className="relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#3390ec]/45 via-cyan-400/20 to-fuchsia-500/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_0_20px_rgba(51,144,236,0.35),0_0_32px_rgba(168,85,247,0.22)] ring-2 ring-cyan-300/35"
       aria-hidden
     >
       <TelegramProfileAvatar
@@ -156,21 +158,45 @@ export default function AccountPage() {
   const accountRole = viewerProfile.role
   const accountVipActive = Boolean(viewerProfile.vipActive)
   const accountVipExpireAtMs = Number(viewerProfile.vipExpireAtMs) || 0
-  const accountVipCountdown = useVipExpireCountdown(accountVipActive ? accountVipExpireAtMs : 0)
   const accountVipExpireDateLabel = useMemo(
     () => (accountVipExpireAtMs > 0 ? formatVipExpireDateTimeKm(accountVipExpireAtMs) : ''),
     [accountVipExpireAtMs],
   )
-  /** 用户名下方方案胶囊：Premium / 作者 / 普通（与徽标同源） */
-  const accountPlanPill = useMemo(() => {
+  const accountVipStatusKm = useMemo(() => {
+    if (!accountVipActive) return ''
+    return getVipPlanTitleKm(viewerProfile.vipPlanId, accountRole)
+  }, [accountRole, accountVipActive, viewerProfile.vipPlanId])
+  /** 资料卡底栏：VIP / 作者 / 普通（统一横条布局） */
+  const accountPlanMeta = useMemo(() => {
     if (accountVipActive) {
-      return { pillClass: 'tg-account-plan-badge--vip-member', labelKm: 'គម្រោង VIP' }
+      return {
+        footerClass: 'tg-account-profile-card__footer--vip',
+        shellClass: 'tg-account-profile-card__shell--vip',
+        icon: Crown,
+        statusKm: accountVipStatusKm,
+        detailKm: '',
+        showCalendar: true,
+      }
     }
     if (accountRole === 'author') {
-      return { pillClass: 'tg-account-plan-badge--author-plan', labelKm: 'គម្រោងអ្នកនិពន្ធ' }
+      return {
+        footerClass: 'tg-account-profile-card__footer--author',
+        shellClass: 'tg-account-profile-card__shell--author',
+        icon: PenLine,
+        statusKm: 'អ្នកនិពន្ធ',
+        detailKm: 'រក្សាសិទ្ធិបង្ហាញរឿង',
+        showCalendar: false,
+      }
     }
-    return { pillClass: '', labelKm: 'គម្រោងធម្មតា' }
-  }, [accountRole, accountVipActive])
+    return {
+      footerClass: 'tg-account-profile-card__footer--normal',
+      shellClass: 'tg-account-profile-card__shell--normal',
+      icon: UserRound,
+      statusKm: 'សមាជិកធម្មតា',
+      detailKm: 'មិនមានសមាជិកភាពVIP',
+      showCalendar: false,
+    }
+  }, [accountRole, accountVipActive, accountVipStatusKm])
   const avatarKey = `${profileUser?.id ?? 'anon'}-${profileUser?.photo_url ?? ''}`
   const onOpenTelegramMiniAppLogin = () => {
     if (tryOpenTelegramMeLink(MINI_APP_LOGIN_URL)) return
@@ -178,6 +204,10 @@ export default function AccountPage() {
   }
 
   const accountProfileCardVipShadowOff = profileUser && accountVipActive
+  const AccountPlanIcon = accountPlanMeta.icon
+  const accountFooterDetail = accountVipActive && accountVipExpireAtMs > 0
+    ? accountVipExpireDateLabel
+    : accountPlanMeta.detailKm
 
   return (
     <div className="tg-app tg-app--account">
@@ -192,17 +222,30 @@ export default function AccountPage() {
               .filter(Boolean)
               .join(' ')}
           >
-            <div className="tg-account-profile-card__shell relative overflow-hidden rounded-[22px]">
-              {/* 框内四色环境光 */}
+            <div
+              className={[
+                'tg-account-profile-card__shell relative overflow-hidden rounded-[22px]',
+                !viewerProfileLoading ? accountPlanMeta.shellClass : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              {/* 混色底层 + 环境光（真实 DOM，iOS/Android WebView 动画更稳） */}
+              <div aria-hidden className="tg-account-profile-card__mix" />
               <div aria-hidden className="tg-account-profile-card__ambient" />
-              <div className="relative z-10 px-5 pb-5 pt-6">
-              <div className={profileUser ? 'flex items-start gap-5' : 'flex items-center gap-5'}>
+              <div className="tg-account-profile-card__body">
+              <div
+                className={[
+                  'tg-account-profile-card__main',
+                  profileUser ? 'flex items-start gap-4' : 'flex items-center gap-4',
+                ].join(' ')}
+              >
                 <ProfileAvatarBlock user={profileUser} avatarKey={avatarKey} />
-                <div className={profileUser ? 'min-w-0 flex-1 pt-0' : 'min-w-0 flex-1 flex flex-col justify-center'}>
+                <div className={profileUser ? 'min-w-0 flex-1 flex flex-col pt-0' : 'min-w-0 flex-1 flex flex-col justify-center'}>
                   {profileUser ? (
                     <h2
                       id="account-profile-title"
-                      className="tg-account-profile-card__title min-w-0 max-w-full text-[1.35rem] font-semibold leading-snug tracking-tight text-white"
+                      className="tg-account-profile-card__title min-w-0 max-w-full text-[1.22rem] font-semibold leading-tight tracking-tight text-white"
                     >
                       <span className="tg-account-profile-card__name-row">
                         <span className="tg-account-profile-card__name">{displayName}</span>
@@ -211,7 +254,7 @@ export default function AccountPage() {
                     </h2>
                   ) : null}
 
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     {profileUser ? (
                       <span className="inline-flex items-center font-mono text-[11px] tabular-nums tracking-wide text-white/52">
                         {`ID ${profileUser.id}`}
@@ -231,47 +274,53 @@ export default function AccountPage() {
 
                   {profileUser?.username ? (
                     <>
-                      <p className="tg-account-profile-card__handle mt-1 truncate text-sm">@{profileUser.username}</p>
-                      <div className="mt-1.5 min-w-0">
+                      <p className="tg-account-profile-card__handle mt-0.5 truncate text-[13px]">@{profileUser.username}</p>
+                      <div className="tg-account-profile-card__divider" role="presentation" aria-hidden />
+                      <div
+                        lang="km"
+                        className={[
+                          'tg-account-profile-card__footer',
+                          !viewerProfileLoading ? accountPlanMeta.footerClass : 'tg-account-profile-card__footer--pending',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        aria-busy={viewerProfileLoading || undefined}
+                      >
                         {viewerProfileLoading ? (
-                          <span
-                            lang="km"
-                            className="tg-account-plan-badge tg-account-plan-badge--pending truncate"
-                            aria-busy="true"
-                            aria-label="កំពុងផ្ទុកគម្រោង"
-                          >
-                            <span className="tg-account-plan-badge__label">&nbsp;</span>
-                          </span>
+                          <>
+                            <span className="tg-account-profile-card__footer-status tg-account-profile-card__footer-skeleton">
+                              <span className="tg-account-profile-card__footer-skeleton-icon" aria-hidden />
+                              <span className="tg-account-profile-card__footer-skeleton-label" aria-hidden />
+                            </span>
+                            <span className="tg-account-profile-card__footer-vrule" aria-hidden />
+                            <span className="tg-account-profile-card__footer-detail tg-account-profile-card__footer-skeleton">
+                              <span className="tg-account-profile-card__footer-skeleton-detail" aria-hidden />
+                            </span>
+                          </>
                         ) : (
-                          <span
-                            lang="km"
-                            className={['tg-account-plan-badge truncate', accountPlanPill.pillClass]
-                              .filter(Boolean)
-                              .join(' ')}
-                          >
-                            <span className="tg-account-plan-badge__label">{accountPlanPill.labelKm}</span>
-                          </span>
+                          <>
+                            <div className="tg-account-profile-card__footer-status">
+                              <AccountPlanIcon className="tg-account-profile-card__footer-icon" size={14} strokeWidth={2.1} aria-hidden />
+                              <span className="tg-account-profile-card__footer-status-label">{accountPlanMeta.statusKm}</span>
+                            </div>
+                            <span className="tg-account-profile-card__footer-vrule" aria-hidden />
+                            <div className="tg-account-profile-card__footer-detail">
+                              {accountFooterDetail ? (
+                                <span
+                                  className={[
+                                    accountVipActive ? 'tg-account-profile-card__footer-date' : 'tg-account-profile-card__footer-note',
+                                    'tabular-nums',
+                                  ].join(' ')}
+                                >
+                                  {accountFooterDetail}
+                                </span>
+                              ) : null}
+                              {accountPlanMeta.showCalendar && accountFooterDetail ? (
+                                <Calendar className="tg-account-profile-card__footer-calendar" size={14} strokeWidth={2} aria-hidden />
+                              ) : null}
+                            </div>
+                          </>
                         )}
-                        {accountVipActive && accountVipExpireAtMs > 0 && !viewerProfileLoading ? (
-                          <div className="tg-account-vip-expire mt-2 min-w-0" lang="km">
-                            {accountVipCountdown ? (
-                              <p className="tg-account-vip-expire__countdown">
-                                <span className="tg-account-vip-expire__prefix">នៅសល់ ·</span>
-                                <span className="tg-account-vip-expire__value tg-account-vip-expire__value--remaining tabular-nums">
-                                  {accountVipCountdown}
-                                </span>
-                              </p>
-                            ) : null}
-                            {accountVipExpireDateLabel ? (
-                              <p className="tg-account-vip-expire__date">
-                                <span className="tg-account-vip-expire__prefix">ផុតកំណត់ ·</span>
-                                <span className="tg-account-vip-expire__value tg-account-vip-expire__value--expire tabular-nums">
-                                  {accountVipExpireDateLabel}
-                                </span>
-                              </p>
-                            ) : null}
-                          </div>
-                        ) : null}
                       </div>
                     </>
                   ) : profileUser?.language_code ? (
@@ -283,7 +332,6 @@ export default function AccountPage() {
                       {ACCOUNT_OPEN_IN_TELEGRAM_KM}
                     </p>
                   ) : null}
-
                 </div>
               </div>
               </div>

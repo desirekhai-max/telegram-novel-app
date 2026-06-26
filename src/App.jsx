@@ -9,6 +9,7 @@ import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.js
 import { useAppChrome } from './contexts/useAppChrome.js'
 import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
 import { registerPresencePing } from './lib/miniAppPresence.js'
+import { syncPortraitLockRoute } from './lib/portraitOrientationLock.js'
 import { normalizeAppPathname, shouldRenderAppBottomNavDock } from './lib/bottomNavRoutes.js'
 import { loadCatalogNovels } from './lib/novelsRuntime.js'
 import { loadVipPlansCatalog } from './lib/vipPlansRuntime.js'
@@ -104,8 +105,9 @@ function AppShell() {
 
   useLayoutEffect(() => {
     document.body.classList.toggle('tg-desktop-admin', isAdminRoute)
+    syncPortraitLockRoute(location.pathname)
     return () => document.body.classList.remove('tg-desktop-admin')
-  }, [isAdminRoute])
+  }, [isAdminRoute, location.pathname])
 
   useEffect(() => {
     void loadCatalogNovels()

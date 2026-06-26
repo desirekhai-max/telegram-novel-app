@@ -32,6 +32,7 @@ import {
   markOrderAbaAppLaunched,
 } from './orders-store.js'
 import { buildPayWayCustomFields, getNeutralVipOrderProductLabel } from './paywayNeutralCopy.js'
+import { resolveVipOrderStatusLabel, VIP_ORDER_STATUS_SUCCESS_KM } from './vipOrderDisplay.js'
 import { filterCheckoutFormFieldsForClient, stripSensitivePaymentFields } from './payway-security.js'
 import { PERSISTENT_DATA_DIR } from './persistent-data-dir.js'
 import { runAllLegacyMigrations, getLastMigrationResults, isVolumeConfigured } from './migrate-legacy-persistent.js'
@@ -465,6 +466,7 @@ function normalizeMemberProfileIn(raw, telegramUserIdHint = '') {
   const createdAt = Number(raw?.createdAt || 0) || now()
   const updatedAt = Number(raw?.updatedAt || 0) || createdAt
   const role = resolveViewerRoleByTelegramUserId(telegramUserId, raw?.role)
+  const vipPlanId = String(raw?.vipPlanId || raw?.vip_plan_id || '').trim().slice(0, 80)
   return {
     telegramUserId,
     memberId: `tg_${telegramUserId}`,
@@ -474,6 +476,7 @@ function normalizeMemberProfileIn(raw, telegramUserIdHint = '') {
     languageCode: String(raw?.languageCode || '').trim().slice(0, 32),
     role,
     vipExpireAtMs: Number.isFinite(vipExpireAtMs) && vipExpireAtMs > 0 ? Math.floor(vipExpireAtMs) : 0,
+    vipPlanId,
     createdAt,
     updatedAt,
     lastSeenAt: Number(raw?.lastSeenAt || 0) || updatedAt,
@@ -488,16 +491,24 @@ function normalizeVipOrderIn(raw) {
   const id = String(raw?.id || '').trim().slice(0, 120)
   if (!id) return null
   const atMs = Number(raw?.atMs || 0) || now()
+  const status = String(raw?.status || 'success').trim().slice(0, 40)
+  const audience = normalizeViewerRole(raw?.audience)
+  const planId = String(raw?.planId || '').trim().slice(0, 80)
+  let product = String(raw?.product || '').trim().slice(0, 180)
+  if (!product || product === getNeutralVipOrderProductLabel()) {
+    const plan = getVipPlanForRole(planId, audience)
+    if (plan?.titleKm) product = plan.titleKm
+  }
   return {
     id,
-    planId: String(raw?.planId || '').trim().slice(0, 80),
+    planId,
     amount: String(raw?.amount || '$0').trim().slice(0, 40),
-    status: String(raw?.status || 'success').trim().slice(0, 40),
-    statusLabel: String(raw?.statusLabel || 'ß₧öß₧äßƒïß₧ößƒÆß₧Üß₧╢ß₧Çßƒïß₧çßƒäß₧éß₧çßƒÉß₧Ö').trim().slice(0, 120),
+    status,
+    statusLabel: resolveVipOrderStatusLabel(raw?.statusLabel, status),
     time: String(raw?.time || formatOrderTime(atMs)).trim().slice(0, 40),
     atMs,
-    product: String(raw?.product || '').trim().slice(0, 180),
-    audience: normalizeViewerRole(raw?.audience),
+    product,
+    audience,
     durationHours: Math.max(0, Number(raw?.durationHours || 0)),
     priceUsdLabel: String(raw?.priceUsdLabel || '').trim().slice(0, 40),
     sourceType: String(raw?.sourceType || raw?.source_type || 'vip_purchase').trim().slice(0, 32),
@@ -711,11 +722,13 @@ function buildViewerProfileResponse(profile) {
   const banned = isViewerBanned(p)
   const vipActive = isViewerVipActive(p) && !banned
   const role = normalizeViewerRole(p?.role)
+  const vipPlanId = vipActive ? resolveActiveVipPlanId(p) : ''
   return {
     telegramUserId: Number(p?.telegramUserId || 0),
     role,
     vipActive,
     vipExpireAtMs: Number(p?.vipExpireAtMs || 0),
+    vipPlanId,
     badgeTier: deriveViewerBadgeTier(role, vipActive),
     canReadVipChapters: vipActive,
     authVerified: p?.authVerified === true,
@@ -748,6 +761,18 @@ function resolveVipOrdersForUser(telegramUserId) {
   return Array.isArray(vipOrdersByUser.get(id)) ? vipOrdersByUser.get(id).slice() : []
 }
 
+function resolveActiveVipPlanId(profile) {
+  if (!profile || !isViewerVipActive(profile)) return ''
+  const stored = String(profile?.vipPlanId || profile?.vip_plan_id || '').trim()
+  if (stored) return stored
+  const orders = resolveVipOrdersForUser(profile.telegramUserId)
+  const latest = orders.find((row) => {
+    const status = String(row?.status || '').toLowerCase()
+    return status === 'success' && !Number(row?.refundedAtMs || 0)
+  })
+  return String(latest?.planId || '').trim()
+}
+
 function createSuccessfulVipOrderForViewer(profile, planId, options = {}) {
   if (!profile?.telegramUserId) return null
   const plan = getVipPlanForRole(planId, profile.role)
@@ -760,10 +785,10 @@ function createSuccessfulVipOrderForViewer(profile, planId, options = {}) {
     planId: plan.planId,
     amount: plan.priceUsdLabel,
     status: 'success',
-    statusLabel: 'ß₧öß₧äßƒïß₧ößƒÆß₧Üß₧╢ß₧Çßƒïß₧çßƒäß₧éß₧çßƒÉß₧Ö',
+    statusLabel: VIP_ORDER_STATUS_SUCCESS_KM,
     time: formatOrderTime(atMs),
     atMs,
-    product: getNeutralVipOrderProductLabel(),
+    product: plan.titleKm || getNeutralVipOrderProductLabel(),
     audience: profile.role,
     durationHours: plan.durationHours,
     priceUsdLabel: plan.priceUsdLabel,
@@ -775,6 +800,7 @@ function createSuccessfulVipOrderForViewer(profile, planId, options = {}) {
   const updatedProfile = normalizeMemberProfileIn({
     ...profile,
     vipExpireAtMs: nextExpire,
+    vipPlanId: plan.planId,
     updatedAt: atMs,
     lastSeenAt: atMs,
   }, profile.telegramUserId)

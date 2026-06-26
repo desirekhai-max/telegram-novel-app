@@ -1,0 +1,35 @@
+import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
+
+export const VIP_ORDER_STATUS_SUCCESS_KM = 'បង់ប្រាក់ជោគជ័យ'
+export const VIP_ORDER_STATUS_FAILED_KM = 'បង់ប្រាក់មិនជោគជ័យ'
+
+const NEUTRAL_PRODUCT_LABEL = 'VIP-Subscription'
+
+const LEGACY_CORRUPTED_STATUS_LABEL =
+  'ß₧öß₧äßƒïß₧ößƒÆß₧Üß₧╢ß₧Çßƒïß₧çßƒäß₧éß₧çßƒÉß₧Ö'
+
+function isCorruptedVipOrderStatusLabel(label) {
+  const s = String(label || '').trim()
+  if (!s) return true
+  if (s === LEGACY_CORRUPTED_STATUS_LABEL) return true
+  return /ß[₧ƒ]/.test(s)
+}
+
+export function resolveVipOrderStatusLabel(rawLabel, status = 'success') {
+  if (isCorruptedVipOrderStatusLabel(rawLabel)) {
+    return String(status || '').toLowerCase() === 'success'
+      ? VIP_ORDER_STATUS_SUCCESS_KM
+      : VIP_ORDER_STATUS_FAILED_KM
+  }
+  return String(rawLabel || '').trim()
+}
+
+export function resolveVipOrderProductLabel(raw = {}) {
+  const stored = String(raw?.product || '').trim()
+  if (stored && stored !== NEUTRAL_PRODUCT_LABEL) return stored
+  const planId = String(raw?.planId || '').trim()
+  if (!planId) return stored || 'VIP'
+  const audience = String(raw?.audience || '').toLowerCase() === 'author' ? 'author' : 'normal'
+  const plan = getVipPlanForPurchase(planId, audience)
+  return plan?.titleKm || stored || 'VIP'
+}

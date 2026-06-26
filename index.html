@@ -13,7 +13,21 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&display=block&family=Noto+Serif+Khmer:wght@400;600;700&display=swap"
     />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <script>
+      (function () {
+        var path = window.location.pathname || ''
+        if (path === '/admin' || path === '/admin-login') {
+          document.documentElement.classList.add('tg-allow-landscape')
+          return
+        }
+        document.documentElement.classList.add('tg-portrait-lock')
+      })()
+    </script>
     <link rel="preload" href="/logo.png" as="image" />
     <link rel="preload" href="/khqr-logo.png" as="image" />
     <link rel="preload" href="/aba-pay-header-logo.png" as="image" />
@@ -24,17 +38,17 @@
     />
     <meta name="theme-color" content="#ebebeb" />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="រឿងនិទាន" />
-    <meta property="og:title" content="រឿងនិទាន · 小说阅读" />
+    <meta property="og:site_name" content="69KKH Novel" />
+    <meta property="og:title" content="69KKH Novel" />
     <meta property="og:description" content="点击查看小说详情并开始阅读。" />
     <meta property="og:image" content="/logo.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:alt" content="រឿងនិទាន 封面图" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="រឿងនិទាន · 小说阅读" />
+    <meta name="twitter:title" content="69KKH Novel" />
     <meta name="twitter:description" content="点击查看小说详情并开始阅读。" />
     <meta name="twitter:image" content="/logo.png" />
-    <title>小说</title>
+    <title>69KKH Novel</title>
     <script>
       (function () {
         var path = window.location.pathname || ''

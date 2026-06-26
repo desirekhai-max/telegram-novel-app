@@ -3,10 +3,12 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { hydrateNotificationReadFromTelegramCloud } from './lib/notificationReadStorage.js'
+import { initPortraitOrientationLock } from './lib/portraitOrientationLock.js'
 import { initTelegramWebApp } from './lib/telegramWebApp.js'
 import { hydrateVipPurchaseFromTelegramCloud } from './lib/vipMembership.js'
 
 initTelegramWebApp()
+initPortraitOrientationLock()
 hydrateVipPurchaseFromTelegramCloud()
 hydrateNotificationReadFromTelegramCloud()
 

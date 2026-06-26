@@ -187,6 +187,12 @@ export function getVipPlanForPurchase(planId, role) {
   return getVipPlanById(planId, { authorPricing })
 }
 
+/** 个人中心等展示：按 planId 取高棉套餐名，未知时回退通用文案 */
+export function getVipPlanTitleKm(planId, role) {
+  const title = String(getVipPlanForPurchase(planId, role)?.titleKm || '').trim()
+  return title || 'សមាជិក VIP'
+}
+
 /** 订单商品名：中性英文（禁止高棉套餐标题进入支付/订单对外字段） */
 export function formatVipOrderProductLabel(_planId, _authorPricing = false) {
   return 'VIP-Subscription'

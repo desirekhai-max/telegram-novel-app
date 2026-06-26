@@ -1,0 +1,17 @@
+{
+  "name": "69KKH Novel",
+  "short_name": "69KKH Novel",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#131a36",
+  "theme_color": "#131a36",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

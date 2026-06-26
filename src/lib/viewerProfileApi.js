@@ -1,5 +1,6 @@
 import { getTelegramAuthPayload } from '../hooks/useTelegramUser.js'
 import { apiUrl } from './apiBase.js'
+import { resolveVipOrderProductLabel, resolveVipOrderStatusLabel } from './vipOrderDisplay.js'
 
 function normalizeRole(raw) {
   return String(raw || '').toLowerCase() === 'author' ? 'author' : 'normal'
@@ -12,16 +13,18 @@ function normalizeBadgeTier(raw) {
 }
 
 function normalizeOrder(raw) {
+  const status = String(raw?.status || 'success')
+  const audience = normalizeRole(raw?.audience)
   return {
     id: String(raw?.id || ''),
     planId: String(raw?.planId || ''),
     amount: String(raw?.amount || '$0'),
-    status: String(raw?.status || 'success'),
-    statusLabel: String(raw?.statusLabel || ''),
+    status,
+    statusLabel: resolveVipOrderStatusLabel(raw?.statusLabel, status),
     time: String(raw?.time || ''),
     atMs: Number(raw?.atMs) || 0,
-    product: String(raw?.product || ''),
-    audience: normalizeRole(raw?.audience),
+    product: resolveVipOrderProductLabel({ ...raw, audience }),
+    audience,
   }
 }
 
@@ -31,6 +34,7 @@ export function getDefaultViewerProfile(tgUser = null) {
     role: 'normal',
     vipActive: false,
     vipExpireAtMs: 0,
+    vipPlanId: '',
     badgeTier: 'normal',
     canReadVipChapters: false,
     authVerified: false,
@@ -49,6 +53,7 @@ export function normalizeViewerProfile(raw, tgUser = null) {
     role: normalizeRole(raw.role),
     vipActive: Boolean(raw.vipActive),
     vipExpireAtMs: Number.isFinite(vipExpireAtMs) && vipExpireAtMs > 0 ? vipExpireAtMs : 0,
+    vipPlanId: String(raw.vipPlanId || '').trim(),
     badgeTier: normalizeBadgeTier(raw.badgeTier),
     canReadVipChapters: Boolean(raw.canReadVipChapters),
     authVerified: Boolean(raw.authVerified),
