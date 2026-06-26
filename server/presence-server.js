@@ -76,6 +76,15 @@ import {
   matchesVisibilityFilter,
   normalizeVisibility,
 } from './novel-visibility-store.js'
+import { initAppSettingsStore } from './app-settings-store.js'
+import {
+  bootstrapTelegramNotifyChatId,
+  logTelegramNotifyStartupStatus,
+  notifyComment,
+  notifyReport,
+  notifyUserRegister,
+  sendVipPurchaseNotify,
+} from './telegram-system-notify.js'
 
 const HOST = process.env.HOST || '0.0.0.0'
 const PORT = Number(process.env.PORT || 8787)
@@ -640,6 +649,7 @@ function upsertViewerProfile(telegramUser, req, authMeta = {}) {
   if (!normalizedUser?.telegramUserId) return null
   const atMs = now()
   const existing = resolveViewerProfileByTelegramUserId(normalizedUser.telegramUserId)
+  const isNewUser = !existing
   const next = normalizeMemberProfileIn({
     ...existing,
     ...normalizedUser,
@@ -651,6 +661,7 @@ function upsertViewerProfile(telegramUser, req, authMeta = {}) {
   }, normalizedUser.telegramUserId)
   memberProfiles.set(normalizedUser.telegramUserId, next)
   ensurePresenceMemberKnown(next.memberId, req, atMs)
+  if (isNewUser) notifyUserRegister(next, { onlineCount: resolveLiveOnlineCount() })
   return next
 }
 
@@ -679,6 +690,13 @@ function rejectIfViewerAuthInvalid(auth, res) {
     return true
   }
   return false
+}
+
+function resolveNotifyNovelTitle(novelId, rawTitle = '') {
+  const fromRaw = String(rawTitle || '').trim()
+  if (fromRaw) return fromRaw
+  const novel = getStoredNovelById(String(novelId || '').trim())
+  return String(novel?.title || novelId || '—').trim()
 }
 
 function rejectIfUserIdBanned(userId, res) {
@@ -766,7 +784,12 @@ function createSuccessfulVipOrderForViewer(profile, planId, options = {}) {
   if (!memberPaidAt.has(updatedProfile.memberId)) memberPaidAt.set(updatedProfile.memberId, atMs)
   txMetrics.orderEvents.push(atMs)
   txMetrics.successEvents.push(atMs)
-  return { order, profile: updatedProfile }
+  let notifyPromise = Promise.resolve({ ok: true, skipped: 'vip_gift' })
+  if (sourceType !== 'vip_gift') {
+    const payload = { profile: updatedProfile, order, tranId: String(options.tranId || '').trim() }
+    notifyPromise = sendVipPurchaseNotify(payload, options)
+  }
+  return { order, profile: updatedProfile, notifyPromise }
 }
 
 function parseMemberIdToTelegramUserId(memberId) {
@@ -821,7 +844,7 @@ function createPendingVipOrderRecord({
   })
 }
 
-function fulfillVipAfterPayment(input = {}) {
+async function fulfillVipAfterPayment(input = {}) {
   const tranId = String(input.tranId || input.tran_id || '').trim().slice(0, 20)
   const pending = tranId ? pendingVipOrdersByTranId.get(tranId) : null
   const planId = String(input.planId || input.plan_id || pending?.planId || '').trim()
@@ -858,7 +881,10 @@ function fulfillVipAfterPayment(input = {}) {
     return { ok: false, error: 'profile not found', profile: null, order: null, alreadyFulfilled: false }
   }
 
-  const result = createSuccessfulVipOrderForViewer(profile, planId)
+  const result = createSuccessfulVipOrderForViewer(profile, planId, {
+    notifyVipAs: 'order',
+    tranId,
+  })
   if (!result) {
     return { ok: false, error: 'invalid vip plan', profile: null, order: null, alreadyFulfilled: false }
   }
@@ -870,6 +896,9 @@ function fulfillVipAfterPayment(input = {}) {
     if (row) pendingVipOrdersByTranId.set(tranId, { ...row, status: 'paid', paidAt: now() })
   }
   markMemberPaidPresence(result.profile.memberId, input.req)
+  await result.notifyPromise.catch((err) => {
+    console.warn('[telegram-notify] vip payment notify failed:', err?.message || err)
+  })
 
   return {
     ok: true,
@@ -880,7 +909,7 @@ function fulfillVipAfterPayment(input = {}) {
   }
 }
 
-function applyPaymentSuccessPayload(body, req) {
+async function applyPaymentSuccessPayload(body, req) {
   const safeBody = stripSensitivePaymentFields(body)
   const payload = safeBody && typeof safeBody === 'object' && !Array.isArray(safeBody) ? safeBody : {}
   const memberId = String(payload.memberId || '').trim()
@@ -899,7 +928,7 @@ function applyPaymentSuccessPayload(body, req) {
     memberLastLoginAt.set(memberId, atMs)
     markMemberPaidPresence(memberId, req, atMs)
   }
-  const fulfillment = fulfillVipAfterPayment({
+  const fulfillment = await fulfillVipAfterPayment({
     memberId,
     planId: payload.planId || payload.plan_id,
     tranId: payload.tranId || payload.tran_id,
@@ -2076,11 +2105,23 @@ function handleAdminUserAction(telegramUserId, body, req) {
     case 'unban':
       updateMemberUserFlags(id, { isBanned: false })
       break
-    case 'gift_vip': {
-      const planId = String(body?.planId || 'vip_entry').trim()
+    case 'gift_vip':
+    case 'vip_purchase': {
+      const planId = String(body?.planId || (action === 'gift_vip' ? 'vip_entry' : '')).trim()
+      if (!planId) return { error: 'planId required', status: 400 }
       const current = resolveViewerProfileByTelegramUserId(id)
-      const result = createSuccessfulVipOrderForViewer(current, planId, { sourceType: 'vip_gift' })
-      if (!result) return { error: 'gift vip failed', status: 400 }
+      if (!current) return { error: 'user not found', status: 404 }
+      const plan = getVipPlanForRole(planId, current.role)
+      if (!plan?.planId) return { error: 'invalid vip plan', status: 400 }
+      const requestedSourceType = String(
+        body?.sourceType || (action === 'gift_vip' ? 'vip_gift' : 'vip_purchase'),
+      ).trim()
+      const sourceType = requestedSourceType === 'vip_gift' ? 'vip_gift' : 'vip_purchase'
+      const result = createSuccessfulVipOrderForViewer(current, planId, { sourceType })
+      if (!result) return { error: 'vip purchase failed', status: 400 }
+      void result.notifyPromise.catch((err) => {
+        console.warn('[telegram-notify] admin vip purchase notify failed:', err?.message || err)
+      })
       break
     }
     case 'deduct_vip': {
@@ -2864,6 +2905,11 @@ function makeCounts(rangeStartMs, rangeEndMs) {
   }
 }
 
+function resolveLiveOnlineCount() {
+  const liveCounts = makeCounts()
+  return Number(liveCounts.android || 0) + Number(liveCounts.ios || 0) + Number(liveCounts.web || 0)
+}
+
 const DASHBOARD_WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
 function formatDashboardDateLabel(startMs) {
@@ -3630,7 +3676,7 @@ const server = http.createServer(async (req, res) => {
         })
       }
     }
-    const fulfillment = fulfillVipAfterPayment({
+    const fulfillment = await fulfillVipAfterPayment({
       tranId,
       planId,
       memberId: auth.telegramUser.telegramUserId ? `tg_${auth.telegramUser.telegramUserId}` : '',
@@ -3660,6 +3706,9 @@ const server = http.createServer(async (req, res) => {
     const result = createSuccessfulVipOrderForViewer(profile, planId)
     if (!result) return sendJson(res, 400, { ok: false, error: 'invalid vip plan' })
     persistMembers()
+    void result.notifyPromise.catch((err) => {
+      console.warn('[telegram-notify] vip in-app purchase notify failed:', err?.message || err)
+    })
     return sendJson(res, 200, {
       ok: true,
       order: result.order,
@@ -3985,7 +4034,7 @@ const server = http.createServer(async (req, res) => {
     memberLastLoginAt.set(memberId, now())
     if (String(body.device || '').trim()) setMemberLastDevice(memberId, body.device)
     if (body.paidSuccess) {
-      applyPaymentSuccessPayload(body, req)
+      await applyPaymentSuccessPayload(body, req)
       persistMembers()
     }
     records.set(memberId, { device, isAdmin, lastSeenAt: now() })
@@ -3997,7 +4046,7 @@ const server = http.createServer(async (req, res) => {
     const body = await parseJsonBody(req)
     const memberId = String(body.memberId || '').trim()
     if (!memberId) return sendJson(res, 400, { ok: false, error: 'memberId required' })
-    const { fulfillment } = applyPaymentSuccessPayload(body, req)
+    const { fulfillment } = await applyPaymentSuccessPayload(body, req)
     persistMembers()
     return sendJson(res, 200, {
       ok: true,
@@ -4161,6 +4210,11 @@ const server = http.createServer(async (req, res) => {
     items.push(item)
     novelReviews.set(novelId, { items })
     persistMembers()
+    notifyComment({
+      novelTitle: resolveNotifyNovelTitle(novelId, item.novelTitle),
+      userName: item.userName,
+      content: item.text,
+    })
     return sendJson(res, 200, { ok: true, novelId, item })
   }
 
@@ -4346,6 +4400,11 @@ const server = http.createServer(async (req, res) => {
     items.push(item)
     novelReplies.set(novelId, { items })
     persistMembers()
+    notifyComment({
+      novelTitle: resolveNotifyNovelTitle(novelId, item.novelTitle),
+      userName: item.userName,
+      content: item.text,
+    })
     return sendJson(res, 200, { ok: true, novelId, item })
   }
 
@@ -4361,6 +4420,11 @@ const server = http.createServer(async (req, res) => {
     items.push(item)
     novelReports.set(novelId, { items })
     persistMembers()
+    notifyReport({
+      novelTitle: resolveNotifyNovelTitle(novelId, item.novelTitle),
+      userName: item.userName,
+      content: item.text,
+    })
     return sendJson(res, 200, { ok: true, novelId, item })
   }
 
@@ -4597,6 +4661,7 @@ const server = http.createServer(async (req, res) => {
 
 const migrationResults = runAllLegacyMigrations()
 initAppFiltersStore()
+initAppSettingsStore()
 initNovelVisibilityStore()
 initOrdersStore()
 loadPersistedMembers()
@@ -4616,6 +4681,8 @@ initNovelsStore()
       console.log(`[orders-store] count: ${getOrdersCount()}`)
       console.log('[payway] sandbox status:', JSON.stringify(getPayWaySandboxStatus()))
       console.log('[migrate] results:', JSON.stringify(migrationResults))
+      logTelegramNotifyStartupStatus()
+      void bootstrapTelegramNotifyChatId()
     })
   })
   .catch((err) => {

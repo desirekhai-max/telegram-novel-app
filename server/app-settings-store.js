@@ -27,6 +27,7 @@ const DEFAULT_SETTINGS = {
     botToken: '',
     miniAppUrl: '',
     webhookUrl: '',
+    notifyChatId: '',
   },
   reading: {
     defaultFreeChapters: 3,
@@ -71,6 +72,9 @@ function seedFromEnv(settings) {
   }
   if (!next.telegram.webhookUrl) {
     next.telegram.webhookUrl = String(process.env.TELEGRAM_WEBHOOK_URL || '').trim()
+  }
+  if (!next.telegram.notifyChatId) {
+    next.telegram.notifyChatId = String(process.env.TELEGRAM_NOTIFY_CHAT_ID || '').trim()
   }
   if (!next.basic.platformName) {
     next.basic.platformName = '69KKH NOVEL'
@@ -143,9 +147,27 @@ export function getAppSettings() {
 }
 
 export function getTelegramBotToken() {
-  const token = String(getAppSettings()?.telegram?.botToken || '').trim()
-  if (token) return token
-  return String(process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || '').trim()
+  const fromEnv = String(process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || '').trim()
+  if (fromEnv) return fromEnv
+  return String(getAppSettings()?.telegram?.botToken || '').trim()
+}
+
+export function getTelegramNotifyChatId() {
+  const fromEnv = String(process.env.TELEGRAM_NOTIFY_CHAT_ID || '').trim()
+  if (fromEnv) return fromEnv
+  return String(getAppSettings()?.telegram?.notifyChatId || '').trim()
+}
+
+export function saveTelegramNotifyChatId(chatId) {
+  const value = String(chatId || '').trim()
+  if (!value) return getTelegramNotifyChatId()
+  const current = getAppSettings()
+  return persist(
+    normalizeSettings({
+      ...current,
+      telegram: { ...current.telegram, notifyChatId: value },
+    }),
+  ).telegram.notifyChatId
 }
 
 export function getMiniAppPublicUrl() {

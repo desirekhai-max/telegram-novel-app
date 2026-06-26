@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import {
   getDefaultViewerProfile,
+  normalizeViewerProfile,
   resolveViewerProfile,
 } from '../lib/viewerProfileApi.js'
 import {
@@ -71,6 +72,17 @@ export function ViewerProfileProvider({ children }) {
     return next
   }, [tgUserId])
 
+  const applyViewerProfile = useCallback((profile) => {
+    const user = tgUserRef.current
+    const userId = user?.id
+    if (!userId || !profile) return getDefaultViewerProfile(user)
+    const next = normalizeViewerProfile(profile, user)
+    setViewerProfile(next)
+    writeCachedViewerProfile(userId, next)
+    setViewerProfileLoading(false)
+    return next
+  }, [tgUserId])
+
   useEffect(() => {
     void refreshViewerProfile()
   }, [refreshViewerProfile])
@@ -80,8 +92,9 @@ export function ViewerProfileProvider({ children }) {
       viewerProfile,
       viewerProfileLoading,
       refreshViewerProfile,
+      applyViewerProfile,
     }),
-    [viewerProfile, viewerProfileLoading, refreshViewerProfile],
+    [viewerProfile, viewerProfileLoading, refreshViewerProfile, applyViewerProfile],
   )
 
   return (
