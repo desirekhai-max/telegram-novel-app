@@ -1,6 +1,6 @@
 import { getTelegramBotToken, getTelegramNotifyChatId, saveTelegramNotifyChatId } from './app-settings-store.js'
 
-const ENABLED_TYPES = new Set(['user_register', 'vip_order', 'vip_inapp', 'report', 'comment'])
+const ENABLED_TYPES = new Set(['user_register', 'vip_order', 'report', 'comment'])
 
 async function callTelegramApi(method, payload = {}, { get = false } = {}) {
   const token = getTelegramBotToken()
@@ -203,10 +203,11 @@ export function logTelegramNotifyStartupStatus() {
 
 export function sendVipPurchaseNotify(payload = {}, options = {}) {
   const kind = resolveVipNotifyKind(options)
-  const title = kind === 'inapp' ? '📫VIP内购' : '👑 新VIP订单'
-  const type = kind === 'inapp' ? 'vip_inapp' : 'vip_order'
-  const text = buildNotifyMessage(title, buildVipNotifyLines(payload))
-  return sendSystemTelegramNotify(type, text)
+  if (kind === 'inapp') {
+    return Promise.resolve({ ok: true, skipped: 'vip_inapp_disabled' })
+  }
+  const text = buildNotifyMessage('👑 新VIP订单', buildVipNotifyLines(payload))
+  return sendSystemTelegramNotify('vip_order', text)
 }
 
 export function notifyUserRegister(profile, { onlineCount } = {}) {
@@ -223,11 +224,6 @@ export function notifyUserRegister(profile, { onlineCount } = {}) {
 export function notifyVipOrder(payload = {}) {
   const text = buildNotifyMessage('👑 新VIP订单', buildVipNotifyLines(payload))
   return sendSystemTelegramNotify('vip_order', text)
-}
-
-export function notifyVipInAppPurchase(payload = {}) {
-  const text = buildNotifyMessage('📫VIP内购', buildVipNotifyLines(payload))
-  return sendSystemTelegramNotify('vip_inapp', text)
 }
 
 export function notifyReport({ novelTitle, userName, content } = {}) {

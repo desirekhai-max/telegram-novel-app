@@ -2089,11 +2089,23 @@ function handleAdminUserAction(telegramUserId, body, req) {
     case 'unban':
       updateMemberUserFlags(id, { isBanned: false })
       break
-    case 'gift_vip': {
-      const planId = String(body?.planId || 'vip_entry').trim()
+    case 'gift_vip':
+    case 'vip_purchase': {
+      const planId = String(body?.planId || (action === 'gift_vip' ? 'vip_entry' : '')).trim()
+      if (!planId) return { error: 'planId required', status: 400 }
       const current = resolveViewerProfileByTelegramUserId(id)
-      const result = createSuccessfulVipOrderForViewer(current, planId, { sourceType: 'vip_gift' })
-      if (!result) return { error: 'gift vip failed', status: 400 }
+      if (!current) return { error: 'user not found', status: 404 }
+      const plan = getVipPlanForRole(planId, current.role)
+      if (!plan?.planId) return { error: 'invalid vip plan', status: 400 }
+      const requestedSourceType = String(
+        body?.sourceType || (action === 'gift_vip' ? 'vip_gift' : 'vip_purchase'),
+      ).trim()
+      const sourceType = requestedSourceType === 'vip_gift' ? 'vip_gift' : 'vip_purchase'
+      const result = createSuccessfulVipOrderForViewer(current, planId, { sourceType })
+      if (!result) return { error: 'vip purchase failed', status: 400 }
+      void result.notifyPromise.catch((err) => {
+        console.warn('[telegram-notify] admin vip purchase notify failed:', err?.message || err)
+      })
       break
     }
     case 'deduct_vip': {
@@ -3710,18 +3722,12 @@ const server = http.createServer(async (req, res) => {
     if (!planId) return sendJson(res, 400, { ok: false, error: 'planId required' })
     const profile = upsertViewerProfile(auth.telegramUser, req, auth)
     if (rejectIfViewerBanned(profile, res)) return
-    const result = createSuccessfulVipOrderForViewer(profile, planId, { notifyVipAs: 'inapp' })
+    const result = createSuccessfulVipOrderForViewer(profile, planId)
     if (!result) return sendJson(res, 400, { ok: false, error: 'invalid vip plan' })
-    const notifyResult = await result.notifyPromise.catch((err) => ({
-      ok: false,
-      error: String(err?.message || err),
-    }))
-    if (notifyResult?.skipped === 'not_configured') {
-      console.warn('[telegram-notify] vip in-app purchase notify skipped: not configured')
-    } else if (notifyResult?.ok === false && !notifyResult?.skipped) {
-      console.warn('[telegram-notify] vip in-app purchase notify failed:', notifyResult?.error || 'unknown')
-    }
     persistMembers()
+    void result.notifyPromise.catch((err) => {
+      console.warn('[telegram-notify] vip in-app purchase notify failed:', err?.message || err)
+    })
     return sendJson(res, 200, {
       ok: true,
       order: result.order,

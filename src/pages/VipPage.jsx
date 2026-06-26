@@ -96,7 +96,7 @@ export default function VipPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const tgUser = useTelegramUser()
-  const { viewerProfile, refreshViewerProfile } = useViewerProfile()
+  const { viewerProfile, refreshViewerProfile, applyViewerProfile } = useViewerProfile()
   const [selectedPlanId, setSelectedPlanId] = useState('')
   const [abaKhqrPending, setAbaKhqrPending] = useState(false)
   const [termsAccepted, setTermsAccepted] = useState(false)
@@ -361,6 +361,7 @@ export default function VipPage() {
         if (aba?.error === 'payway_not_configured' || !aba?.paywayConfigured) {
           const demo = await purchaseViewerVipPlan(planId)
           if (demo?.ok) {
+            if (demo.profile) applyViewerProfile(demo.profile)
             await refreshViewerProfile()
             setPurchaseNotice('VIP បានបើករួចហើយ')
             return
@@ -382,6 +383,7 @@ export default function VipPage() {
       abaKhqrPending,
       fallbackHostedCheckout,
       openAbaKhqrBrowserFlow,
+      applyViewerProfile,
       refreshViewerProfile,
       selectedPlanId,
       termsAccepted,
