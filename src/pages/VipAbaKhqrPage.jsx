@@ -104,6 +104,7 @@ export default function VipAbaKhqrPage() {
   const planIdParam = String(searchParams.get('plan_id') || '').trim()
   const tranIdParam = String(searchParams.get('tran_id') || '').trim()
   const handoffParam = String(searchParams.get('handoff') || '').trim()
+  const autoSummonQuery = searchParams.get('auto_summon') === '1'
   const fulfillmentHint = readVipPaymentFulfillmentHint(searchParams)
 
   const qrSessionRef = useRef(
@@ -119,9 +120,7 @@ export default function VipAbaKhqrPage() {
   const inTelegram = isTelegramMiniApp()
   const abaSummonFailedQuery = searchParams.get('aba_summon_failed') === '1'
   const shouldAutoSummonInBrowser =
-    !inTelegram &&
-    !abaSummonFailedQuery &&
-    shouldTryAbaMobileDeeplinkFirst()
+    !inTelegram && !abaSummonFailedQuery && autoSummonQuery
   const shouldHideQrForAutoSummon = shouldAutoSummonInBrowser
   const [showQrAfterAutoSummon, setShowQrAfterAutoSummon] = useState(!shouldHideQrForAutoSummon)
 

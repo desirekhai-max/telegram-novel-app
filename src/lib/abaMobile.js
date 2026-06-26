@@ -3,7 +3,6 @@
 import { buildAbaKhqrPageUrl } from './vipAbaKhqrSession.js'
 import { getAppPublicOrigin } from './appPublicUrl.js'
 import { reportVipAbaKhqrDeeplinkOpened } from './vipAbaKhqrSession.js'
-import { isTelegramMiniApp } from './telegramWebApp.js'
 
 const ABA_DEEPLINK_PREFIX = 'abamobilebank://'
 const ABA_BRIDGE_PATH = '/aba-open.html'
@@ -12,35 +11,6 @@ const IFRAME_CLEANUP_MS = 5000
 const TELEGRAM_OPEN_LINK_OPTS = {
   try_instant_view: false,
   tryBrowser: 'external',
-}
-
-function launchViaExternalOpenLink(url) {
-  const target = String(url || '').trim()
-  if (!target || typeof window === 'undefined') return false
-  const inTelegram = isTelegramMiniApp()
-  const tg = window.Telegram?.WebApp
-  if (inTelegram && typeof tg?.openLink === 'function') {
-    const optionSets = [
-      TELEGRAM_OPEN_LINK_OPTS,
-      { try_instant_view: false, try_browser: true },
-      { try_instant_view: false },
-    ]
-    for (const opts of optionSets) {
-      try {
-        tg.openLink(target, opts)
-        return true
-      } catch {
-        /* try next option shape */
-      }
-    }
-  }
-  // 普通浏览器：同页跳转，避免 async 后 window.open 被弹窗拦截
-  try {
-    window.location.assign(target)
-    return true
-  } catch {
-    return false
-  }
 }
 
 /** Still visible after this → summon failed (no ABA). */
@@ -127,12 +97,7 @@ export function buildAbaQrPageReturnUrl(tranId, planId, session = null) {
   return `${origin}/vip/aba-khqr?tran_id=${encodeURIComponent(tid)}&plan_id=${encodeURIComponent(pid)}`
 }
 
-/** Build QR return URL for Android Intent fallback (show QR when ABA not installed). */
-export function buildAbaQrIntentFallbackUrl(returnToQrUrl) {
-  return String(returnToQrUrl || '').trim()
-}
-
-/** Build QR return URL with failure flag for iOS bounce / timer fallback. */
+/** Build QR return URL with failure flag for bridge / Intent fallback. */
 export function buildAbaQrReturnUrl(returnToQrUrl) {
   const raw = String(returnToQrUrl || '').trim()
   if (!raw) return ''
@@ -150,7 +115,7 @@ export function buildAbaQrReturnUrl(returnToQrUrl) {
 export function buildAbaMobileOpenHref(input = {}) {
   const qrString = String(input.qrString || '').trim()
   const deeplink = String(input.abapayDeeplink || '').trim()
-  const backUrl = buildAbaQrIntentFallbackUrl(input.returnToQrUrl)
+  const backUrl = buildAbaQrReturnUrl(input.returnToQrUrl)
 
   if (isAndroidDevice()) {
     const fromDeeplink = deeplink ? buildPayWayAndroidIntentUrlFromDeeplink(deeplink, backUrl) : ''
@@ -215,9 +180,26 @@ function launchViaHiddenIframe(url) {
   }
 }
 
-/**
- * @param {{ onLaunched?: () => void, onFailed?: () => void, timeoutMs?: number, bounceMs?: number }} [opts]
- */
+function launchViaExternalOpenLink(url) {
+  const target = String(url || '').trim()
+  if (!target || typeof window === 'undefined') return false
+  const tg = window.Telegram?.WebApp
+  if (typeof tg?.openLink === 'function') {
+    try {
+      tg.openLink(target, TELEGRAM_OPEN_LINK_OPTS)
+      return true
+    } catch {
+      /* fall through */
+    }
+  }
+  try {
+    window.open(target, '_blank', 'noopener,noreferrer')
+    return true
+  } catch {
+    return false
+  }
+}
+
 function resolveSummonReportCallback(input = {}) {
   const tranId = String(input.session?.tranId || input.tranId || '').trim()
   const handoff = String(input.session?.browserHandoffToken || input.handoff || '').trim()
@@ -227,6 +209,9 @@ function resolveSummonReportCallback(input = {}) {
   }
 }
 
+/**
+ * @param {{ onLaunched?: () => void, onFailed?: () => void, timeoutMs?: number, bounceMs?: number }} [opts]
+ */
 export function watchAbaMobileSummonOutcome(opts = {}) {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     opts.onFailed?.()
@@ -284,7 +269,7 @@ export function trySummonAbaMobile(input = {}) {
 
   const session = input.session
   const handoffBridge = session?.browserHandoffToken
-    ? buildAbaOpenBridgeUrl(session, session.planId)
+    ? buildAbaOpenBridgeUrl(session, session.planId, { iosImmediateSummon: isIosDevice() })
     : ''
 
   let bridgeUrl = handoffBridge
@@ -294,8 +279,6 @@ export function trySummonAbaMobile(input = {}) {
     bridgeUrl = buildLegacyAbaOpenBridgeUrl(summonTarget, input.returnToQrUrl)
     launchViaHiddenIframe(summonTarget)
   }
-
-  console.log('[ABA] summon bridge:', bridgeUrl)
 
   if (bridgeUrl) launchViaHiddenIframe(bridgeUrl)
 
@@ -323,7 +306,7 @@ export function openAbaMobileDeeplink(deeplink, stores = {}) {
 
 /**
  * Already in Safari/Chrome — try deeplink/intent directly (no TG bridge).
- * @param {{ qrString?: string, abapayDeeplink?: string, returnToQrUrl?: string, onSummonFailed?: () => void }} input
+ * @param {{ qrString?: string, abapayDeeplink?: string, returnToQrUrl?: string, onSummonFailed?: () => void, session?: import('./vipAbaKhqrSession.js').VipAbaKhqrSession }} input
  */
 export function trySummonAbaMobileInBrowser(input = {}) {
   if (typeof window === 'undefined') return { attempted: false, method: 'no_window' }
@@ -354,22 +337,37 @@ export function trySummonAbaMobileInBrowser(input = {}) {
     return { attempted: true, method: 'ios_browser_deeplink' }
   }
 
-  if (isAndroidDevice()) {
-    try {
-      window.location.href = summonTarget
-    } catch {
-      onFailed()
-      return { attempted: false, method: 'android_intent_failed' }
-    }
-    watchAbaMobileSummonOutcome({
-      onLaunched: () => reportLaunched?.(),
-      onFailed,
-    })
-    return { attempted: true, method: 'android_browser_intent' }
+  try {
+    const frame = document.createElement('iframe')
+    frame.style.cssText = 'display:none;width:0;height:0;border:0'
+    frame.src = summonTarget
+    document.documentElement.appendChild(frame)
+    window.setTimeout(() => {
+      try {
+        frame.remove()
+      } catch {
+        /* ignore */
+      }
+    }, IFRAME_CLEANUP_MS)
+  } catch {
+    /* ignore */
   }
 
-  onFailed()
-  return { attempted: false, method: 'no_target' }
+  if (isAndroidDevice()) {
+    window.setTimeout(() => {
+      try {
+        window.location.href = summonTarget
+      } catch {
+        onFailed()
+      }
+    }, 80)
+  }
+
+  watchAbaMobileSummonOutcome({
+    onLaunched: () => reportLaunched?.(),
+    onFailed,
+  })
+  return { attempted: true, method: 'browser_direct' }
 }
 
 /**
@@ -384,11 +382,10 @@ export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
   const pid = String(planId || session?.planId || '').trim()
   let targetUrl = ''
 
-  if (shouldTryAbaMobileDeeplinkFirst()) {
-    targetUrl = buildAbaOpenBridgeUrl(session, pid, { iosImmediateSummon: isIosDevice() })
-    if (!targetUrl) {
-      targetUrl = buildAbaKhqrPageUrl(session, pid, { auto_summon: '1' })
-    }
+  if (shouldUseAbaOpenBridgeInExternalBrowser()) {
+    targetUrl = buildAbaOpenBridgeUrl(session, pid)
+  } else if (isIosDevice()) {
+    targetUrl = buildAbaOpenBridgeUrl(session, pid, { iosImmediateSummon: true })
   } else {
     targetUrl = buildAbaKhqrPageUrl(session, pid)
   }
@@ -396,11 +393,7 @@ export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
   if (targetUrl && launchViaExternalOpenLink(targetUrl)) {
     return {
       opened: true,
-      method: targetUrl.includes('/aba-open.html')
-        ? 'external_aba_bridge'
-        : targetUrl.includes('auto_summon=1')
-          ? 'external_qr_auto_summon'
-          : 'external_qr_page',
+      method: targetUrl.includes('/aba-open.html') ? 'external_aba_bridge' : 'external_qr_page',
     }
   }
 
