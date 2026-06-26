@@ -61,7 +61,7 @@ function openBrowserFlow(session, planId) {
 }
 
 /**
- * 点击 ABA KHQR 后同步进入此页；Telegram 内必须再点一次按钮（真实手势）才能 openLink。
+ * VIP 点击 ABA KHQR 后进入此页；必须再点一次按钮（真实手势）才能打开支付页/银行。
  */
 export default function VipAbaKhqrLaunchPage() {
   const navigate = useNavigate()
@@ -69,11 +69,11 @@ export default function VipAbaKhqrLaunchPage() {
   const launchContext = resolveLaunchContext(location.state)
   const sessionRef = useRef(loadVipAbaKhqrSession())
   const sessionPromiseRef = useRef(null)
-  const autoOpenAttemptedRef = useRef(false)
-  const [phase, setPhase] = useState('boot') // boot | ready | opening | failed
+  const inTelegram = isTelegramMiniApp()
+  const [phase, setPhase] = useState('ready') // ready | opening | failed
   const [errorText, setErrorText] = useState('')
   const [manualBusy, setManualBusy] = useState(false)
-  const requireManualTap = isTelegramMiniApp()
+  const [sessionReady, setSessionReady] = useState(false)
 
   const returnToVip = useCallback(() => {
     clearLaunchIntent()
@@ -118,32 +118,27 @@ export default function VipAbaKhqrLaunchPage() {
     }
   }, [launchContext])
 
-  const tryOpenBrowser = useCallback(
-    (session, planId, { manual = false } = {}) => {
-      const pid = String(planId || session?.planId || '').trim()
-      if (!session?.tranId || !pid) {
-        setPhase('failed')
-        setErrorText('missing_session')
-        return false
-      }
-      sessionRef.current = session
-      saveVipAbaKhqrSession(session)
+  const tryOpenBrowser = useCallback((session, planId) => {
+    const pid = String(planId || session?.planId || '').trim()
+    if (!session?.tranId || !pid) {
+      setPhase('failed')
+      setErrorText('missing_session')
+      return false
+    }
+    sessionRef.current = session
+    saveVipAbaKhqrSession(session)
 
-      const result = openBrowserFlow(session, pid)
-      if (!result.opened) {
-        if (manual || requireManualTap) {
-          setPhase(requireManualTap ? 'ready' : 'failed')
-          if (!requireManualTap) setErrorText(String(result.method || 'browser_open_failed'))
-        }
-        return false
-      }
+    const result = openBrowserFlow(session, pid)
+    if (!result.opened) {
+      setPhase('failed')
+      setErrorText(String(result.method || 'browser_open_failed'))
+      return false
+    }
 
-      setPhase('opening')
-      setErrorText('')
-      return true
-    },
-    [requireManualTap],
-  )
+    setPhase('opening')
+    setErrorText('')
+    return true
+  }, [])
 
   useLayoutEffect(() => {
     saveLaunchIntent({
@@ -161,35 +156,18 @@ export default function VipAbaKhqrLaunchPage() {
     }
 
     void preloadAbaKhqrPaymentAssets()
-
-    if (requireManualTap) {
-      setPhase('ready')
-      void ensureSession().catch((err) => {
+    void ensureSession()
+      .then(() => setSessionReady(true))
+      .catch((err) => {
         setPhase('failed')
         setErrorText(err instanceof Error ? err.message : 'aba_khqr_failed')
       })
-      return undefined
-    }
-
-    if (autoOpenAttemptedRef.current) return undefined
-    autoOpenAttemptedRef.current = true
-
-    void (async () => {
-      try {
-        const session = await ensureSession()
-        if (tryOpenBrowser(session, launchContext.planId)) return
-        setPhase('ready')
-      } catch (err) {
-        setPhase('failed')
-        setErrorText(err instanceof Error ? err.message : 'aba_khqr_failed')
-      }
-    })()
 
     return undefined
-  }, [ensureSession, launchContext.planId, requireManualTap, tryOpenBrowser])
+  }, [ensureSession, launchContext.planId])
 
   useEffect(() => {
-    if (phase !== 'opening') return undefined
+    if (phase !== 'opening' || !inTelegram) return undefined
 
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
@@ -209,7 +187,7 @@ export default function VipAbaKhqrLaunchPage() {
       document.removeEventListener('visibilitychange', onVisibility)
       window.clearTimeout(timer)
     }
-  }, [navigate, phase])
+  }, [inTelegram, navigate, phase])
 
   const onManualOpen = () => {
     if (manualBusy) return
@@ -220,7 +198,7 @@ export default function VipAbaKhqrLaunchPage() {
       try {
         const session = await ensureSession()
         const planId = launchContext.planId || session?.planId || ''
-        if (!tryOpenBrowser(session, planId, { manual: true })) {
+        if (!tryOpenBrowser(session, planId)) {
           clearVipAbaKhqrPendingPayment(session?.tranId)
         }
       } catch (err) {
@@ -232,36 +210,39 @@ export default function VipAbaKhqrLaunchPage() {
     })()
   }
 
-  const showManual = phase === 'ready' || (phase === 'boot' && requireManualTap)
-  const showLoading = phase === 'boot' || phase === 'opening' || manualBusy
+  const showManual = phase === 'ready'
   const showFailed = phase === 'failed'
 
   return (
     <div className="tg-app tg-app--about">
       <BrandTabToolbar title="ABA KHQR" titleLang="en" titleClassName="text-[15px]" showDivider />
       <main className="tg-list-wrap tg-about-scroll flex flex-1 flex-col items-center justify-center gap-4 px-6 pt-12 pb-32 text-center">
-        {showLoading && !showManual ? (
-          <p className="text-[0.95rem] text-white/75" lang="km">
-            {phase === 'boot' ? 'កំពុងបង្កើត QR…' : 'កំពុងបើក Browser…'}
-          </p>
-        ) : null}
-
         {showManual ? (
           <>
             <p className="text-[0.95rem] leading-relaxed text-white/75" lang="km">
-              {requireManualTap
-                ? 'សូមចុចប៊ូតុងខាងក្រោមដើម្បីបើក Browser បង់ប្រាក់ ABA KHQR'
-                : 'សូមចុចប៊ូតុងខាងក្រោមដើម្បីបើកទំព័របង់ប្រាក់'}
+              {sessionReady
+                ? inTelegram
+                  ? 'សូមចុចប៊ូតុងខាងក្រោមដើម្បីបើក Browser បង់ប្រាក់ ABA KHQR'
+                  : 'សូមចុចប៊ូតុងខាងក្រោមដើម្បីបើកទំព័របង់ប្រាក់'
+                : 'កំពុងបង្កើត QR…'}
             </p>
             <button
               type="button"
               className="rounded-full border border-white/25 bg-[var(--tg-blue)] px-6 py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-60"
-              disabled={manualBusy}
+              disabled={manualBusy || !sessionReady}
               onClick={onManualOpen}
             >
-              <span lang="km">{manualBusy ? 'កំពុងបើក…' : 'បើក Browser · ABA KHQR'}</span>
+              <span lang="km">
+                {manualBusy ? 'កំពុងបើក…' : sessionReady ? 'បើក Browser · ABA KHQR' : 'កំពុងរៀបចំ…'}
+              </span>
             </button>
           </>
+        ) : null}
+
+        {phase === 'opening' && !showManual ? (
+          <p className="text-[0.95rem] text-white/75" lang="km">
+            កំពុងបើក Browser…
+          </p>
         ) : null}
 
         {showFailed ? (

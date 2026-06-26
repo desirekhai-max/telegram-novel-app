@@ -3,6 +3,7 @@
 import { buildAbaKhqrPageUrl } from './vipAbaKhqrSession.js'
 import { getAppPublicOrigin } from './appPublicUrl.js'
 import { reportVipAbaKhqrDeeplinkOpened } from './vipAbaKhqrSession.js'
+import { isTelegramMiniApp } from './telegramWebApp.js'
 
 const ABA_DEEPLINK_PREFIX = 'abamobilebank://'
 const ABA_BRIDGE_PATH = '/aba-open.html'
@@ -16,8 +17,9 @@ const TELEGRAM_OPEN_LINK_OPTS = {
 function launchViaExternalOpenLink(url) {
   const target = String(url || '').trim()
   if (!target || typeof window === 'undefined') return false
+  const inTelegram = isTelegramMiniApp()
   const tg = window.Telegram?.WebApp
-  if (typeof tg?.openLink === 'function') {
+  if (inTelegram && typeof tg?.openLink === 'function') {
     const optionSets = [
       TELEGRAM_OPEN_LINK_OPTS,
       { try_instant_view: false, try_browser: true },
@@ -32,8 +34,9 @@ function launchViaExternalOpenLink(url) {
       }
     }
   }
+  // 普通浏览器：同页跳转，避免 async 后 window.open 被弹窗拦截
   try {
-    window.open(target, '_blank', 'noopener,noreferrer')
+    window.location.assign(target)
     return true
   } catch {
     return false
