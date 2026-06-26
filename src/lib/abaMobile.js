@@ -13,6 +13,33 @@ const TELEGRAM_OPEN_LINK_OPTS = {
   tryBrowser: 'external',
 }
 
+function launchViaExternalOpenLink(url) {
+  const target = String(url || '').trim()
+  if (!target || typeof window === 'undefined') return false
+  const tg = window.Telegram?.WebApp
+  if (typeof tg?.openLink === 'function') {
+    const optionSets = [
+      TELEGRAM_OPEN_LINK_OPTS,
+      { try_instant_view: false, try_browser: true },
+      { try_instant_view: false },
+    ]
+    for (const opts of optionSets) {
+      try {
+        tg.openLink(target, opts)
+        return true
+      } catch {
+        /* try next option shape */
+      }
+    }
+  }
+  try {
+    window.open(target, '_blank', 'noopener,noreferrer')
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Still visible after this → summon failed (no ABA). */
 export const ABA_SUMMON_FAILURE_TIMEOUT_MS = 2500
 /** hidden then visible again within this → likely browser bounce without ABA. */
@@ -174,26 +201,6 @@ function launchViaHiddenIframe(url) {
         /* ignore */
       }
     }, IFRAME_CLEANUP_MS)
-    return true
-  } catch {
-    return false
-  }
-}
-
-function launchViaExternalOpenLink(url) {
-  const target = String(url || '').trim()
-  if (!target || typeof window === 'undefined') return false
-  const tg = window.Telegram?.WebApp
-  if (typeof tg?.openLink === 'function') {
-    try {
-      tg.openLink(target, TELEGRAM_OPEN_LINK_OPTS)
-      return true
-    } catch {
-      /* fall through */
-    }
-  }
-  try {
-    window.open(target, '_blank', 'noopener,noreferrer')
     return true
   } catch {
     return false

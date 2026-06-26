@@ -9,12 +9,6 @@ import { getVipPlansCatalogForRole, getVipPlanTierClass, VIP_MEMBER_FOOTER_KM } 
 import { VIP_LOGIN_GATE_DESC_KM, VIP_LOGIN_GATE_TITLE_KM } from '../lib/errorMessagesKm.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
-import {
-  savePayWayCheckoutSession,
-  submitPayWayCheckoutForm,
-} from '../lib/paywayCheckout.js'
-import { buildAbaKhqrUiMockSession, isAbaKhqrUiMockFlowEnabled } from '../lib/abaKhqrUiMock.js'
-import { preloadAbaKhqrPaymentAssets } from '../lib/abaKhqrAssets.js'
 import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
 import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
 import { useVipAbaKhqrPaymentConfirm } from '../hooks/useVipAbaKhqrPaymentConfirm.js'
@@ -28,15 +22,9 @@ import {
   markVipAbaKhqrBrowserFlowReturned,
   resolveVipAbaKhqrAwaitingUiState,
   saveVipAbaKhqrPendingPayment,
-  saveVipAbaKhqrSession,
   shouldShowVipAbaKhqrConfirmingUi,
 } from '../lib/vipAbaKhqrSession.js'
 import { scheduleVipPaymentSuccessNavigation } from '../lib/vipPaymentSuccessNavigation.js'
-import {
-  purchaseViewerVipPlan,
-  startViewerVipAbaKhqr,
-  startViewerVipPayWayCheckout,
-} from '../lib/viewerProfileApi.js'
 import { canAccessVipPurchase } from '../lib/devVipPurchase.js'
 
 function formatKhqrPendingCountdown(remainingMs) {
@@ -96,7 +84,7 @@ export default function VipPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const tgUser = useTelegramUser()
-  const { viewerProfile, refreshViewerProfile, applyViewerProfile } = useViewerProfile()
+  const { viewerProfile, refreshViewerProfile } = useViewerProfile()
   const [selectedPlanId, setSelectedPlanId] = useState('')
   const [abaKhqrPending, setAbaKhqrPending] = useState(false)
   const [termsAccepted, setTermsAccepted] = useState(false)
@@ -167,38 +155,19 @@ export default function VipPage() {
   )
 
 
-  const fallbackHostedCheckout = useCallback(
-    async (planId) => {
-      const checkout = await startViewerVipPayWayCheckout(planId)
-      if (checkout?.ok && checkout.checkout?.checkoutUrl && checkout.checkout?.formFields) {
-        const direct = submitPayWayCheckoutForm(
-          checkout.checkout.checkoutUrl,
-          checkout.checkout.formFields,
-        )
-        if (direct.ok) return true
-        const saved = savePayWayCheckoutSession({
-          checkoutUrl: checkout.checkout.checkoutUrl,
-          formFields: checkout.checkout.formFields,
-        })
-        if (saved) {
-          navigate('/vip/checkout-redirect')
-          return true
-        }
-      }
-      return false
-    },
-    [navigate],
-  )
-
-  /** API 完成后写入 session，由 launch 页同步 openLink（避免 async 后 WebView 拦截）。 */
+  /** 同步跳转 launch 页；订单创建与 openLink 在 launch 页完成（保留 Telegram 用户手势）。 */
   const beginAbaKhqrLaunch = useCallback(
-    async (session, planId) => {
-      await preloadAbaKhqrPaymentAssets()
-      saveVipAbaKhqrSession(session)
-      setPurchaseNotice('កំពុងបើក Browser…')
-      navigate('/vip/aba-khqr-launch', { replace: true })
+    (planId) => {
+      navigate('/vip/aba-khqr-launch', {
+        replace: true,
+        state: {
+          planId: String(planId || '').trim(),
+          role: viewerProfile.role,
+          mock: isAbaKhqrUiMockFlowEnabled(),
+        },
+      })
     },
-    [navigate],
+    [navigate, viewerProfile.role],
   )
 
   const pendingAbaPayment = useMemo(() => loadActiveVipAbaKhqrPending(), [abaKhqrAwaitingReturn])
@@ -315,7 +284,7 @@ export default function VipPage() {
   }, [abaKhqrAwaitingReturn])
 
   const runAbaPaymentStart = useCallback(
-    async () => {
+    () => {
       if (!termsAccepted) {
         setPurchaseError('សូមធីកយល់ព្រមលក្ខខណ្ឌមុនពេលទិញ')
         return
@@ -329,56 +298,15 @@ export default function VipPage() {
 
       setPurchaseError('')
       setPurchaseNotice('')
-      setAbaKhqrPending(true)
-
-      try {
-        if (isAbaKhqrUiMockFlowEnabled()) {
-          const mockSession = buildAbaKhqrUiMockSession(planId, viewerProfile.role)
-          await beginAbaKhqrLaunch(mockSession, planId)
-          return
-        }
-
-        const aba = await startViewerVipAbaKhqr(planId)
-        if (aba?.ok && aba.session?.tranId) {
-          await beginAbaKhqrLaunch(aba.session, planId)
-          return
-        }
-
-        const hostedOk = await fallbackHostedCheckout(planId)
-        if (hostedOk) return
-
-        if (aba?.error === 'payway_not_configured' || !aba?.paywayConfigured) {
-          const demo = await purchaseViewerVipPlan(planId)
-          if (demo?.ok) {
-            if (demo.profile) applyViewerProfile(demo.profile)
-            await refreshViewerProfile()
-            setPurchaseNotice('VIP បានបើករួចហើយ')
-            return
-          }
-        }
-
-        setPurchaseError(
-          aba?.error
-            ? `មិនអាចបើក ABA KHQR: ${aba.error}`
-            : 'មិនអាចទិញបាន សូមព្យាយាមម្តងទៀត',
-        )
-      } catch (err) {
-        setPurchaseError(err instanceof Error ? err.message : 'មិនអាចទិញបាន')
-      } finally {
-        setAbaKhqrPending(false)
-      }
+      beginAbaKhqrLaunch(planId)
     },
     [
       abaKhqrPending,
-      fallbackHostedCheckout,
       beginAbaKhqrLaunch,
-      applyViewerProfile,
-      refreshViewerProfile,
       selectedPlanId,
       termsAccepted,
       openLoginPrompt,
       vipPurchaseReady,
-      viewerProfile.role,
     ],
   )
 
