@@ -176,6 +176,35 @@ export async function bootstrapTelegramNotifyChatId() {
   return ''
 }
 
+function resolveVipNotifyKind(options = {}) {
+  const explicit = String(options.notifyVipAs || '').trim()
+  if (explicit === 'inapp' || explicit === 'order') return explicit
+  if (String(options.tranId || '').trim()) return 'order'
+  return 'inapp'
+}
+
+export function logTelegramNotifyStartupStatus() {
+  const chatId = getTelegramNotifyChatId()
+  const token = getTelegramBotToken()
+  const ready = Boolean(chatId && token)
+  console.log(
+    `[telegram-notify] ready=${ready} chatId=${chatId ? 'set' : 'missing'} token=${token ? 'set' : 'missing'}`,
+  )
+  if (!ready) {
+    console.warn(
+      '[telegram-notify] 未配置 TELEGRAM_BOT_TOKEN / TELEGRAM_NOTIFY_CHAT_ID，系统通知将不会发送',
+    )
+  }
+}
+
+export function sendVipPurchaseNotify(payload = {}, options = {}) {
+  const kind = resolveVipNotifyKind(options)
+  const title = kind === 'inapp' ? '📫VIP内购' : '👑 新VIP订单'
+  const type = kind === 'inapp' ? 'vip_inapp' : 'vip_order'
+  const text = buildNotifyMessage(title, buildVipNotifyLines(payload))
+  return sendSystemTelegramNotify(type, text)
+}
+
 export function notifyUserRegister(profile, { onlineCount } = {}) {
   const online = Number(onlineCount)
   const text = buildNotifyMessage('👤 新用户注册', [
@@ -184,17 +213,17 @@ export function notifyUserRegister(profile, { onlineCount } = {}) {
     `在线人数：${Number.isFinite(online) && online >= 0 ? online : '—'}`,
     `时间：${formatPhnomPenhTime()}`,
   ])
-  void sendSystemTelegramNotify('user_register', text)
+  return sendSystemTelegramNotify('user_register', text)
 }
 
 export function notifyVipOrder(payload = {}) {
   const text = buildNotifyMessage('👑 新VIP订单', buildVipNotifyLines(payload))
-  void sendSystemTelegramNotify('vip_order', text)
+  return sendSystemTelegramNotify('vip_order', text)
 }
 
 export function notifyVipInAppPurchase(payload = {}) {
   const text = buildNotifyMessage('📫VIP内购', buildVipNotifyLines(payload))
-  void sendSystemTelegramNotify('vip_inapp', text)
+  return sendSystemTelegramNotify('vip_inapp', text)
 }
 
 export function notifyReport({ novelTitle, userName, content } = {}) {
@@ -204,7 +233,7 @@ export function notifyReport({ novelTitle, userName, content } = {}) {
     `内容：${clip(content || '—', 500) || '—'}`,
     `时间：${formatPhnomPenhTime()}`,
   ])
-  void sendSystemTelegramNotify('report', text)
+  return sendSystemTelegramNotify('report', text)
 }
 
 export function notifyComment({ novelTitle, userName, content } = {}) {
@@ -214,14 +243,24 @@ export function notifyComment({ novelTitle, userName, content } = {}) {
     `评论：${clip(content || '—', 500) || '—'}`,
     `时间：${formatPhnomPenhTime()}`,
   ])
-  void sendSystemTelegramNotify('comment', text)
+  return sendSystemTelegramNotify('comment', text)
 }
 
 export async function sendSystemTelegramNotify(type, text) {
-  if (!ENABLED_TYPES.has(type)) return { ok: false, skipped: 'type_disabled' }
+  if (!ENABLED_TYPES.has(type)) {
+    console.warn('[telegram-notify] skip', type, 'type_disabled')
+    return { ok: false, skipped: 'type_disabled' }
+  }
   const chatId = getTelegramNotifyChatId()
   const token = getTelegramBotToken()
-  if (!chatId || !token) return { ok: false, skipped: 'not_configured' }
+  if (!chatId || !token) {
+    console.warn(
+      '[telegram-notify] skip',
+      type,
+      !token ? 'missing TELEGRAM_BOT_TOKEN' : 'missing TELEGRAM_NOTIFY_CHAT_ID',
+    )
+    return { ok: false, skipped: 'not_configured' }
+  }
   try {
     await callTelegramApi('sendMessage', {
       chat_id: chatId,

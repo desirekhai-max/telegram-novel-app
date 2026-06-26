@@ -79,11 +79,11 @@ import {
 import { initAppSettingsStore } from './app-settings-store.js'
 import {
   bootstrapTelegramNotifyChatId,
+  logTelegramNotifyStartupStatus,
   notifyComment,
   notifyReport,
   notifyUserRegister,
-  notifyVipInAppPurchase,
-  notifyVipOrder,
+  sendVipPurchaseNotify,
 } from './telegram-system-notify.js'
 
 const HOST = process.env.HOST || '0.0.0.0'
@@ -771,15 +771,12 @@ function createSuccessfulVipOrderForViewer(profile, planId, options = {}) {
   if (!memberPaidAt.has(updatedProfile.memberId)) memberPaidAt.set(updatedProfile.memberId, atMs)
   txMetrics.orderEvents.push(atMs)
   txMetrics.successEvents.push(atMs)
+  let notifyPromise = Promise.resolve({ ok: true, skipped: 'vip_gift' })
   if (sourceType !== 'vip_gift') {
     const payload = { profile: updatedProfile, order, tranId: String(options.tranId || '').trim() }
-    if (options.notifyVipAs === 'inapp') {
-      notifyVipInAppPurchase(payload)
-    } else {
-      notifyVipOrder(payload)
-    }
+    notifyPromise = sendVipPurchaseNotify(payload, options)
   }
-  return { order, profile: updatedProfile }
+  return { order, profile: updatedProfile, notifyPromise }
 }
 
 function parseMemberIdToTelegramUserId(memberId) {
@@ -834,7 +831,7 @@ function createPendingVipOrderRecord({
   })
 }
 
-function fulfillVipAfterPayment(input = {}) {
+async function fulfillVipAfterPayment(input = {}) {
   const tranId = String(input.tranId || input.tran_id || '').trim().slice(0, 20)
   const pending = tranId ? pendingVipOrdersByTranId.get(tranId) : null
   const planId = String(input.planId || input.plan_id || pending?.planId || '').trim()
@@ -886,6 +883,9 @@ function fulfillVipAfterPayment(input = {}) {
     if (row) pendingVipOrdersByTranId.set(tranId, { ...row, status: 'paid', paidAt: now() })
   }
   markMemberPaidPresence(result.profile.memberId, input.req)
+  await result.notifyPromise.catch((err) => {
+    console.warn('[telegram-notify] vip payment notify failed:', err?.message || err)
+  })
 
   return {
     ok: true,
@@ -896,7 +896,7 @@ function fulfillVipAfterPayment(input = {}) {
   }
 }
 
-function applyPaymentSuccessPayload(body, req) {
+async function applyPaymentSuccessPayload(body, req) {
   const safeBody = stripSensitivePaymentFields(body)
   const payload = safeBody && typeof safeBody === 'object' && !Array.isArray(safeBody) ? safeBody : {}
   const memberId = String(payload.memberId || '').trim()
@@ -915,7 +915,7 @@ function applyPaymentSuccessPayload(body, req) {
     memberLastLoginAt.set(memberId, atMs)
     markMemberPaidPresence(memberId, req, atMs)
   }
-  const fulfillment = fulfillVipAfterPayment({
+  const fulfillment = await fulfillVipAfterPayment({
     memberId,
     planId: payload.planId || payload.plan_id,
     tranId: payload.tranId || payload.tran_id,
@@ -3678,7 +3678,7 @@ const server = http.createServer(async (req, res) => {
         })
       }
     }
-    const fulfillment = fulfillVipAfterPayment({
+    const fulfillment = await fulfillVipAfterPayment({
       tranId,
       planId,
       memberId: auth.telegramUser.telegramUserId ? `tg_${auth.telegramUser.telegramUserId}` : '',
@@ -3712,6 +3712,15 @@ const server = http.createServer(async (req, res) => {
     if (rejectIfViewerBanned(profile, res)) return
     const result = createSuccessfulVipOrderForViewer(profile, planId, { notifyVipAs: 'inapp' })
     if (!result) return sendJson(res, 400, { ok: false, error: 'invalid vip plan' })
+    const notifyResult = await result.notifyPromise.catch((err) => ({
+      ok: false,
+      error: String(err?.message || err),
+    }))
+    if (notifyResult?.skipped === 'not_configured') {
+      console.warn('[telegram-notify] vip in-app purchase notify skipped: not configured')
+    } else if (notifyResult?.ok === false && !notifyResult?.skipped) {
+      console.warn('[telegram-notify] vip in-app purchase notify failed:', notifyResult?.error || 'unknown')
+    }
     persistMembers()
     return sendJson(res, 200, {
       ok: true,
@@ -4038,7 +4047,7 @@ const server = http.createServer(async (req, res) => {
     memberLastLoginAt.set(memberId, now())
     if (String(body.device || '').trim()) setMemberLastDevice(memberId, body.device)
     if (body.paidSuccess) {
-      applyPaymentSuccessPayload(body, req)
+      await applyPaymentSuccessPayload(body, req)
       persistMembers()
     }
     records.set(memberId, { device, isAdmin, lastSeenAt: now() })
@@ -4050,7 +4059,7 @@ const server = http.createServer(async (req, res) => {
     const body = await parseJsonBody(req)
     const memberId = String(body.memberId || '').trim()
     if (!memberId) return sendJson(res, 400, { ok: false, error: 'memberId required' })
-    const { fulfillment } = applyPaymentSuccessPayload(body, req)
+    const { fulfillment } = await applyPaymentSuccessPayload(body, req)
     persistMembers()
     return sendJson(res, 200, {
       ok: true,
@@ -4685,6 +4694,7 @@ initNovelsStore()
       console.log(`[orders-store] count: ${getOrdersCount()}`)
       console.log('[payway] sandbox status:', JSON.stringify(getPayWaySandboxStatus()))
       console.log('[migrate] results:', JSON.stringify(migrationResults))
+      logTelegramNotifyStartupStatus()
       void bootstrapTelegramNotifyChatId()
     })
   })
