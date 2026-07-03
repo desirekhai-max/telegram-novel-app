@@ -23,6 +23,7 @@ import {
   handoffKhqrBootShell,
   loadVipAbaKhqrPendingPayment,
   loadVipAbaKhqrSession,
+  markVipAbaKhqrQrShown,
   resolveVipAbaKhqrQrPageExpireAtMs,
   saveVipAbaKhqrSession,
 } from '../lib/vipAbaKhqrSession.js'
@@ -218,6 +219,12 @@ export default function VipAbaKhqrPage() {
   }, [abaSummonFailedQuery, inTelegram])
 
   useEffect(() => {
+    if (!inTelegram || !showQrAfterAutoSummon || !tranId) return undefined
+    markVipAbaKhqrQrShown(tranId)
+    return undefined
+  }, [inTelegram, showQrAfterAutoSummon, tranId])
+
+  useEffect(() => {
     if (inTelegram || qrSessionRef.current || uiMockQuery) return undefined
     if (!tranIdParam) return undefined
 
@@ -338,11 +345,23 @@ export default function VipAbaKhqrPage() {
     if (successNavRef.current || pendingSuccessRef.current) return
     pendingSuccessRef.current = true
 
-    if (document.visibilityState === 'visible') {
+    const run = () => {
       setStatusNote('ការបង់ប្រាក់បានជោគជ័យ កំពុងបញ្ជាក់…')
       void preloadVipPaymentSuccessAssets()
       goSuccess()
     }
+
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      const onVisible = () => {
+        if (document.visibilityState !== 'visible') return
+        document.removeEventListener('visibilitychange', onVisible)
+        run()
+      }
+      document.addEventListener('visibilitychange', onVisible)
+      return
+    }
+
+    run()
   }, [goSuccess])
 
   useVipAbaKhqrPaymentConfirm({

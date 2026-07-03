@@ -178,6 +178,22 @@ export default function VipPage() {
     syncAbaKhqrAwaitingUiState()
   }, [location.pathname, syncAbaKhqrAwaitingUiState])
 
+  useEffect(() => {
+    if (!isTelegramMiniApp()) return undefined
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      const pending = loadActiveVipAbaKhqrPending()
+      if (!pending?.tranId) return
+      setAbaKhqrAwaitingReturn(true)
+      if (shouldShowVipAbaKhqrConfirmingUi(pending.tranId)) {
+        setConfirmingPaymentReturn(true)
+        setPurchaseNotice('')
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+
   const plans = useMemo(
     () => [...getVipPlansCatalogForRole(viewerProfile.role)].sort((a, b) => a.sortOrder - b.sortOrder),
     [viewerProfile.role],
@@ -272,7 +288,10 @@ export default function VipPage() {
     return undefined
   }, [prefetchAbaKhqrSession, selectedPlanId, termsAccepted, vipPurchaseReady])
 
-  const pendingAbaPayment = useMemo(() => loadActiveVipAbaKhqrPending(), [abaKhqrAwaitingReturn])
+  const pendingAbaPayment = useMemo(
+    () => loadActiveVipAbaKhqrPending(),
+    [abaKhqrAwaitingReturn, location.pathname],
+  )
 
   const showConfirmingUi = useMemo(() => {
     if (confirmingPaymentReturn || confirmingSlideOut) return true
@@ -291,6 +310,7 @@ export default function VipPage() {
     successNavPendingRef.current = true
 
     const pending = loadActiveVipAbaKhqrPending()
+    const tid = String(pending?.tranId || '').trim()
     const planId = String(pending?.planId || selectedPlanId || '').trim()
     const durationHours = Number(getVipPlanForPurchase(planId, viewerProfile.role)?.durationHours) || 0
     const successPayload = {
@@ -307,6 +327,7 @@ export default function VipPage() {
       {
         replace: true,
         onBeforeNavigate: () => {
+          if (tid) clearVipAbaKhqrPendingPayment(tid)
           setAbaKhqrAwaitingReturn(false)
           setConfirmingPaymentReturn(false)
           setPurchaseNotice('')
@@ -326,7 +347,7 @@ export default function VipPage() {
   }, [pendingAbaPayment?.tranId])
 
   useVipAbaKhqrPaymentConfirm({
-    enabled: abaKhqrAwaitingReturn && Boolean(pendingAbaPayment?.tranId),
+    enabled: isTelegramMiniApp() && Boolean(pendingAbaPayment?.tranId),
     tranId: pendingAbaPayment?.tranId || '',
     planId: pendingAbaPayment?.planId || '',
     onSuccess: onAbaKhqrPaymentConfirmed,

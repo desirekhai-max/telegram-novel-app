@@ -3,7 +3,12 @@ import { isTelegramMiniApp } from '../lib/telegramWebApp.js'
 import { clearVipAbaKhqrPendingPayment, getActiveVipAbaKhqrPendingExpiry } from '../lib/vipAbaKhqrSession.js'
 import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 
-const POLL_MS = 4000
+const POLL_MS = 2000
+const RETURN_BURST_DELAYS_MS = [0, 350, 900, 1800]
+
+function isKhqrPaymentFulfilled(result) {
+  return Boolean(result?.ok && (result?.profile?.vipActive || result?.alreadyFulfilled))
+}
 
 /**
  * Poll PayWay until VIP is active — used when user returns to Telegram after browser/ABA payment.
@@ -25,30 +30,59 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
     onExpired,
   } = options
   const pollRef = useRef(0)
+  const burstTimerIdsRef = useRef([])
   const pendingSuccessRef = useRef(false)
+  const deferredSuccessRef = useRef(false)
+  const deliveredSuccessRef = useRef(false)
   const onSuccessRef = useRef(onSuccess)
   const onExpiredRef = useRef(onExpired)
   onSuccessRef.current = onSuccess
   onExpiredRef.current = onExpired
 
   const stopPolling = useCallback(() => {
-    if (!pollRef.current) return
-    window.clearInterval(pollRef.current)
-    pollRef.current = 0
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current)
+      pollRef.current = 0
+    }
+    burstTimerIdsRef.current.forEach((id) => window.clearTimeout(id))
+    burstTimerIdsRef.current = []
   }, [])
 
-  const finishSuccess = useCallback(() => {
-    if (pendingSuccessRef.current) return
+  const deliverSuccess = useCallback(() => {
+    if (deliveredSuccessRef.current) return
+    deliveredSuccessRef.current = true
+    deferredSuccessRef.current = false
     pendingSuccessRef.current = true
     stopPolling()
-    clearVipAbaKhqrPendingPayment(tranId)
     onSuccessRef.current?.()
+    clearVipAbaKhqrPendingPayment(tranId)
   }, [stopPolling, tranId])
+
+  const finishSuccess = useCallback(() => {
+    if (pendingSuccessRef.current || deliveredSuccessRef.current) return
+    pendingSuccessRef.current = true
+    stopPolling()
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      deferredSuccessRef.current = true
+      return
+    }
+    deliverSuccess()
+  }, [deliverSuccess, stopPolling])
+
+  const scheduleReturnBurst = useCallback(() => {
+    burstTimerIdsRef.current.forEach((id) => window.clearTimeout(id))
+    burstTimerIdsRef.current = RETURN_BURST_DELAYS_MS.map((delay) =>
+      window.setTimeout(() => {
+        if (pendingSuccessRef.current || deliveredSuccessRef.current) return
+        void pollOnceRef.current()
+      }, delay),
+    )
+  }, [])
 
   const pollOnce = useCallback(async () => {
     const tid = String(tranId || '').trim()
     const pid = String(planId || '').trim()
-    if (!enabled || !tid || pendingSuccessRef.current) return
+    if (!enabled || !tid || pendingSuccessRef.current || deliveredSuccessRef.current) return
     if (!isTelegramMiniApp()) return
 
     const expiry = getActiveVipAbaKhqrPendingExpiry(tid)
@@ -58,12 +92,12 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
     }
 
     const result = await confirmViewerVipPayment({ tranId: tid, planId: pid })
-    if (pendingSuccessRef.current) return
+    if (pendingSuccessRef.current || deliveredSuccessRef.current) return
     if (result.error === 'payment_expired') {
       onExpiredRef.current?.()
       return
     }
-    if (result.ok && result.profile?.vipActive) {
+    if (isKhqrPaymentFulfilled(result)) {
       finishSuccess()
     }
   }, [enabled, finishSuccess, planId, tranId])
@@ -73,6 +107,8 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
 
   useEffect(() => {
     pendingSuccessRef.current = false
+    deferredSuccessRef.current = false
+    deliveredSuccessRef.current = false
     if (!enabled || !String(tranId || '').trim()) {
       stopPolling()
       return undefined
@@ -82,15 +118,19 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
     void pollOnceRef.current()
 
     pollRef.current = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
-      if (pendingSuccessRef.current) return
+      if (pendingSuccessRef.current || deliveredSuccessRef.current) return
       void pollOnceRef.current()
     }, POLL_MS)
 
     const onVisible = () => {
+      if (deferredSuccessRef.current) {
+        deliverSuccess()
+        return
+      }
       if (document.visibilityState !== 'visible') return
-      if (pendingSuccessRef.current) return
+      if (pendingSuccessRef.current || deliveredSuccessRef.current) return
       void pollOnceRef.current()
+      scheduleReturnBurst()
     }
 
     document.addEventListener('visibilitychange', onVisible)
@@ -99,7 +139,7 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
       stopPolling()
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [enabled, stopPolling, tranId])
+  }, [deliverSuccess, enabled, scheduleReturnBurst, stopPolling, tranId, planId])
 
   return { pendingSuccess: pendingSuccessRef.current }
 }

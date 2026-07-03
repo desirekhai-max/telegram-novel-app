@@ -364,6 +364,7 @@ export function markVipAbaKhqrBrowserFlowOpen(session) {
         returnedFromBrowser: false,
         tgBackgrounded: false,
         bankSummoned: false,
+        qrShown: false,
       }),
     )
     clearVipAbaKhqrConfirmingUiDismissed()
@@ -401,6 +402,28 @@ export function markVipAbaKhqrBankSummoned(tranId) {
 function hasVipAbaKhqrBankSummoned(tranId) {
   const parsed = readVipAbaKhqrBrowserFlowRecord(tranId)
   return parsed?.bankSummoned === true
+}
+
+export function markVipAbaKhqrQrShown(tranId) {
+  const tid = String(tranId || '').trim()
+  if (!tid || typeof sessionStorage === 'undefined') return false
+  try {
+    const parsed = readVipAbaKhqrBrowserFlowRecord(tid)
+    if (!parsed) return false
+    sessionStorage.setItem(
+      VIP_ABA_KHQR_BROWSER_FLOW_KEY,
+      JSON.stringify({ ...parsed, qrShown: true }),
+    )
+    clearVipAbaKhqrConfirmingUiDismissed()
+    return true
+  } catch {
+    return false
+  }
+}
+
+function hasVipAbaKhqrQrShown(tranId) {
+  const parsed = readVipAbaKhqrBrowserFlowRecord(tranId)
+  return parsed?.qrShown === true
 }
 
 export function markVipAbaKhqrConfirmingUiDismissed() {
@@ -496,6 +519,7 @@ export function shouldShowVipAbaKhqrConfirmingUi(tranId) {
   if (!hasActiveVipAbaKhqrBrowserFlow(tid)) return false
   if (!loadVipAbaKhqrPendingPayment(tid)) return false
   if (hasVipAbaKhqrBankSummoned(tid)) return true
+  if (hasVipAbaKhqrQrShown(tid)) return true
   if (hasVipAbaKhqrBrowserFlowReturned(tid)) return true
   if (hasVipAbaKhqrBrowserFlowBackgrounded(tid)) return true
   return false

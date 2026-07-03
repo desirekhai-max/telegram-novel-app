@@ -48,15 +48,19 @@ function isAbaMobileDeeplinkUrl(url) {
 }
 
 /** Still visible after this → summon failed (no ABA). */
-export const ABA_SUMMON_FAILURE_TIMEOUT_MS = 2500
+export const ABA_SUMMON_FAILURE_TIMEOUT_MS = 1200
 /** iOS Open link? — wait for user to tap Open before treating summon as failed. */
 const IOS_OPEN_LINK_CONFIRM_TIMEOUT_MS = 15000
 /** iOS: quick return after Open tap without ABA → summon failed. */
 const IOS_SUMMON_BOUNCE_MS = 1200
-/** iOS: after summon failed, wait before QR so total feels ~0.5–2s (not instant). */
-const IOS_QR_FALLBACK_MIN_MS = 500
-const IOS_QR_FALLBACK_TARGET_MS = 1000
-const IOS_QR_FALLBACK_MAX_MS = 2000
+/** iOS: min wait after openLink before treating focus/pageshow as summon failed. */
+const IOS_SUMMON_OPEN_LINK_GUARD_MS = 400
+/** iOS: debounce after guard before settle('failed') on focus/pageshow. */
+const IOS_SUMMON_DISMISS_FAIL_MS = 250
+/** iOS: after summon failed, wait before QR (caps total post-fail delay). */
+const IOS_QR_FALLBACK_MIN_MS = 0
+const IOS_QR_FALLBACK_TARGET_MS = 0
+const IOS_QR_FALLBACK_MAX_MS = 250
 /** hidden then visible again within this → likely browser bounce without ABA. */
 export const ABA_SUMMON_BOUNCE_MS = 3500
 
@@ -322,13 +326,8 @@ function waitForAbaMobileSummonOutcome(input = {}) {
       return
     }
 
-    if (!launchSummonInTelegramMiniApp('', deeplink)) {
-      resolve({ attempted: false, launched: false, method: 'mini_app_launch_failed' })
-      return
-    }
-
     const reportLaunched = resolveSummonReportCallback(input)
-    watchAbaMobileSummonOutcome({
+    const stopWatching = watchAbaMobileSummonOutcome({
       timeoutMs: input.timeoutMs,
       bounceMs: input.bounceMs,
       immediateLaunchOnHidden: true,
@@ -343,6 +342,11 @@ function waitForAbaMobileSummonOutcome(input = {}) {
         resolve({ attempted: true, launched: false, method: 'mini_app_deeplink_failed' })
       },
     })
+
+    if (!launchSummonInTelegramMiniApp('', deeplink)) {
+      stopWatching()
+      resolve({ attempted: false, launched: false, method: 'mini_app_launch_failed' })
+    }
   })
 }
 
@@ -368,7 +372,8 @@ export function watchAbaMobileSummonOutcome(opts = {}) {
     Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : ABA_SUMMON_FAILURE_TIMEOUT_MS
   const bounceMs = Number(opts.bounceMs) > 0 ? Number(opts.bounceMs) : ABA_SUMMON_BOUNCE_MS
   const summonAt = Date.now()
-  const iosDismissCheckMs = Number(opts.iosDismissCheckMs) > 0 ? Number(opts.iosDismissCheckMs) : 700
+  const iosDismissGuardMs = opts.iosOpenDismissFallback ? IOS_SUMMON_OPEN_LINK_GUARD_MS : 0
+  const iosDismissCheckMs = Number(opts.iosDismissCheckMs) > 0 ? Number(opts.iosDismissCheckMs) : 350
   let settled = false
   let hiddenAt = 0
   let dismissTimerId = 0
@@ -408,7 +413,7 @@ export function watchAbaMobileSummonOutcome(opts = {}) {
 
   const tryIosDismissFailed = () => {
     if (settled) return
-    if (Date.now() - summonAt < 400) return
+    if (iosDismissGuardMs > 0 && Date.now() - summonAt < iosDismissGuardMs) return
     if (document.visibilityState === 'hidden') return
     window.clearTimeout(dismissTimerId)
     dismissTimerId = window.setTimeout(() => {
@@ -438,7 +443,7 @@ export function watchAbaMobileSummonOutcome(opts = {}) {
 
   if (document.visibilityState === 'hidden') settle('launched')
 
-  return () => settle('failed')
+  return cleanup
 }
 
 /**
@@ -648,7 +653,7 @@ export function openAbaKhqrQrPageInExternalBrowser(session, planId = '') {
 /**
  * VIP flow — Telegram Mini App.
  * iOS installed: Open link? → bank → VIP confirming.
- * iOS not installed: Open link? → tap Open → ~0.5–2s → Mini App QR page.
+ * iOS not installed: Open link? → tap Open → ~0.4–1.2s fail detect → Mini App QR page.
  * Android: unchanged.
  */
 export async function startAbaKhqrPaymentFlow(session, planId = '') {
@@ -677,6 +682,7 @@ export async function startAbaKhqrPaymentFlow(session, planId = '') {
       timeoutMs: isIosDevice() ? IOS_OPEN_LINK_CONFIRM_TIMEOUT_MS : undefined,
       bounceMs: isIosDevice() ? IOS_SUMMON_BOUNCE_MS : undefined,
       iosOpenDismissFallback: isIosDevice(),
+      iosDismissCheckMs: isIosDevice() ? IOS_SUMMON_DISMISS_FAIL_MS : undefined,
     })
     if (summonResult.launched) {
       return {
