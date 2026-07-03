@@ -24,6 +24,24 @@ export function resolveVipOrderStatusLabel(rawLabel, status = 'success') {
   return String(rawLabel || '').trim()
 }
 
+/** 购买记录展示时间：固定柬埔寨金边时区（与后台筛选一致）。 */
+export function formatVipOrderTimeLabel(atMs) {
+  const t = Number(atMs)
+  if (!Number.isFinite(t) || t <= 0) return ''
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Phnom_Penh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(t))
+  const pick = (type) => parts.find((p) => p.type === type)?.value || '00'
+  return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`
+}
+
 export function resolveVipOrderProductLabel(raw = {}) {
   const stored = String(raw?.product || '').trim()
   if (stored && stored !== NEUTRAL_PRODUCT_LABEL) return stored

@@ -14,6 +14,22 @@ const sequenceBySecondPrefix = new Map()
 
 let loaded = false
 
+/** 后台可读：payment_entry → 支付来源展示名 */
+export const PAYMENT_ENTRY_LABELS = Object.freeze({
+  khqr_qr: '二维码',
+  aba_deeplink: 'ABA 银行',
+})
+
+export function resolvePaymentEntryLabel(paymentEntry) {
+  const key = String(paymentEntry || '').trim().toLowerCase()
+  return PAYMENT_ENTRY_LABELS[key] || ''
+}
+
+/** 供后台拉取完整映射表：[{ entry, label }, ...] */
+export function getPaymentEntryLabelCatalog() {
+  return Object.entries(PAYMENT_ENTRY_LABELS).map(([entry, label]) => ({ entry, label }))
+}
+
 function now() {
   return Date.now()
 }
@@ -67,6 +83,7 @@ function normalizeOrderIn(raw) {
     aba_app_launched: Boolean(raw?.aba_app_launched || raw?.abaAppLaunched),
     aba_app_launched_at: Number(raw?.aba_app_launched_at || raw?.abaAppLaunchedAt || 0) || 0,
     payment_entry: resolvePaymentEntryFromRaw(raw),
+    vip_order_id: String(raw?.vip_order_id || raw?.vipOrderId || '').trim().slice(0, 120),
   }
 }
 
@@ -210,16 +227,18 @@ export function markOrderAbaAppLaunched(tranId, atMs = now()) {
   return next
 }
 
-export function markOrderPaid(tranId, paidAt = now()) {
+export function markOrderPaid(tranId, paidAt = now(), vipOrderId = '') {
   initOrdersStore()
   const order = getOrderByTranId(tranId)
   if (!order) return null
-  if (order.status === 'paid') return order
+  if (order.status === 'paid' && !vipOrderId) return order
+  const linked = String(vipOrderId || order.vip_order_id || '').trim().slice(0, 120)
   const next = {
     ...order,
     status: 'paid',
     paid_at: Number(paidAt) || now(),
     fail_reason: '',
+    ...(linked ? { vip_order_id: linked } : {}),
   }
   registerOrder(next)
   persistOrders()
@@ -370,6 +389,9 @@ export function getAdminOrderByKey(idOrNo) {
   if (!key) return null
   const direct = ordersByOrderNo.get(key)
   if (direct) return direct
+  for (const order of ordersByOrderNo.values()) {
+    if (String(order.vip_order_id || '') === key) return order
+  }
   const byTran = orderNoByTranId.get(key)
   if (byTran) return ordersByOrderNo.get(byTran) || null
   for (const order of ordersByOrderNo.values()) {

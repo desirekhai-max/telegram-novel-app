@@ -783,7 +783,9 @@ a {
 .tg-account-profile-card__footer {
   --footer-accent: rgba(125, 211, 252, 0.95);
   --footer-date: #fb923c;
+  container-type: inline-size;
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.65rem;
   min-width: 0;
@@ -792,11 +794,20 @@ a {
   padding-bottom: 2px;
 }
 
+.tg-account-profile-card__footer-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .tg-account-profile-card__footer-status {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .tg-account-profile-card__footer-icon {
@@ -825,9 +836,19 @@ a {
   align-items: center;
   justify-content: flex-end;
   gap: 0.45rem;
+  flex: 1 1 auto;
   min-width: 0;
-  flex: 1;
   margin-left: auto;
+}
+
+@container (max-width: 15.5rem) {
+  .tg-account-profile-card__footer:not(.tg-account-profile-card__footer--pending) {
+    gap: 0.4rem;
+  }
+
+  .tg-account-profile-card__footer:not(.tg-account-profile-card__footer--pending) .tg-account-profile-card__footer-vrule {
+    display: none;
+  }
 }
 
 .tg-account-profile-card__footer-date {
@@ -836,6 +857,9 @@ a {
   font-weight: 600;
   line-height: 1.35;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .tg-account-profile-card__footer-note {

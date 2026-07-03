@@ -8,6 +8,7 @@ import { AppChromeProvider } from './contexts/AppChromeProvider.jsx'
 import { ViewerProfileProvider } from './contexts/ViewerProfileProvider.jsx'
 import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.jsx'
 import { useAppChrome } from './contexts/useAppChrome.js'
+import { useVipAbaKhqrBankReturn } from './hooks/useVipAbaKhqrBankReturn.js'
 import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
 import { registerPresencePing } from './lib/miniAppPresence.js'
 import { syncPortraitLockRoute } from './lib/portraitOrientationLock.js'
@@ -98,6 +99,7 @@ function AppRoutes({ routeLocation, includeMainTabs = true }) {
 
 function AppShell() {
   const location = useLocation()
+  useVipAbaKhqrBankReturn()
   const { gestureLive, gestureAnimating, registerForeground, resetGesture } = useSwipeBack()
   const {
     searchExploreOpen,

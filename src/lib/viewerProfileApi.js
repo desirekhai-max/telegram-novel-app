@@ -1,6 +1,10 @@
 import { getTelegramAuthPayload } from '../hooks/useTelegramUser.js'
 import { apiUrl } from './apiBase.js'
-import { resolveVipOrderProductLabel, resolveVipOrderStatusLabel } from './vipOrderDisplay.js'
+import {
+  formatVipOrderTimeLabel,
+  resolveVipOrderProductLabel,
+  resolveVipOrderStatusLabel,
+} from './vipOrderDisplay.js'
 
 function normalizeRole(raw) {
   return String(raw || '').toLowerCase() === 'author' ? 'author' : 'normal'
@@ -21,7 +25,7 @@ function normalizeOrder(raw) {
     amount: String(raw?.amount || '$0'),
     status,
     statusLabel: resolveVipOrderStatusLabel(raw?.statusLabel, status),
-    time: String(raw?.time || ''),
+    time: formatVipOrderTimeLabel(raw?.atMs) || String(raw?.time || ''),
     atMs: Number(raw?.atMs) || 0,
     product: resolveVipOrderProductLabel({ ...raw, audience }),
     audience,

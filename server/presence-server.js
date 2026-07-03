@@ -30,6 +30,8 @@ import {
   getAdminOrderByKey,
   markOrderRefunded,
   markOrderAbaAppLaunched,
+  getPaymentEntryLabelCatalog,
+  resolvePaymentEntryLabel,
 } from './orders-store.js'
 import { buildPayWayCustomFields, getNeutralVipOrderProductLabel } from './paywayNeutralCopy.js'
 import { resolveVipOrderStatusLabel, VIP_ORDER_STATUS_SUCCESS_KM } from './vipOrderDisplay.js'
@@ -159,8 +161,19 @@ const ADMIN_AUDIT_LOG_CAP = 2000
 /** @type {object[]} */
 let adminAuditLogs = []
 
-function buildPayWayReturnDeeplinkUrl() {
-  return PAYWAY_RETURN_DEEPLINK_URL
+function buildVipAbaKhqrBankReturnStartParam(tranId, planId) {
+  const tid = String(tranId || '').trim()
+  const pid = String(planId || '').trim()
+  if (!tid) return ''
+  return pid ? `vp_${tid}__${pid}` : `vp_${tid}`
+}
+
+function buildPayWayReturnDeeplinkUrl(tranId = '', planId = '') {
+  const tid = String(tranId || '').trim()
+  if (!tid) return PAYWAY_RETURN_DEEPLINK_URL
+  const base = PAYWAY_RETURN_DEEPLINK_URL.split('?')[0].replace(/\/+$/, '') || 'https://t.me/nithian_kh_bot/app'
+  const startapp = buildVipAbaKhqrBankReturnStartParam(tid, planId)
+  return `${base}?startapp=${encodeURIComponent(startapp)}`
 }
 
 function decodeBase32Secret(secret) {
@@ -414,28 +427,42 @@ function deriveViewerBadgeTier(role, vipActive) {
   return normalizeViewerRole(role) === 'author' ? 'author' : 'normal'
 }
 
+const VIEWER_ORDER_TIME_ZONE = 'Asia/Phnom_Penh'
+
+function phnomPenhDateTimeParts(ms) {
+  const value = Number(ms)
+  if (!Number.isFinite(value) || value <= 0) return null
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: VIEWER_ORDER_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(value))
+  const pick = (type) => parts.find((p) => p.type === type)?.value || '00'
+  return {
+    y: pick('year'),
+    mo: pick('month'),
+    day: pick('day'),
+    h: pick('hour'),
+    mi: pick('minute'),
+    s: pick('second'),
+  }
+}
+
 function formatOrderTime(ms) {
-  const d = new Date(ms)
-  const pad2 = (n) => String(Math.trunc(n)).padStart(2, '0')
-  const y = d.getFullYear()
-  const mo = pad2(d.getMonth() + 1)
-  const day = pad2(d.getDate())
-  const h = pad2(d.getHours())
-  const mi = pad2(d.getMinutes())
-  const s = pad2(d.getSeconds())
-  return `${y}-${mo}-${day} ${h}:${mi}:${s}`
+  const p = phnomPenhDateTimeParts(ms)
+  if (!p) return '—'
+  return `${p.y}-${p.mo}-${p.day} ${p.h}:${p.mi}:${p.s}`
 }
 
 function buildVipOrderId(nowMs, seq) {
-  const d = new Date(nowMs)
-  const pad2 = (n) => String(Math.trunc(n)).padStart(2, '0')
-  const y = d.getFullYear()
-  const mo = pad2(d.getMonth() + 1)
-  const day = pad2(d.getDate())
-  const h = pad2(d.getHours())
-  const mi = pad2(d.getMinutes())
-  const s = pad2(d.getSeconds())
-  return `VIP${y}${mo}${day}${h}${mi}${s}${String(Math.max(0, seq)).padStart(3, '0')}`
+  const p = phnomPenhDateTimeParts(nowMs)
+  if (!p) return `VIP${String(Math.max(0, seq)).padStart(3, '0')}`
+  return `VIP${p.y}${p.mo}${p.day}${p.h}${p.mi}${p.s}${String(Math.max(0, seq)).padStart(3, '0')}`
 }
 
 function readAuthorTelegramIdsFromNovelsFile() {
@@ -514,7 +541,7 @@ function normalizeVipOrderIn(raw) {
     amount: String(raw?.amount || '$0').trim().slice(0, 40),
     status,
     statusLabel: resolveVipOrderStatusLabel(raw?.statusLabel, status),
-    time: String(raw?.time || formatOrderTime(atMs)).trim().slice(0, 40),
+    time: formatOrderTime(atMs).slice(0, 40),
     atMs,
     product,
     audience,
@@ -926,7 +953,7 @@ async function fulfillVipAfterPayment(input = {}) {
 
   if (tranId) {
     fulfilledVipTranIds.add(tranId)
-    markOrderPaid(tranId, now())
+    markOrderPaid(tranId, now(), result.order.id)
     const row = pendingVipOrdersByTranId.get(tranId)
     if (row) pendingVipOrdersByTranId.set(tranId, { ...row, status: 'paid', paidAt: now() })
   }
@@ -2333,9 +2360,16 @@ function buildAdminOrderRow(order) {
         : payVipPurchase
           ? 'VIP 内购'
           : order.payment_channel || '—'
+  const resolvedPaymentEntry = paymentEntry || (isAbaKhqr ? 'khqr_qr' : '')
+  const viewerOrderId = resolveViewerOrderId(order)
+  const internalPaymentOrderNo = String(order.order_no || '').trim()
   return {
-    id: order.order_no,
-    order_no: order.order_no,
+    id: viewerOrderId,
+    order_no: viewerOrderId,
+    viewer_order_id: viewerOrderId,
+    payment_order_no:
+      internalPaymentOrderNo && internalPaymentOrderNo !== viewerOrderId ? internalPaymentOrderNo : '',
+    vip_order_id: viewerOrderId.startsWith('VIP') ? viewerOrderId : String(order.vip_order_id || '').trim(),
     tran_id: order.tran_id,
     telegram_user_id: order.telegram_user_id,
     telegram_username: userLabel,
@@ -2354,7 +2388,8 @@ function buildAdminOrderRow(order) {
     pay_aba: payAba,
     pay_payway: payPayway,
     aba_app_launched: payAba,
-    payment_entry: paymentEntry || (isAbaKhqr ? 'khqr_qr' : ''),
+    payment_entry: resolvedPaymentEntry,
+    payment_entry_label: resolvePaymentEntryLabel(resolvedPaymentEntry),
     can_refund: status === 'paid',
     refund_label: status === 'refunded' ? '已退款' : '—',
     payment_channel: order.payment_channel,
@@ -2406,9 +2441,56 @@ function listAllVipStoreOrdersSorted() {
 }
 
 function searchMergedAdminOrders(filters = {}) {
-  const merged = [...listAllOrdersSorted(), ...listAllVipStoreOrdersSorted()]
+  const paymentOrders = listAllOrdersSorted()
+  const vipStoreRows = listAllVipStoreOrdersSorted()
+  const linkedViewerIds = new Set(
+    paymentOrders
+      .map((row) => String(resolveViewerOrderId(row) || '').trim())
+      .filter((id) => id.startsWith('VIP')),
+  )
+  const vipOnlyRows = vipStoreRows.filter((row) => {
+    const id = String(row.order_no || row.vip_order_id || '').trim()
+    return !id || !linkedViewerIds.has(id)
+  })
+  const merged = [...paymentOrders, ...vipOnlyRows]
   merged.sort((a, b) => Number(b.paid_at || b.created_at) - Number(a.paid_at || a.created_at))
   return filterAndPaginateAdminOrders(merged, filters)
+}
+
+function findVipOrderForPaymentRefund(paymentOrder) {
+  const tgId = normalizeTelegramUserId(paymentOrder?.telegram_user_id)
+  if (!tgId) return null
+  const paidAt = Number(paymentOrder?.paid_at || paymentOrder?.created_at || 0)
+  const planId = String(paymentOrder?.plan_id || '')
+  const orders = resolveVipOrdersForUser(tgId)
+  const active = orders.filter((row) => String(row?.status || '').toLowerCase() !== 'refunded')
+  return (
+    active.find(
+      (row) =>
+        String(row?.planId || '') === planId &&
+        paidAt > 0 &&
+        Math.abs(Number(row?.atMs || 0) - paidAt) <= 10 * 60 * 1000,
+    ) ||
+    active.find((row) => String(row?.planId || '') === planId) ||
+    null
+  )
+}
+
+/** 与前端 APP 购买记录 `order.id` 对齐（如 VIP20260703113535001）。 */
+function resolveViewerOrderId(order) {
+  if (!order) return ''
+  const explicit = String(order.vip_order_id || '').trim()
+  if (explicit) return explicit
+  const orderNo = String(order.order_no || '').trim()
+  if (orderNo.startsWith('VIP')) return orderNo
+  if (String(order.source || '') === 'vip') return orderNo
+  const channel = String(order.payment_channel || '').toLowerCase()
+  const status = resolveDisplayStatus(order)
+  if (status === 'paid' && (channel === 'aba_khqr' || channel.includes('payway'))) {
+    const linked = findVipOrderForPaymentRefund(order)
+    if (linked?.id) return String(linked.id)
+  }
+  return orderNo
 }
 
 function findVipOrderByKey(key) {
@@ -2444,25 +2526,6 @@ function revokeVipDurationForUser(telegramUserId, durationHours, atMs = now()) {
   const updated = normalizeMemberProfileIn({ ...profile, vipExpireAtMs: nextExpire, updatedAt: atMs }, id)
   memberProfiles.set(id, updated)
   return updated
-}
-
-function findVipOrderForPaymentRefund(paymentOrder) {
-  const tgId = normalizeTelegramUserId(paymentOrder?.telegram_user_id)
-  if (!tgId) return null
-  const paidAt = Number(paymentOrder?.paid_at || paymentOrder?.created_at || 0)
-  const planId = String(paymentOrder?.plan_id || '')
-  const orders = resolveVipOrdersForUser(tgId)
-  const active = orders.filter((row) => String(row?.status || '').toLowerCase() !== 'refunded')
-  return (
-    active.find(
-      (row) =>
-        String(row?.planId || '') === planId &&
-        paidAt > 0 &&
-        Math.abs(Number(row?.atMs || 0) - paidAt) <= 10 * 60 * 1000,
-    ) ||
-    active.find((row) => String(row?.planId || '') === planId) ||
-    null
-  )
 }
 
 function markVipOrderRefunded(telegramUserId, vipOrder) {
@@ -2573,6 +2636,7 @@ function buildAdminOrdersSummary(filters = {}) {
     totalRevenueUsd: Number(totalRevenueUsd.toFixed(2)),
     byPaymentMethod,
     bySource,
+    payment_entry_labels: getPaymentEntryLabelCatalog(),
     dateField: String(filters.date_field || filters.dateField || 'created'),
   }
 }
@@ -3571,7 +3635,7 @@ const server = http.createServer(async (req, res) => {
       expireAt,
     })
     const qrPageReturnUrl = `${APP_PUBLIC_URL}/vip/aba-khqr?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
-    const returnDeeplinkUrl = buildPayWayReturnDeeplinkUrl()
+    const returnDeeplinkUrl = buildPayWayReturnDeeplinkUrl(tranId, planId)
     const qr = await generateAbaKhqrPayment({
       tranId,
       amount,
@@ -4555,7 +4619,12 @@ const server = http.createServer(async (req, res) => {
       pageSize: url.searchParams.get('pageSize'),
     })
     const orders = result.items.map((row) => buildAdminOrderRow(row)).filter(Boolean)
-    return sendJson(res, 200, { ok: true, orders, ...result })
+    return sendJson(res, 200, {
+      ok: true,
+      orders,
+      payment_entry_labels: getPaymentEntryLabelCatalog(),
+      ...result,
+    })
   }
 
   if (req.method === 'POST' && url.pathname === '/api/admin/orders/search') {
@@ -4564,7 +4633,12 @@ const server = http.createServer(async (req, res) => {
       const body = await parseJsonBody(req)
       const result = searchMergedAdminOrders(body || {})
       const orders = result.items.map((row) => buildAdminOrderRow(row)).filter(Boolean)
-      return sendJson(res, 200, { ok: true, orders, ...result })
+      return sendJson(res, 200, {
+        ok: true,
+        orders,
+        payment_entry_labels: getPaymentEntryLabelCatalog(),
+        ...result,
+      })
     } catch (err) {
       return sendJson(res, 400, { ok: false, error: String(err?.message || err) })
     }

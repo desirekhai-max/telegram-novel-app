@@ -290,22 +290,26 @@ export default function AccountPage() {
                       >
                         {viewerProfileLoading ? (
                           <>
-                            <span className="tg-account-profile-card__footer-status tg-account-profile-card__footer-skeleton">
-                              <span className="tg-account-profile-card__footer-skeleton-icon" aria-hidden />
-                              <span className="tg-account-profile-card__footer-skeleton-label" aria-hidden />
-                            </span>
-                            <span className="tg-account-profile-card__footer-vrule" aria-hidden />
+                            <div className="tg-account-profile-card__footer-primary">
+                              <span className="tg-account-profile-card__footer-status tg-account-profile-card__footer-skeleton">
+                                <span className="tg-account-profile-card__footer-skeleton-icon" aria-hidden />
+                                <span className="tg-account-profile-card__footer-skeleton-label" aria-hidden />
+                              </span>
+                              <span className="tg-account-profile-card__footer-vrule" aria-hidden />
+                            </div>
                             <span className="tg-account-profile-card__footer-detail tg-account-profile-card__footer-skeleton">
                               <span className="tg-account-profile-card__footer-skeleton-detail" aria-hidden />
                             </span>
                           </>
                         ) : (
                           <>
-                            <div className="tg-account-profile-card__footer-status">
-                              <AccountPlanIcon className="tg-account-profile-card__footer-icon" size={14} strokeWidth={2.1} aria-hidden />
-                              <span className="tg-account-profile-card__footer-status-label">{accountPlanMeta.statusKm}</span>
+                            <div className="tg-account-profile-card__footer-primary">
+                              <div className="tg-account-profile-card__footer-status">
+                                <AccountPlanIcon className="tg-account-profile-card__footer-icon" size={14} strokeWidth={2.1} aria-hidden />
+                                <span className="tg-account-profile-card__footer-status-label">{accountPlanMeta.statusKm}</span>
+                              </div>
+                              <span className="tg-account-profile-card__footer-vrule" aria-hidden />
                             </div>
-                            <span className="tg-account-profile-card__footer-vrule" aria-hidden />
                             <div className="tg-account-profile-card__footer-detail">
                               {accountFooterDetail ? (
                                 <span
