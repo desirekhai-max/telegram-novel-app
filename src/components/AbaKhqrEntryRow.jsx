@@ -41,14 +41,22 @@ export default function AbaKhqrEntryRow({
         <span className="tg-aba-khqr-entry__title" lang="en">
           {title}
         </span>
-        {subtitle ? (
+        {pending ? (
+          <span className="tg-aba-khqr-entry__subtitle" lang="en">
+            Opening ABA KHQR...
+          </span>
+        ) : subtitle ? (
           <span className="tg-aba-khqr-entry__subtitle" lang="en">
             {subtitle}
           </span>
         ) : null}
       </span>
       <span className="tg-aba-khqr-entry__chev-wrap" aria-hidden>
-        <ChevronRight size={18} strokeWidth={2.25} className="tg-aba-khqr-entry__chev" />
+        {pending ? (
+          <span className="tg-aba-khqr-entry__spinner" />
+        ) : (
+          <ChevronRight size={18} strokeWidth={2.25} className="tg-aba-khqr-entry__chev" />
+        )}
       </span>
     </button>
   )

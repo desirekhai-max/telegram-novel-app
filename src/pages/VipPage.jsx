@@ -16,10 +16,12 @@ import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.j
 import { getVipPlanForPurchase } from '../data/vipPlansCatalog.js'
 import { useVipAbaKhqrPaymentConfirm } from '../hooks/useVipAbaKhqrPaymentConfirm.js'
 import {
+  clearVipAbaKhqrSession,
   clearVipAbaKhqrPendingPayment,
   getActiveVipAbaKhqrPendingExpiry,
   hasActiveVipAbaKhqrBrowserFlow,
   loadActiveVipAbaKhqrPending,
+  loadVipAbaKhqrPendingPayment,
   loadVipAbaKhqrSession,
   markVipAbaKhqrBrowserFlowBackgrounded,
   markVipAbaKhqrBrowserFlowOpen,
@@ -33,7 +35,7 @@ import {
   shouldShowVipAbaKhqrConfirmingUi,
 } from '../lib/vipAbaKhqrSession.js'
 import { scheduleVipPaymentSuccessNavigation } from '../lib/vipPaymentSuccessNavigation.js'
-import { startViewerVipAbaKhqr } from '../lib/viewerProfileApi.js'
+import { confirmViewerVipPayment, startViewerVipAbaKhqr } from '../lib/viewerProfileApi.js'
 import { canAccessVipPurchase } from '../lib/devVipPurchase.js'
 import { formatKhqrPendingCountdown } from '../lib/vipAbaKhqrCountdown.js'
 import { isTelegramMiniApp } from '../lib/telegramWebApp.js'
@@ -57,6 +59,11 @@ function readAbaKhqrSessionForPlan(planId) {
   if (!pid) return null
   const stored = loadVipAbaKhqrSession()
   if (!stored?.tranId || String(stored.planId || '') !== pid) return null
+  const pending = loadVipAbaKhqrPendingPayment(stored.tranId)
+  if (!pending) {
+    clearVipAbaKhqrSession()
+    return null
+  }
   return stored
 }
 
@@ -121,9 +128,11 @@ export default function VipPage() {
   const [abaKhqrAwaitingReturn, setAbaKhqrAwaitingReturn] = useState(initialAbaUiState.awaiting)
   const [confirmingPaymentReturn, setConfirmingPaymentReturn] = useState(initialAbaUiState.confirming)
   const [confirmingSlideOut, setConfirmingSlideOut] = useState(false)
+  const [bankReturnCheckPending, setBankReturnCheckPending] = useState(false)
   const [pendingCountdownMs, setPendingCountdownMs] = useState(0)
   const paymentWasBackgroundedRef = useRef(false)
   const successNavPendingRef = useRef(false)
+  const returnCheckInFlightRef = useRef(false)
   const scrollRef = useRef(null)
   const plansSectionRef = useRef(null)
   const paymentSectionRef = useRef(null)
@@ -185,10 +194,6 @@ export default function VipPage() {
       const pending = loadActiveVipAbaKhqrPending()
       if (!pending?.tranId) return
       setAbaKhqrAwaitingReturn(true)
-      if (shouldShowVipAbaKhqrConfirmingUi(pending.tranId)) {
-        setConfirmingPaymentReturn(true)
-        setPurchaseNotice('')
-      }
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
@@ -206,12 +211,18 @@ export default function VipPage() {
     saveVipAbaKhqrSession(session)
     saveVipAbaKhqrPendingPayment(session, { expireAtMs: session.expireAtMs })
     markVipAbaKhqrBrowserFlowOpen(session)
-    const result = await startAbaKhqrPaymentFlow(session, pid)
+
+    const onOpenLinkInvoked = () => {
+      flushSync(() => {
+        setAbaKhqrPending(true)
+      })
+    }
+
+    const result = await startAbaKhqrPaymentFlow(session, pid, { onOpenLinkInvoked })
     if (!result.opened) return false
 
     if (result.showQrInMiniApp && result.miniAppQrPath) {
       setAbaKhqrAwaitingReturn(true)
-      setPurchaseNotice('')
       navigate(result.miniAppQrPath)
       return true
     }
@@ -221,7 +232,6 @@ export default function VipPage() {
     if (result.launchedInMiniApp) {
       markAbaMobileKnownInstalled()
       markVipAbaKhqrBankSummoned(session.tranId)
-      setConfirmingPaymentReturn(true)
     }
     return true
   }, [navigate])
@@ -234,6 +244,7 @@ export default function VipPage() {
       if (isAbaKhqrUiMockFlowEnabled()) {
         const mockSession = buildAbaKhqrUiMockSession(pid, viewerProfile.role)
         saveVipAbaKhqrSession(mockSession)
+        saveVipAbaKhqrPendingPayment(mockSession, { expireAtMs: mockSession.expireAtMs })
         return mockSession
       }
 
@@ -242,6 +253,7 @@ export default function VipPage() {
         throw new Error(String(aba?.error || 'aba_khqr_failed'))
       }
       saveVipAbaKhqrSession(aba.session)
+      saveVipAbaKhqrPendingPayment(aba.session, { expireAtMs: aba.session.expireAtMs })
       return aba.session
     },
     [viewerProfile.role],
@@ -254,7 +266,11 @@ export default function VipPage() {
 
       const prefetch = abaSessionPrefetchRef.current
       if (prefetch.planId === planId && prefetch.promise) {
-        return prefetch.promise
+        const prefetched = await prefetch.promise
+        const stillPending = prefetched?.tranId ? loadVipAbaKhqrPendingPayment(prefetched.tranId) : null
+        if (stillPending?.tranId) return prefetched
+        clearVipAbaKhqrSession()
+        abaSessionPrefetchRef.current = { planId: '', promise: null }
       }
 
       return createAbaKhqrSession(planId)
@@ -295,21 +311,22 @@ export default function VipPage() {
 
   const showConfirmingUi = useMemo(() => {
     if (confirmingPaymentReturn || confirmingSlideOut) return true
+    if (bankReturnCheckPending) return false
     const tid = String(pendingAbaPayment?.tranId || '').trim()
     if (!abaKhqrAwaitingReturn || !tid) return false
     return shouldShowVipAbaKhqrConfirmingUi(tid)
   }, [
     abaKhqrAwaitingReturn,
+    bankReturnCheckPending,
     confirmingPaymentReturn,
     confirmingSlideOut,
     pendingAbaPayment?.tranId,
   ])
 
-  const onAbaKhqrPaymentConfirmed = useCallback(() => {
+  const goAbaKhqrPaymentSuccess = useCallback((pending) => {
     if (successNavPendingRef.current) return
     successNavPendingRef.current = true
 
-    const pending = loadActiveVipAbaKhqrPending()
     const tid = String(pending?.tranId || '').trim()
     const planId = String(pending?.planId || selectedPlanId || '').trim()
     const durationHours = Number(getVipPlanForPurchase(planId, viewerProfile.role)?.durationHours) || 0
@@ -328,18 +345,23 @@ export default function VipPage() {
         replace: true,
         onBeforeNavigate: () => {
           if (tid) clearVipAbaKhqrPendingPayment(tid)
-          setAbaKhqrAwaitingReturn(false)
-          setConfirmingPaymentReturn(false)
-          setPurchaseNotice('')
+          clearVipAbaKhqrSession()
+          abaSessionPrefetchRef.current = { planId: '', promise: null }
           void refreshViewerProfile()
         },
       },
     )
   }, [navigate, refreshViewerProfile, selectedPlanId, viewerProfile.role])
 
+  const onAbaKhqrPaymentConfirmed = useCallback(() => {
+    goAbaKhqrPaymentSuccess(loadActiveVipAbaKhqrPending())
+  }, [goAbaKhqrPaymentSuccess])
+
   const onAbaKhqrPaymentExpired = useCallback(() => {
     const tid = String(pendingAbaPayment?.tranId || '').trim()
     clearVipAbaKhqrPendingPayment(tid)
+    clearVipAbaKhqrSession()
+    abaSessionPrefetchRef.current = { planId: '', promise: null }
     setAbaKhqrAwaitingReturn(false)
     setConfirmingPaymentReturn(false)
     setPendingCountdownMs(0)
@@ -383,22 +405,7 @@ export default function VipPage() {
       return undefined
     }
 
-    const onVisibility = () => {
-      const tid = String(loadActiveVipAbaKhqrPending()?.tranId || '').trim()
-      if (document.visibilityState === 'hidden') {
-        if (tid && hasActiveVipAbaKhqrBrowserFlow(tid)) {
-          markAbaMobileKnownInstalled()
-          markVipAbaKhqrBankSummoned(tid)
-          markVipAbaKhqrBrowserFlowBackgrounded(tid)
-          paymentWasBackgroundedRef.current = true
-          flushSync(() => {
-            setConfirmingPaymentReturn(true)
-            setPurchaseNotice('')
-          })
-        }
-        return
-      }
-      if (document.visibilityState !== 'visible') return
+    const showConfirmingAfterReturn = (tid) => {
       if (!tid || !hasActiveVipAbaKhqrBrowserFlow(tid)) return
       if (!paymentWasBackgroundedRef.current && !shouldShowVipAbaKhqrConfirmingUi(tid)) return
       markVipAbaKhqrBrowserFlowReturned(tid)
@@ -408,9 +415,49 @@ export default function VipPage() {
       })
     }
 
+    const onVisibility = () => {
+      const pending = loadActiveVipAbaKhqrPending()
+      const tid = String(pending?.tranId || '').trim()
+      if (document.visibilityState === 'hidden') {
+        if (tid && hasActiveVipAbaKhqrBrowserFlow(tid)) {
+          markAbaMobileKnownInstalled()
+          markVipAbaKhqrBankSummoned(tid)
+          markVipAbaKhqrBrowserFlowBackgrounded(tid)
+          paymentWasBackgroundedRef.current = true
+          flushSync(() => {
+            setAbaKhqrAwaitingReturn(true)
+            setBankReturnCheckPending(true)
+            setPurchaseNotice('')
+          })
+        }
+        return
+      }
+      if (document.visibilityState !== 'visible') return
+      if (!tid || !hasActiveVipAbaKhqrBrowserFlow(tid)) return
+      if (returnCheckInFlightRef.current) return
+      returnCheckInFlightRef.current = true
+      void confirmViewerVipPayment({ tranId: tid, planId: pending?.planId || '' })
+        .then((result) => {
+          if (successNavPendingRef.current) return
+          if (result?.ok && (result?.profile?.vipActive || result?.alreadyFulfilled)) {
+            goAbaKhqrPaymentSuccess(pending)
+            return
+          }
+          setBankReturnCheckPending(false)
+          showConfirmingAfterReturn(tid)
+        })
+        .catch(() => {
+          setBankReturnCheckPending(false)
+          showConfirmingAfterReturn(tid)
+        })
+        .finally(() => {
+          returnCheckInFlightRef.current = false
+        })
+    }
+
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [abaKhqrAwaitingReturn])
+  }, [abaKhqrAwaitingReturn, goAbaKhqrPaymentSuccess])
 
   const runAbaPaymentStart = useCallback(
     () => {
@@ -429,23 +476,32 @@ export default function VipPage() {
 
       const readySession = readAbaKhqrSessionForPlan(planId)
       if (readySession?.tranId) {
-        setPurchaseNotice('')
-        void openAbaKhqrBrowser(readySession, planId).then((opened) => {
-          if (!opened) setPurchaseError('មិនអាចបើក Browser សូមព្យាយាមម្តងទៀត')
-        })
+        setAbaKhqrPending(true)
+        void openAbaKhqrBrowser(readySession, planId)
+          .then((opened) => {
+            if (!opened) {
+              setPurchaseNotice('')
+              setPurchaseError('មិនអាចបើក ABA KHQR សូមព្យាយាមម្តងទៀត')
+            }
+          })
+          .finally(() => {
+            setAbaKhqrPending(false)
+          })
         return
       }
 
       setAbaKhqrPending(true)
-      setPurchaseNotice('កំពុងបង្កើត QR…')
 
       void (async () => {
         try {
           const session = await resolveAbaKhqrSession(planId)
+          flushSync(() => {
+            setAbaKhqrPending(true)
+          })
           const opened = await openAbaKhqrBrowser(session, planId)
           if (opened) return
           setPurchaseNotice('')
-          setPurchaseError('មិនអាចបើក Browser សូមព្យាយាមម្តងទៀត')
+          setPurchaseError('មិនអាចបើក ABA KHQR សូមព្យាយាមម្តងទៀត')
         } catch (err) {
           setPurchaseNotice('')
           setPurchaseError(

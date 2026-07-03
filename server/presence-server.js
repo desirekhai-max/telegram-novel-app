@@ -135,6 +135,11 @@ const APP_PUBLIC_URL = String(
   || process.env.FRONTEND_URL
   || 'https://statuesque-scone-309617.netlify.app',
 ).trim().replace(/\/+$/, '')
+const PAYWAY_RETURN_DEEPLINK_URL = String(
+  process.env.PAYWAY_RETURN_DEEPLINK_URL
+  || process.env.TELEGRAM_MINI_APP_RETURN_URL
+  || 'https://t.me/nithian_kh_bot/app?profile',
+).trim()
 
 const READ_RECORDS_CAP = 2000
 const READ_RECORD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
@@ -153,6 +158,10 @@ const adminLegacySessions = new Map()
 const ADMIN_AUDIT_LOG_CAP = 2000
 /** @type {object[]} */
 let adminAuditLogs = []
+
+function buildPayWayReturnDeeplinkUrl() {
+  return PAYWAY_RETURN_DEEPLINK_URL
+}
 
 function decodeBase32Secret(secret) {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
@@ -3561,7 +3570,8 @@ const server = http.createServer(async (req, res) => {
       orderNo: storeOrder?.order_no || '',
       expireAt,
     })
-    const returnDeeplinkUrl = `${APP_PUBLIC_URL}/vip/aba-khqr?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
+    const qrPageReturnUrl = `${APP_PUBLIC_URL}/vip/aba-khqr?tran_id=${encodeURIComponent(tranId)}&plan_id=${encodeURIComponent(planId)}`
+    const returnDeeplinkUrl = buildPayWayReturnDeeplinkUrl()
     const qr = await generateAbaKhqrPayment({
       tranId,
       amount,
@@ -3586,7 +3596,7 @@ const server = http.createServer(async (req, res) => {
       abapayDeeplink: qr.abapayDeeplink,
       appStore: qr.appStore,
       playStore: qr.playStore,
-      returnUrl: returnDeeplinkUrl,
+      returnUrl: qrPageReturnUrl,
       browserHandoffToken,
     }
     const pendingRow = pendingVipOrdersByTranId.get(tranId)
@@ -3615,7 +3625,7 @@ const server = http.createServer(async (req, res) => {
       appStore: qr.appStore,
       playStore: qr.playStore,
       qrImageTemplate: qr.qrImageTemplate,
-      returnUrl: returnDeeplinkUrl,
+      returnUrl: qrPageReturnUrl,
       browserHandoffToken,
       profile: buildViewerProfileResponse(profile),
     })

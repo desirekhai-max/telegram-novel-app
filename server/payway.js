@@ -16,7 +16,7 @@ const DEFAULT_SANDBOX_API_BASE = 'https://checkout-sandbox.payway.com.kh/api/pay
 const PAYWAY_QR_TEMPLATE = String(process.env.PAYWAY_QR_TEMPLATE || 'template3_color').trim()
 const PAYWAY_QR_LIFETIME_MIN = Math.min(
   43200,
-  Math.max(3, Math.floor(Number(process.env.PAYWAY_QR_LIFETIME_MIN || 30) || 30)),
+  Math.max(3, Math.floor(Number(process.env.PAYWAY_QR_LIFETIME_MIN || 5) || 5)),
 )
 
 function isSandboxModeEnabled() {
@@ -35,6 +35,7 @@ function normalizeApiBaseUrl(raw) {
   if (!url) return ''
   const suffixes = [
     '/payments/purchase',
+    '/payments/check-transaction-2',
     '/payments/check-transaction',
     '/payments/check',
     '/payments/generate-qr',
@@ -77,8 +78,8 @@ const PAYWAY_CHECKOUT_URL = resolveEndpointUrl(
 )
 const PAYWAY_CHECK_URL = resolveEndpointUrl(
   process.env.PAYWAY_CHECK_URL,
-  'payments/check-transaction',
-  'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/check-transaction',
+  'payments/check-transaction-2',
+  'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/check-transaction-2',
 )
 const PAYWAY_QR_URL = resolveEndpointUrl(
   process.env.PAYWAY_QR_URL,

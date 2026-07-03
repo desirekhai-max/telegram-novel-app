@@ -1,9 +1,9 @@
 import { BookOpen, Calendar, Check, Clock, Tag } from 'lucide-react'
-import { useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { getVipPlanForPurchase, getVipPlanTierAccentColor, getVipPlanTierClass } from '../data/vipPlansCatalog.js'
-import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
+import { formatVipExpireDateTimeKm } from '../lib/formatVipExpireKm.js'
 import {
   isVipPaymentSuccessHeroCached,
   preloadVipPaymentSuccessAssets,
@@ -83,12 +83,15 @@ function PaymentSuccessCheck() {
   )
 }
 
-function buildPurchasedPlanRows(payload, catalogPlan) {
+function buildPurchasedPlanRows(payload, catalogPlan, vipExpireAtMs = 0) {
   const durationHours = Number(payload?.durationHours || catalogPlan?.durationHours || 3)
   const purchasedAt = payload?.purchasedAt || new Date().toISOString()
   const priceLabel = formatVipPaymentPriceLabel(
     payload?.priceLabel || catalogPlan?.priceUsdLabel || '$1',
   )
+  const expireValue = Number(vipExpireAtMs) > 0
+    ? formatVipExpireDateTimeKm(vipExpireAtMs)
+    : formatVipPaymentExpiresAt(purchasedAt, durationHours)
 
   const planLabel = String(payload?.planLabel || catalogPlan?.titleKm || '').trim()
 
@@ -113,7 +116,7 @@ function buildPurchasedPlanRows(payload, catalogPlan) {
     {
       key: 'expires',
       label: 'ផុតកំណត់',
-      value: formatVipPaymentExpiresAt(purchasedAt, durationHours),
+      value: expireValue,
       labelLang: 'km',
       valueLang: 'km',
       Icon: Calendar,
@@ -172,9 +175,9 @@ function PurchasedPlanCard({ rows, planTierClass, iconColor }) {
 
 /** VIP 支付成功页 — 空白模板，后续可补 UI */
 export default function VipPaymentSuccessPage() {
-  const edgeSwipeHandlers = useEdgeSwipeBack()
   const location = useLocation()
   const [searchParams] = useSearchParams()
+  const allowLeaveRef = useRef(false)
   const slideEnter = location.state?.enter === VIP_PAYMENT_SUCCESS_SLIDE_STATE.enter
   const { viewerProfile } = useViewerProfile()
   const payload = useMemo(() => loadVipPaymentSuccessPayload(), [])
@@ -183,9 +186,10 @@ export default function VipPaymentSuccessPage() {
     [payload?.planId, searchParams],
   )
   const catalogPlan = getVipPlanForPurchase(resolvedPlanId, viewerProfile.role)
+  const vipExpireAtMs = Number(viewerProfile.vipExpireAtMs) || 0
   const planRows = useMemo(
-    () => buildPurchasedPlanRows(payload, catalogPlan),
-    [payload, catalogPlan],
+    () => buildPurchasedPlanRows(payload, catalogPlan, vipExpireAtMs),
+    [payload, catalogPlan, vipExpireAtMs],
   )
   const planTierClass = useMemo(() => getVipPlanTierClass(resolvedPlanId), [resolvedPlanId])
   const iconColor = useMemo(() => getVipPlanTierAccentColor(resolvedPlanId), [resolvedPlanId])
@@ -203,6 +207,23 @@ export default function VipPaymentSuccessPage() {
     }
   }, [heroReady])
 
+  useEffect(() => {
+    const lockState = { ...(window.history.state || {}), vipPaymentSuccessLocked: true }
+    window.history.replaceState(lockState, '', window.location.href)
+
+    const onPopState = () => {
+      if (allowLeaveRef.current) return
+      window.history.pushState(lockState, '', window.location.href)
+    }
+
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  const allowLeaveSuccessPage = useCallback(() => {
+    allowLeaveRef.current = true
+  }, [])
+
   return (
     <div
       className={[
@@ -211,7 +232,6 @@ export default function VipPaymentSuccessPage() {
       ]
         .filter(Boolean)
         .join(' ')}
-      {...edgeSwipeHandlers}
     >
       <main className="tg-vip-payment-success-page__main">
         <header
@@ -244,7 +264,7 @@ export default function VipPaymentSuccessPage() {
             </span>
           </p>
           <PurchasedPlanCard rows={planRows} planTierClass={planTierClass} iconColor={iconColor} />
-          <Link to="/" className="tg-vip-payment-success-status__cta" lang="km">
+          <Link to="/" className="tg-vip-payment-success-status__cta" lang="km" onClick={allowLeaveSuccessPage}>
             ចាប់ផ្តើមអានឥឡូវនេះ
           </Link>
         </section>

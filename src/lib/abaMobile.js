@@ -48,19 +48,19 @@ function isAbaMobileDeeplinkUrl(url) {
 }
 
 /** Still visible after this → summon failed (no ABA). */
-export const ABA_SUMMON_FAILURE_TIMEOUT_MS = 1200
+export const ABA_SUMMON_FAILURE_TIMEOUT_MS = 2500
 /** iOS Open link? — wait for user to tap Open before treating summon as failed. */
 const IOS_OPEN_LINK_CONFIRM_TIMEOUT_MS = 15000
 /** iOS: quick return after Open tap without ABA → summon failed. */
-const IOS_SUMMON_BOUNCE_MS = 1200
+const IOS_SUMMON_BOUNCE_MS = 1800
 /** iOS: min wait after openLink before treating focus/pageshow as summon failed. */
-const IOS_SUMMON_OPEN_LINK_GUARD_MS = 400
+const IOS_SUMMON_OPEN_LINK_GUARD_MS = 800
 /** iOS: debounce after guard before settle('failed') on focus/pageshow. */
-const IOS_SUMMON_DISMISS_FAIL_MS = 250
+const IOS_SUMMON_DISMISS_FAIL_MS = 400
 /** iOS: after summon failed, wait before QR (caps total post-fail delay). */
-const IOS_QR_FALLBACK_MIN_MS = 0
-const IOS_QR_FALLBACK_TARGET_MS = 0
-const IOS_QR_FALLBACK_MAX_MS = 250
+const IOS_QR_FALLBACK_MIN_MS = 500
+const IOS_QR_FALLBACK_TARGET_MS = 1000
+const IOS_QR_FALLBACK_MAX_MS = 1500
 /** hidden then visible again within this → likely browser bounce without ABA. */
 export const ABA_SUMMON_BOUNCE_MS = 3500
 
@@ -82,7 +82,7 @@ function delayIosQrFallbackAfterSummonFail(summonStartedAt) {
 
 export function isLikelyMobileDevice() {
   if (typeof navigator === 'undefined') return false
-  return /android|iphone|ipad|ipod/i.test(String(navigator.userAgent || ''))
+  return isIosDevice() || /android/i.test(String(navigator.userAgent || ''))
 }
 
 export function isAndroidDevice() {
@@ -92,7 +92,8 @@ export function isAndroidDevice() {
 
 export function isIosDevice() {
   if (typeof navigator === 'undefined') return false
-  return /iphone|ipad|ipod/i.test(String(navigator.userAgent || ''))
+  const ua = String(navigator.userAgent || '')
+  return /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && Number(navigator.maxTouchPoints) > 1)
 }
 
 export function shouldTryAbaMobileDeeplinkFirst() {
@@ -186,6 +187,15 @@ export function buildAbaMobileOpenHref(input = {}) {
   }
 
   if (deeplink.toLowerCase().startsWith(ABA_DEEPLINK_PREFIX)) return deeplink
+  if (qrString) return `abamobilebank://ababank.com?type=payway&qrcode=${encodeURIComponent(qrString)}`
+  return ''
+}
+
+function buildTelegramMiniAppAbaDeeplink(input = {}) {
+  const qrString = String(input.qrString || input.session?.qrString || '').trim()
+  const deeplink = String(input.abapayDeeplink || input.session?.abapayDeeplink || '').trim()
+  if (deeplink.toLowerCase().startsWith(ABA_DEEPLINK_PREFIX)) return deeplink
+  if (qrString) return `abamobilebank://ababank.com?type=payway&qrcode=${encodeURIComponent(qrString)}`
   return ''
 }
 
@@ -220,6 +230,7 @@ function buildBridgeImmediateSummonTarget(session, planId = '') {
   }
 
   if (deeplink.toLowerCase().startsWith(ABA_DEEPLINK_PREFIX)) return deeplink
+  if (qrString) return `abamobilebank://ababank.com?type=payway&qrcode=${encodeURIComponent(qrString)}`
   return ''
 }
 
@@ -289,7 +300,7 @@ function launchViaExternalOpenLink(url) {
 /**
  * Telegram Mini App: openLink for http(s) or abamobilebank deeplink (no external browser on custom scheme).
  */
-function openExternalLinkLikeTeleAba(url) {
+function openExternalLinkLikeTeleAba(url, invokeOpts = {}) {
   const target = String(url || '').trim()
   if (!target || typeof window === 'undefined') return false
   const tg = window.Telegram?.WebApp
@@ -298,6 +309,7 @@ function openExternalLinkLikeTeleAba(url) {
       const opts = isAbaMobileDeeplinkUrl(target)
         ? TELEGRAM_DEEPLINK_OPEN_LINK_OPTS
         : TELEGRAM_HTTP_OPEN_LINK_OPTS
+      invokeOpts.onOpenLinkInvoked?.()
       tg.openLink(target, opts)
       return true
     } catch {
@@ -312,15 +324,15 @@ function openExternalLinkLikeTeleAba(url) {
   }
 }
 
-function launchSummonInTelegramMiniApp(_summonTarget, abapayDeeplink = '') {
+function launchSummonInTelegramMiniApp(_summonTarget, abapayDeeplink = '', invokeOpts = {}) {
   const deeplink = String(abapayDeeplink || '').trim()
   if (!deeplink.toLowerCase().startsWith(ABA_DEEPLINK_PREFIX)) return false
-  return openExternalLinkLikeTeleAba(deeplink)
+  return openExternalLinkLikeTeleAba(deeplink, invokeOpts)
 }
 
 function waitForAbaMobileSummonOutcome(input = {}) {
   return new Promise((resolve) => {
-    const deeplink = String(input.abapayDeeplink || input.session?.abapayDeeplink || '').trim()
+    const deeplink = buildTelegramMiniAppAbaDeeplink(input)
     if (!deeplink) {
       resolve({ attempted: false, launched: false, method: 'no_deeplink' })
       return
@@ -343,7 +355,7 @@ function waitForAbaMobileSummonOutcome(input = {}) {
       },
     })
 
-    if (!launchSummonInTelegramMiniApp('', deeplink)) {
+    if (!launchSummonInTelegramMiniApp('', deeplink, { onOpenLinkInvoked: input.onOpenLinkInvoked })) {
       stopWatching()
       resolve({ attempted: false, launched: false, method: 'mini_app_launch_failed' })
     }
@@ -656,7 +668,7 @@ export function openAbaKhqrQrPageInExternalBrowser(session, planId = '') {
  * iOS not installed: Open link? → tap Open → ~0.4–1.2s fail detect → Mini App QR page.
  * Android: unchanged.
  */
-export async function startAbaKhqrPaymentFlow(session, planId = '') {
+export async function startAbaKhqrPaymentFlow(session, planId = '', flowOpts = {}) {
   if (typeof window === 'undefined') {
     return { opened: false, method: 'no_window', launchedInMiniApp: false }
   }
@@ -683,6 +695,7 @@ export async function startAbaKhqrPaymentFlow(session, planId = '') {
       bounceMs: isIosDevice() ? IOS_SUMMON_BOUNCE_MS : undefined,
       iosOpenDismissFallback: isIosDevice(),
       iosDismissCheckMs: isIosDevice() ? IOS_SUMMON_DISMISS_FAIL_MS : undefined,
+      onOpenLinkInvoked: flowOpts.onOpenLinkInvoked,
     })
     if (summonResult.launched) {
       return {
