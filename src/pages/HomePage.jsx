@@ -702,6 +702,17 @@ export default function HomePage() {
           </div>
         </div>
 
+        {HIDE_HOME_NOVELS_FOR_OFFICIAL_REVIEW
+          && isSearchMode
+          && catalogReady
+          && displayedNovels.length === 0 ? (
+            <p className="tg-home-novel-list__empty" lang="km">
+              {(searchKeywordHits?.length ?? 0) === 0
+                ? `រកមិនឃើញរឿងដែលពាក់ព័ន្ធនឹង 「${searchTrim}」 ទេ (ចំណងជើង អ្នកនិពន្ធ ឬស្លាក)`
+                : formatHomeSearchFilterEmptyKm(searchTrim)}
+            </p>
+        ) : null}
+
         {!HIDE_HOME_NOVELS_FOR_OFFICIAL_REVIEW ? (
           isSearchMode ? (
             !catalogReady ? (

@@ -90,13 +90,21 @@ export function filterCheckoutFormFieldsForClient(fields) {
 export function sanitizePayWayCheckStatus(raw) {
   const safe = stripSensitivePaymentFields(raw)
   const row = safe && typeof safe === 'object' && !Array.isArray(safe) ? safe : {}
-  const status = String(
-    row.status
-    || row.payment_status
+  const statusValue = row.payment_status
     || row?.data?.payment_status
-    || row?.data?.status
-    || '',
+    || (typeof row.status === 'string' || typeof row.status === 'number' ? row.status : '')
+    || (typeof row?.data?.status === 'string' || typeof row?.data?.status === 'number'
+      ? row.data.status
+      : '')
+  const status = String(
+    statusValue || '',
   ).toUpperCase()
-  const code = String(row.status_code || row?.status?.code || row?.data?.status_code || '').trim()
+  const code = String(
+    row.status_code
+    || row?.status?.code
+    || row?.data?.status_code
+    || row?.data?.payment_status_code
+    || '',
+  ).trim()
   return { status, code }
 }

@@ -1,12 +1,44 @@
 const ALLOW_LANDSCAPE_CLASS = 'tg-allow-landscape'
 const PORTRAIT_LOCK_CLASS = 'tg-portrait-lock'
 const NATIVE_LOCKED_CLASS = 'tg-portrait-native-locked'
+const SOFT_KEYBOARD_CLASS = 'tg-soft-keyboard-open'
 
 let listenersBound = false
+let keyboardClearTimer = 0
 
 function isAdminPath(pathname = '') {
   const path = String(pathname || (typeof window !== 'undefined' ? window.location.pathname : '')).trim()
   return path === '/admin' || path === '/admin-login'
+}
+
+function isEditableElement(element) {
+  if (!(element instanceof HTMLElement)) return false
+  const tagName = element.tagName.toLowerCase()
+  return tagName === 'input' || tagName === 'textarea' || element.isContentEditable
+}
+
+function syncSoftKeyboardState() {
+  if (typeof document === 'undefined') return
+  const focusedEditable = isEditableElement(document.activeElement)
+  document.documentElement.classList.toggle(SOFT_KEYBOARD_CLASS, focusedEditable)
+}
+
+function markSoftKeyboardOpen() {
+  if (typeof document === 'undefined') return
+  if (keyboardClearTimer) {
+    window.clearTimeout(keyboardClearTimer)
+    keyboardClearTimer = 0
+  }
+  document.documentElement.classList.add(SOFT_KEYBOARD_CLASS)
+}
+
+function clearSoftKeyboardOpenSoon() {
+  if (typeof document === 'undefined') return
+  if (keyboardClearTimer) window.clearTimeout(keyboardClearTimer)
+  keyboardClearTimer = window.setTimeout(() => {
+    keyboardClearTimer = 0
+    syncSoftKeyboardState()
+  }, 700)
 }
 
 async function tryLockPortraitOrientation() {
@@ -69,7 +101,12 @@ export function initPortraitOrientationLock() {
 
   window.addEventListener('orientationchange', relock, { passive: true })
   window.addEventListener('focus', relock, { passive: true })
+  window.addEventListener('focusin', markSoftKeyboardOpen, { passive: true })
+  window.addEventListener('focusout', clearSoftKeyboardOpenSoon, { passive: true })
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') relock()
+    if (document.visibilityState === 'visible') {
+      syncSoftKeyboardState()
+      relock()
+    }
   })
 }

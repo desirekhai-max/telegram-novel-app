@@ -9,7 +9,7 @@ import {
 } from '../lib/vipAbaKhqrSession.js'
 import {
   markVipAbaKhqrBankReturnHandled,
-  readVipAbaKhqrBankReturnFromLaunch,
+  resolveVipAbaKhqrBankReturnContext,
   wasVipAbaKhqrBankReturnHandled,
 } from '../lib/vipAbaKhqrBankReturn.js'
 import { navigateToVipPaymentSuccess } from '../lib/vipPaymentSuccessNavigation.js'
@@ -19,7 +19,7 @@ const POLL_MS = 4000
 const MAX_WAIT_MS = 5 * 60 * 1000
 
 function isKhqrPaymentFulfilled(result) {
-  return Boolean(result?.ok && (result?.profile?.vipActive || result?.alreadyFulfilled))
+  return Boolean(result?.ok && (result?.order?.id || result?.alreadyFulfilled))
 }
 
 function sleep(ms) {
@@ -41,53 +41,64 @@ export function useVipAbaKhqrBankReturn() {
     if (!isTelegramMiniApp()) return undefined
     if (location.pathname.startsWith('/vip/payment-success')) return undefined
 
-    const launch = readVipAbaKhqrBankReturnFromLaunch()
-    const tranId = String(launch?.tranId || '').trim()
-    if (!tranId || wasVipAbaKhqrBankReturnHandled(tranId) || inFlightRef.current) {
-      return undefined
-    }
-
-    inFlightRef.current = true
     let cancelled = false
 
     const run = async () => {
+      if (inFlightRef.current || cancelled) return
+
+      const launch = await resolveVipAbaKhqrBankReturnContext()
+      const tranId = String(launch?.tranId || '').trim()
+      if (!tranId || wasVipAbaKhqrBankReturnHandled(tranId) || cancelled) return
+
+      inFlightRef.current = true
       const planId = String(launch?.planId || '').trim()
       const deadline = Date.now() + MAX_WAIT_MS
 
-      while (!cancelled && Date.now() < deadline) {
-        const result = await confirmViewerVipPayment({ tranId, planId })
-        if (cancelled) return
-        if (result.error === 'payment_expired') break
-        if (isKhqrPaymentFulfilled(result)) {
-          markVipAbaKhqrBankReturnHandled(tranId)
-          clearVipAbaKhqrPendingPayment(tranId)
-          clearVipAbaKhqrSession()
+      try {
+        while (!cancelled && Date.now() < deadline) {
+          const result = await confirmViewerVipPayment({ tranId, planId, strictVerify: true })
+          if (cancelled) return
+          if (result.error === 'payment_expired') break
+          if (isKhqrPaymentFulfilled(result)) {
+            markVipAbaKhqrBankReturnHandled(tranId)
+            clearVipAbaKhqrPendingPayment(tranId)
+            clearVipAbaKhqrSession()
 
-          const role = result.profile?.role || viewerProfile.role || 'normal'
-          const resolvedPlanId = String(planId || result.order?.planId || '').trim()
-          const plan = resolvedPlanId ? getVipPlanForPurchase(resolvedPlanId, role) : null
-          const successPayload = {
-            planId: resolvedPlanId || 'vip_entry',
-            planLabel: plan?.titleKm || '',
-            priceLabel: String(result.order?.amount || plan?.priceUsdLabel || '').trim(),
-            durationHours: Number(plan?.durationHours) || 0,
-            purchasedAt: new Date().toISOString(),
+            const role = result.profile?.role || viewerProfile.role || 'normal'
+            const resolvedPlanId = String(planId || result.order?.planId || '').trim()
+            const plan = resolvedPlanId ? getVipPlanForPurchase(resolvedPlanId, role) : null
+            const successPayload = {
+              planId: resolvedPlanId || 'vip_entry',
+              planLabel: plan?.titleKm || '',
+              priceLabel: String(result.order?.amount || plan?.priceUsdLabel || '').trim(),
+              durationHours: Number(plan?.durationHours) || 0,
+              purchasedAt: new Date().toISOString(),
+            }
+
+            void refreshViewerProfile()
+            navigateToVipPaymentSuccess(navigate, successPayload, { replace: true, slideEnter: true })
+            return
           }
-
-          void refreshViewerProfile()
-          navigateToVipPaymentSuccess(navigate, successPayload, { replace: true, slideEnter: true })
-          return
+          await sleep(POLL_MS)
         }
-        await sleep(POLL_MS)
+      } finally {
+        inFlightRef.current = false
       }
-
-      inFlightRef.current = false
     }
 
     void run()
 
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || cancelled) return
+      void run()
+    }
+
+    document.addEventListener('visibilitychange', onVisible)
+
     return () => {
       cancelled = true
+      inFlightRef.current = false
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [location.pathname, navigate, refreshViewerProfile, viewerProfile.role])
 }

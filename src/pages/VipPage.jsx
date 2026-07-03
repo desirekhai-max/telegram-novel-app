@@ -34,6 +34,7 @@ import {
   saveVipAbaKhqrSession,
   shouldShowVipAbaKhqrConfirmingUi,
 } from '../lib/vipAbaKhqrSession.js'
+import { readVipAbaKhqrBankReturnFromLaunch } from '../lib/vipAbaKhqrBankReturn.js'
 import { scheduleVipPaymentSuccessNavigation } from '../lib/vipPaymentSuccessNavigation.js'
 import { confirmViewerVipPayment, startViewerVipAbaKhqr } from '../lib/viewerProfileApi.js'
 import { canAccessVipPurchase } from '../lib/devVipPurchase.js'
@@ -42,8 +43,9 @@ import { isTelegramMiniApp } from '../lib/telegramWebApp.js'
 
 function bootstrapVipPageSession() {
   const coldStart = isTelegramMiniApp() && consumeVipMiniAppColdStart()
-  if (coldStart) resetVipPurchaseFlowOnMiniAppColdStart()
-  const abaUi = coldStart
+  const bankReturn = readVipAbaKhqrBankReturnFromLaunch()
+  if (coldStart && !bankReturn?.tranId) resetVipPurchaseFlowOnMiniAppColdStart()
+  const abaUi = coldStart && !bankReturn?.tranId
     ? { awaiting: false, confirming: false, pending: null }
     : resolveVipAbaKhqrAwaitingUiState()
   return { coldStart, abaUi }
@@ -436,10 +438,10 @@ export default function VipPage() {
       if (!tid || !hasActiveVipAbaKhqrBrowserFlow(tid)) return
       if (returnCheckInFlightRef.current) return
       returnCheckInFlightRef.current = true
-      void confirmViewerVipPayment({ tranId: tid, planId: pending?.planId || '' })
+      void confirmViewerVipPayment({ tranId: tid, planId: pending?.planId || '', strictVerify: true })
         .then((result) => {
           if (successNavPendingRef.current) return
-          if (result?.ok && (result?.profile?.vipActive || result?.alreadyFulfilled)) {
+          if (result?.ok && (result?.order?.id || result?.alreadyFulfilled)) {
             goAbaKhqrPaymentSuccess(pending)
             return
           }

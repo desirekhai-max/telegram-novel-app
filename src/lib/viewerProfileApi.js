@@ -249,7 +249,12 @@ export async function startViewerVipPayWayCheckout(planId) {
   }
 }
 
-export async function confirmViewerVipPayment({ tranId, planId, skipVerify = false } = {}) {
+export async function confirmViewerVipPayment({
+  tranId,
+  planId,
+  skipVerify = false,
+  strictVerify = false,
+} = {}) {
   const { telegramUser, initDataRaw } = getTelegramAuthPayload()
   if (!telegramUser?.id) {
     return { ok: false, profile: getDefaultViewerProfile(null), order: null, alreadyFulfilled: false }
@@ -264,6 +269,7 @@ export async function confirmViewerVipPayment({ tranId, planId, skipVerify = fal
         tranId: String(tranId || ''),
         planId: String(planId || ''),
         skipVerify: Boolean(skipVerify),
+        strictVerify: Boolean(strictVerify),
       }),
     })
     const data = await res.json().catch(() => ({}))

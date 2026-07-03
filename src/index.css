@@ -69,17 +69,17 @@ body {
  * 后台 /admin 走 tg-allow-landscape 排除；原生 lock 成功时加 tg-portrait-native-locked 跳过补偿。
  */
 @media (orientation: landscape) and (max-height: 520px) {
-  html.tg-portrait-lock:not(.tg-portrait-native-locked):not(.tg-allow-landscape) {
+  html.tg-portrait-lock:not(.tg-portrait-native-locked):not(.tg-allow-landscape):not(.tg-soft-keyboard-open) {
     overflow: hidden;
     height: 100%;
     height: 100dvh;
   }
 
-  html.tg-portrait-lock:not(.tg-portrait-native-locked):not(.tg-allow-landscape) body {
+  html.tg-portrait-lock:not(.tg-portrait-native-locked):not(.tg-allow-landscape):not(.tg-soft-keyboard-open) body {
     overflow: hidden;
   }
 
-  html.tg-portrait-lock:not(.tg-portrait-native-locked):not(.tg-allow-landscape) #root {
+  html.tg-portrait-lock:not(.tg-portrait-native-locked):not(.tg-allow-landscape):not(.tg-soft-keyboard-open) #root {
     position: fixed;
     top: 0;
     left: 100dvw;

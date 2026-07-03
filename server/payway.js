@@ -87,6 +87,8 @@ const PAYWAY_QR_URL = resolveEndpointUrl(
   'https://checkout.payway.com.kh/api/payment-gateway/v1/payments/generate-qr',
 )
 
+const PAYWAY_APPROVED_STATUSES = new Set(['APPROVED', 'SUCCESS', 'PAID', 'COMPLETED', '00'])
+
 function isPhase1SandboxOnly() {
   if (!isSandboxModeEnabled()) return false
   const allowProduction = String(process.env.PAYWAY_ALLOW_PRODUCTION || '').trim() === '1'
@@ -193,8 +195,29 @@ export function buildPayWayReturnDeeplink(returnUrl) {
     const payload = { ios_scheme: target, android_scheme: target }
     return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
   }
+  const encodePlatformTargets = (iosTarget, androidTarget) => {
+    const payload = { ios_scheme: iosTarget, android_scheme: androidTarget }
+    return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
+  }
   const full = encode(url)
   if (full.length <= 255) return full
+  try {
+    const parsed = new URL(url)
+    const lower = new URL(url)
+    const upper = new URL(url)
+    lower.searchParams.delete('startApp')
+    upper.searchParams.delete('startapp')
+    if (
+      parsed.searchParams.has('startapp')
+      && parsed.searchParams.has('startApp')
+      && lower.toString() !== upper.toString()
+    ) {
+      const platformTargets = encodePlatformTargets(lower.toString(), lower.toString())
+      if (platformTargets.length <= 255) return platformTargets
+    }
+  } catch {
+    /* ignore */
+  }
   const withoutQuery = url.split('?')[0]
   if (withoutQuery && withoutQuery !== url) {
     const shortened = encode(withoutQuery)
@@ -406,10 +429,8 @@ export async function checkPayWayTransaction(tranId) {
     } catch {
       parsed = null
     }
-    const { status, code } = sanitizePayWayCheckStatus(parsed)
-    const approved = status === 'APPROVED' || status === 'SUCCESS' || status === '00'
-      || code === '0'
-      || code === '00'
+    const { status } = sanitizePayWayCheckStatus(parsed)
+    const approved = PAYWAY_APPROVED_STATUSES.has(status)
     return { ok: approved, status, error: approved ? '' : 'not_approved' }
   } catch (err) {
     return {

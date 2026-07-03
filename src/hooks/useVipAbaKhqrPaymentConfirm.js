@@ -6,7 +6,7 @@ import { confirmViewerVipPayment } from '../lib/viewerProfileApi.js'
 const POLL_MS = 4000
 
 function isKhqrPaymentFulfilled(result) {
-  return Boolean(result?.ok && (result?.profile?.vipActive || result?.alreadyFulfilled))
+  return Boolean(result?.ok && (result?.order?.id || result?.alreadyFulfilled))
 }
 
 /**
@@ -76,7 +76,7 @@ export function useVipAbaKhqrPaymentConfirm(options = {}) {
       return
     }
 
-    const result = await confirmViewerVipPayment({ tranId: tid, planId: pid })
+    const result = await confirmViewerVipPayment({ tranId: tid, planId: pid, strictVerify: true })
     if (pendingSuccessRef.current || deliveredSuccessRef.current) return
     if (result.error === 'payment_expired') {
       onExpiredRef.current?.()

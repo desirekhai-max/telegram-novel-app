@@ -173,7 +173,9 @@ function buildPayWayReturnDeeplinkUrl(tranId = '', planId = '') {
   if (!tid) return PAYWAY_RETURN_DEEPLINK_URL
   const base = PAYWAY_RETURN_DEEPLINK_URL.split('?')[0].replace(/\/+$/, '') || 'https://t.me/nithian_kh_bot/app'
   const startapp = buildVipAbaKhqrBankReturnStartParam(tid, planId)
-  return `${base}?startapp=${encodeURIComponent(startapp)}`
+  const encoded = encodeURIComponent(startapp)
+  // iOS 对 startApp 大小写敏感；双写以兼容各端银行回跳
+  return `${base}?startapp=${encoded}&startApp=${encoded}`
 }
 
 function decodeBase32Secret(secret) {
@@ -3764,8 +3766,9 @@ const server = http.createServer(async (req, res) => {
     if (orderOwnerId && orderOwnerId !== auth.telegramUser.telegramUserId) {
       return sendJson(res, 403, { ok: false, error: 'tran_id owner mismatch' })
     }
-    const skipVerify = body.skipVerify === true || process.env.PAYWAY_SKIP_VERIFY === '1'
-    if (isPayWayConfigured() && !skipVerify) {
+    const strictVerify = body.strictVerify === true
+    const skipVerify = !strictVerify && (body.skipVerify === true || process.env.PAYWAY_SKIP_VERIFY === '1')
+    if (!skipVerify) {
       const checked = await checkPayWayTransaction(tranId)
       if (!checked.ok) {
         return sendJson(res, 402, {
