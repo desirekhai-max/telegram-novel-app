@@ -4,11 +4,12 @@ import { BookOpen, Check, ChevronRight, ShieldCheck } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AbaKhqrEntryRow from '../components/AbaKhqrEntryRow.jsx'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
+import { useMainTabShell } from '../hooks/useMainTabShell.js'
 import VipPurchaseConsent from '../components/VipPurchaseConsent.jsx'
 import { getVipPlansCatalogForRole, getVipPlanTierClass, VIP_MEMBER_FOOTER_KM } from '../data/vipPlansCatalog.js'
 import { VIP_LOGIN_GATE_DESC_KM, VIP_LOGIN_GATE_TITLE_KM } from '../lib/errorMessagesKm.js'
 import { buildAbaKhqrUiMockSession, isAbaKhqrUiMockFlowEnabled } from '../lib/abaKhqrUiMock.js'
-import { startAbaKhqrPaymentFlow } from '../lib/abaMobile.js'
+import { startAbaKhqrPaymentFlow, markAbaMobileKnownInstalled } from '../lib/abaMobile.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
 import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
@@ -23,6 +24,9 @@ import {
   markVipAbaKhqrBrowserFlowBackgrounded,
   markVipAbaKhqrBrowserFlowOpen,
   markVipAbaKhqrBrowserFlowReturned,
+  markVipAbaKhqrBankSummoned,
+  consumeVipMiniAppColdStart,
+  resetVipPurchaseFlowOnMiniAppColdStart,
   resolveVipAbaKhqrAwaitingUiState,
   saveVipAbaKhqrPendingPayment,
   saveVipAbaKhqrSession,
@@ -31,6 +35,22 @@ import {
 import { scheduleVipPaymentSuccessNavigation } from '../lib/vipPaymentSuccessNavigation.js'
 import { startViewerVipAbaKhqr } from '../lib/viewerProfileApi.js'
 import { canAccessVipPurchase } from '../lib/devVipPurchase.js'
+import { formatKhqrPendingCountdown } from '../lib/vipAbaKhqrCountdown.js'
+import { isTelegramMiniApp } from '../lib/telegramWebApp.js'
+
+function bootstrapVipPageSession() {
+  const coldStart = isTelegramMiniApp() && consumeVipMiniAppColdStart()
+  if (coldStart) resetVipPurchaseFlowOnMiniAppColdStart()
+  const abaUi = coldStart
+    ? { awaiting: false, confirming: false, pending: null }
+    : resolveVipAbaKhqrAwaitingUiState()
+  return { coldStart, abaUi }
+}
+
+const vipPageSession =
+  typeof window !== 'undefined'
+    ? bootstrapVipPageSession()
+    : { coldStart: false, abaUi: { awaiting: false, confirming: false, pending: null } }
 
 function readAbaKhqrSessionForPlan(planId) {
   const pid = String(planId || '').trim()
@@ -38,13 +58,6 @@ function readAbaKhqrSessionForPlan(planId) {
   const stored = loadVipAbaKhqrSession()
   if (!stored?.tranId || String(stored.planId || '') !== pid) return null
   return stored
-}
-
-function formatKhqrPendingCountdown(remainingMs) {
-  const totalSec = Math.max(0, Math.ceil(Number(remainingMs || 0) / 1000))
-  const mins = Math.floor(totalSec / 60)
-  const secs = totalSec % 60
-  return `${mins}:${String(secs).padStart(2, '0')}`
 }
 
 function readVipScrollBottomInset(extra = 28) {
@@ -90,12 +103,13 @@ function scrollWithinVipMainAfterLayout(root, target, options = {}) {
 }
 
 function readInitialVipAbaKhqrUiState() {
-  return resolveVipAbaKhqrAwaitingUiState()
+  return vipPageSession.abaUi
 }
 
 export default function VipPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const usesSharedToolbar = useMainTabShell()
   const tgUser = useTelegramUser()
   const { viewerProfile, refreshViewerProfile } = useViewerProfile()
   const [selectedPlanId, setSelectedPlanId] = useState('')
@@ -141,6 +155,7 @@ export default function VipPage() {
   }, [])
 
   useLayoutEffect(() => {
+    if (location.pathname !== '/vip') return
     resetVipScrollTop()
   }, [location.pathname, resetVipScrollTop])
 
@@ -153,7 +168,7 @@ export default function VipPage() {
     setAbaKhqrAwaitingReturn(awaiting)
     setConfirmingPaymentReturn(confirming)
     if (confirming) setPurchaseNotice('')
-    if (pending?.planId) {
+    if (pending?.planId && !vipPageSession.coldStart) {
       setSelectedPlanId((current) => current || pending.planId)
     }
   }, [])
@@ -169,18 +184,31 @@ export default function VipPage() {
   )
 
 
-  const openAbaKhqrBrowser = useCallback((session, planId) => {
+  const openAbaKhqrBrowser = useCallback(async (session, planId) => {
     const pid = String(planId || session?.planId || '').trim()
     if (!session?.tranId || !pid) return false
     saveVipAbaKhqrSession(session)
-    const result = startAbaKhqrPaymentFlow(session, pid)
-    if (!result.opened) return false
     saveVipAbaKhqrPendingPayment(session, { expireAtMs: session.expireAtMs })
     markVipAbaKhqrBrowserFlowOpen(session)
+    const result = await startAbaKhqrPaymentFlow(session, pid)
+    if (!result.opened) return false
+
+    if (result.showQrInMiniApp && result.miniAppQrPath) {
+      setAbaKhqrAwaitingReturn(true)
+      setPurchaseNotice('')
+      navigate(result.miniAppQrPath)
+      return true
+    }
+
     setAbaKhqrAwaitingReturn(true)
-    setPurchaseNotice('កំពុងបើក Browser…')
+    setPurchaseNotice('')
+    if (result.launchedInMiniApp) {
+      markAbaMobileKnownInstalled()
+      markVipAbaKhqrBankSummoned(session.tranId)
+      setConfirmingPaymentReturn(true)
+    }
     return true
-  }, [])
+  }, [navigate])
 
   const createAbaKhqrSession = useCallback(
     async (planId) => {
@@ -294,7 +322,7 @@ export default function VipPage() {
     setAbaKhqrAwaitingReturn(false)
     setConfirmingPaymentReturn(false)
     setPendingCountdownMs(0)
-    setPurchaseNotice('ការបង់ប្រាក់ផុតកំណត់ហើយ (2 នាទី) សូមចុច ABA KHQR ម្តងទៀត')
+    setPurchaseNotice('ការបង់ប្រាក់ផុតកំណត់ហើយ (5 នាទី) សូមចុច ABA KHQR ម្តងទៀត')
   }, [pendingAbaPayment?.tranId])
 
   useVipAbaKhqrPaymentConfirm({
@@ -338,8 +366,14 @@ export default function VipPage() {
       const tid = String(loadActiveVipAbaKhqrPending()?.tranId || '').trim()
       if (document.visibilityState === 'hidden') {
         if (tid && hasActiveVipAbaKhqrBrowserFlow(tid)) {
+          markAbaMobileKnownInstalled()
+          markVipAbaKhqrBankSummoned(tid)
           markVipAbaKhqrBrowserFlowBackgrounded(tid)
           paymentWasBackgroundedRef.current = true
+          flushSync(() => {
+            setConfirmingPaymentReturn(true)
+            setPurchaseNotice('')
+          })
         }
         return
       }
@@ -375,8 +409,9 @@ export default function VipPage() {
       const readySession = readAbaKhqrSessionForPlan(planId)
       if (readySession?.tranId) {
         setPurchaseNotice('')
-        if (openAbaKhqrBrowser(readySession, planId)) return
-        setPurchaseError('មិនអាចបើក Browser សូមព្យាយាមម្តងទៀត')
+        void openAbaKhqrBrowser(readySession, planId).then((opened) => {
+          if (!opened) setPurchaseError('មិនអាចបើក Browser សូមព្យាយាមម្តងទៀត')
+        })
         return
       }
 
@@ -386,7 +421,8 @@ export default function VipPage() {
       void (async () => {
         try {
           const session = await resolveAbaKhqrSession(planId)
-          if (openAbaKhqrBrowser(session, planId)) return
+          const opened = await openAbaKhqrBrowser(session, planId)
+          if (opened) return
           setPurchaseNotice('')
           setPurchaseError('មិនអាចបើក Browser សូមព្យាយាមម្តងទៀត')
         } catch (err) {
@@ -482,7 +518,9 @@ export default function VipPage() {
 
   return (
     <div className="tg-app tg-app--account tg-app--vip">
-      <BrandTabToolbar title="សមាជិកVIP" titleLang="km" titleClassName="text-[16px]" />
+      {usesSharedToolbar ? null : (
+        <BrandTabToolbar title="សមាជិកVIP" titleLang="km" titleClassName="text-[16px]" />
+      )}
       <main
         ref={scrollRef}
         className="tg-list-wrap tg-account-scroll tg-account-scroll--vip flex min-h-0 flex-1 flex-col px-3 py-5"
@@ -507,7 +545,7 @@ export default function VipPage() {
                 សូមរង់ចាំបន្តិច ប្រព័ន្ធកំពុងពិនិត្យ ABA KHQR
               </p>
               <p className="tg-vip-page__confirming-expiry" lang="km">
-                QR នេះមានសុពលភាព ២ នាទី
+                QR នេះមានសុពលភាព ៥ នាទី
                 {pendingCountdownMs > 0
                   ? ` · នៅសល់ ${formatKhqrPendingCountdown(pendingCountdownMs)}`
                   : ''}

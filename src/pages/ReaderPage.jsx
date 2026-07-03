@@ -22,6 +22,7 @@ import {
   resolveInitialNovel,
   NOVELS_BUNDLED_UPDATED_EVENT,
 } from '../lib/novelsRuntime.js'
+import { useNovelDetailEmbed } from '../contexts/novelDetailEmbedContext.js'
 import { canDevGuestReadNovel } from '../lib/devGuestRead.js'
 import { resolveNovelCoverUrl } from '../lib/resolveNovelCoverUrl.js'
 import ReaderDetailSkeleton from '../components/ReaderDetailSkeleton.jsx'
@@ -335,11 +336,20 @@ function buildReplyThreadTree(replies) {
 }
 
 export default function ReaderPage() {
-  const { id } = useParams()
+  const embed = useNovelDetailEmbed()
+  const { id: routeId } = useParams()
+  const id = embed?.novelId ?? routeId
   const location = useLocation()
   const navigate = useNavigate()
   /** 跟手露出 AppShell 真实上一页；勿 instantBack，避免松手先弹回再跳转晃动 */
-  const edgeSwipeHandlers = useEdgeSwipeBack({ triggerRatio: 0.1 })
+  const edgeSwipeHandlers = useEdgeSwipeBack({
+    triggerRatio: 0.1,
+    onBack: embed?.onClose ?? undefined,
+    disabled: Boolean(embed),
+  })
+  const readerShellClassName = ['tg-app', 'tg-app--reader', embed ? 'tg-app--reader-embed' : '']
+    .filter(Boolean)
+    .join(' ')
   const tgUser = useTelegramUser()
   const { viewerProfile } = useViewerProfile()
   const unreadNotificationCount = useUnreadNotificationCount(tgUser)
@@ -1289,7 +1299,7 @@ export default function ReaderPage() {
 
   if (loadStatus === 'notFound') {
     return (
-      <div className="tg-app tg-app--reader">
+      <div className={readerShellClassName}>
         <header className="tg-toolbar tg-toolbar--reader">
           <Link to="/" className="tg-back" aria-label="ត្រឡប់">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -1318,7 +1328,7 @@ export default function ReaderPage() {
 
   const isDetailLoading = loadStatus !== 'ready' || !novelHasFullContent(novel)
 
-  const readerHomeHeader = !isReadingChapter ? (
+  const readerHomeHeader = !isReadingChapter && !embed?.hideHeader ? (
     <header className="tg-toolbar tg-toolbar--large tg-toolbar--home tg-toolbar--reader-home-fixed">
       <button
         type="button"
@@ -1394,7 +1404,7 @@ export default function ReaderPage() {
 
   if (!novel) {
     return (
-      <div className="tg-app tg-app--reader" {...edgeSwipeHandlers}>
+      <div className={readerShellClassName} {...edgeSwipeHandlers}>
         <div className="tg-reader-swipe-sheet">
           {readerHomeHeader}
           <ReaderDetailSkeleton />
@@ -1438,7 +1448,7 @@ export default function ReaderPage() {
 
   return (
     <div
-      className="tg-app tg-app--reader"
+      className={readerShellClassName}
       {...readerSwipeHandlers}
     >
       <div

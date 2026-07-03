@@ -68,6 +68,14 @@
             encodeURIComponent(planId)
           if (handoff) url += '&handoff=' + encodeURIComponent(handoff)
           if (failed) url += '&aba_summon_failed=1'
+          var expireAt = ''
+          try {
+            if (back) expireAt = String(new URL(back, location.origin).searchParams.get('expire_at') || '').trim()
+          } catch (e) {
+            /* ignore */
+          }
+          if (!expireAt) expireAt = String(params.get('expire_at') || '').trim()
+          if (expireAt) url += '&expire_at=' + encodeURIComponent(expireAt)
           return url
         }
 

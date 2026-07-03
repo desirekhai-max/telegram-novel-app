@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bell, Heart, MessageCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useAppChrome } from '../contexts/useAppChrome.js'
 import { bindNovelNavPrefetchHandlers, prefetchNovelNav } from '../lib/prefetchNovelOnNav.js'
 import { resolveNovelCoverUrl } from '../lib/resolveNovelCoverUrl.js'
 import { novels } from '../data/novels.js'
@@ -54,6 +55,7 @@ function readSystemNotifications() {
 }
 
 export default function NotificationsPage() {
+  const { registerNotificationsMarkAll } = useAppChrome()
   const tgUser = useTelegramUser()
   const viewerId = useMemo(() => resolveNotificationViewerId(tgUser), [tgUser])
   const [loading, setLoading] = useState(true)
@@ -98,6 +100,11 @@ export default function NotificationsPage() {
     setReadMetaMap(current)
     dispatchNotificationReadChanged()
   }
+
+  useEffect(() => {
+    registerNotificationsMarkAll(markAllAsRead)
+    return () => registerNotificationsMarkAll(null)
+  }, [markAllAsRead, registerNotificationsMarkAll])
 
   useEffect(() => {
     let active = true
@@ -217,19 +224,6 @@ export default function NotificationsPage() {
 
   return (
     <div className="tg-app tg-app--account tg-notifications">
-      <header className="tg-toolbar tg-toolbar--large tg-notifications__toolbar">
-        <h1 className="tg-toolbar__title" lang="km">
-          ការជូនដំណឹង
-        </h1>
-        <button
-          type="button"
-          className="tg-notifications__mark-all"
-          lang="km"
-          onClick={markAllAsRead}
-        >
-          អានទាំងអស់
-        </button>
-      </header>
       <main
         className={[
           'tg-list-wrap tg-account-scroll tg-notifications__main flex flex-1 flex-col px-4 py-4',

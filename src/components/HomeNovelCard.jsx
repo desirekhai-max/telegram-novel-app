@@ -50,7 +50,7 @@ function StarRow({ commentPoints }) {
 }
 
 /**
- * @param {{ novel: object, meatCohort?: object[], onPickOriginal?: () => void, onPickTheme?: (label: string) => void, onPickTag?: (tag: string) => void, onPickAuthor?: (name: string) => void, canOpenRead?: boolean, onRequireLogin?: () => void }} props
+ * @param {{ novel: object, meatCohort?: object[], onPickOriginal?: () => void, onPickTheme?: (label: string) => void, onPickTag?: (tag: string) => void, onPickAuthor?: (name: string) => void, canOpenRead?: boolean, onRequireLogin?: () => void, onOpenDetail?: (novelId: string) => void }} props
  */
 export default function HomeNovelCard({
   novel: n,
@@ -61,6 +61,7 @@ export default function HomeNovelCard({
   onPickAuthor,
   canOpenRead = true,
   onRequireLogin,
+  onOpenDetail,
 }) {
   const statusLabel = n.status === 'completed' ? 'ចប់ហើយ' : 'កំពុងចេញ'
   const showOriginal = n.source === 'original'
@@ -80,22 +81,41 @@ export default function HomeNovelCard({
   const meatCat = getMeatCategoryByWordCount(n)
   const commentPoints = Number.isFinite(Number(n.cardRatingPoints)) ? Math.max(0, Number(n.cardRatingPoints)) : 0
 
+  const openDetail = (e) => {
+    if (!canOpenRead) {
+      e.preventDefault()
+      onRequireLogin?.()
+      return
+    }
+    prefetchNovelNav(n.id)
+    if (onOpenDetail) {
+      e.preventDefault()
+      onOpenDetail(String(n.id))
+    }
+  }
+
+  const backdrop = onOpenDetail ? (
+    <button
+      type="button"
+      className="tg-novel-card__backdrop"
+      aria-label={`阅读《${n.title}》`}
+      onClick={openDetail}
+      onMouseEnter={() => prefetchNovelNav(n.id)}
+      onFocus={() => prefetchNovelNav(n.id)}
+    />
+  ) : (
+    <Link
+      to={`/read/${n.id}`}
+      className="tg-novel-card__backdrop"
+      aria-label={`阅读《${n.title}》`}
+      {...bindNovelNavPrefetchHandlers(n.id)}
+      onClick={openDetail}
+    />
+  )
+
   return (
     <div className="tg-novel-card">
-      <Link
-        to={`/read/${n.id}`}
-        className="tg-novel-card__backdrop"
-        aria-label={`阅读《${n.title}》`}
-        {...bindNovelNavPrefetchHandlers(n.id)}
-        onClick={(e) => {
-          if (!canOpenRead) {
-            e.preventDefault()
-            onRequireLogin?.()
-            return
-          }
-          prefetchNovelNav(n.id)
-        }}
-      />
+      {backdrop}
       <div className="tg-novel-card__content">
         <div className={`tg-novel-card__cover-wrap tg-novel-card__cover-wrap--${n.accent}`}>
           {n.coverUrl ? (

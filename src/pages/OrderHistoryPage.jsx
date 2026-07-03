@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
+import { useMainTabShell } from '../hooks/useMainTabShell.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { fetchViewerVipOrders } from '../lib/viewerProfileApi.js'
 
 export default function OrderHistoryPage() {
-  const swipeHandlers = useEdgeSwipeBack()
+  const usesSharedToolbar = useMainTabShell()
+  const swipeHandlers = useEdgeSwipeBack({ disabled: usesSharedToolbar })
   const tgUser = useTelegramUser()
   const [ordersNewestFirst, setOrdersNewestFirst] = useState([])
 
@@ -28,7 +30,9 @@ export default function OrderHistoryPage() {
 
   return (
     <div className="tg-app tg-app--account">
-      <BrandTabToolbar title="ប្រវត្តិបញ្ជាទិញ" titleLang="km" showDivider />
+      {usesSharedToolbar ? null : (
+        <BrandTabToolbar title="ប្រវត្តិបញ្ជាទិញ" titleLang="km" showDivider />
+      )}
       <main
         className="tg-list-wrap tg-account-scroll flex flex-1 flex-col px-6 py-8"
         {...swipeHandlers}

@@ -7,8 +7,8 @@ export const VIP_ABA_KHQR_ACTIVE_PENDING_KEY = 'tg_vip_aba_khqr_active_pending_v
 export const VIP_ABA_KHQR_PENDING_PREFIX = 'tg_vip_aba_khqr_pending_v1:'
 export const VIP_ABA_KHQR_BROWSER_FLOW_KEY = 'tg_vip_aba_khqr_browser_flow_v1'
 export const VIP_ABA_KHQR_CONFIRMING_DISMISSED_KEY = 'tg_vip_aba_khqr_confirming_dismissed_v1'
-/** Client-side pending / QR validity shown to user (2 minutes). */
-export const VIP_ABA_KHQR_PENDING_TTL_MS = 2 * 60 * 1000
+/** Client-side pending / QR validity shown to user (5 minutes). */
+export const VIP_ABA_KHQR_PENDING_TTL_MS = 5 * 60 * 1000
 
 const BOOT_SESSION_KEYS = [
   'tranId',
@@ -231,12 +231,24 @@ export function buildAbaKhqrPageUrl(session, planId = '', extraParams = {}) {
   if (normalized.amountLabel) {
     url.searchParams.set('amount_label', normalized.amountLabel)
   }
+  const expireAtMs = Number(extraParams.expire_at || extraParams.expireAtMs || 0)
+  if (expireAtMs > 0) url.searchParams.set('expire_at', String(Math.floor(expireAtMs)))
+
   Object.entries(extraParams).forEach(([key, value]) => {
-    if (key === 'handoff') return
+    if (key === 'handoff' || key === 'expire_at' || key === 'expireAtMs') return
     const next = String(value || '').trim()
     if (next) url.searchParams.set(key, next)
   })
   return url.toString()
+}
+
+/** Read pending expiry for QR page URLs (external browser cannot read TG localStorage). */
+export function resolveVipAbaKhqrQrPageExpireAtMs(tranId, searchParams = null) {
+  const fromUrl = Number(searchParams?.get?.('expire_at') || 0)
+  if (fromUrl > Date.now()) return fromUrl
+  const expiry = getActiveVipAbaKhqrPendingExpiry(tranId)
+  if (expiry?.expireAtMs) return expiry.expireAtMs
+  return Date.now() + VIP_ABA_KHQR_PENDING_TTL_MS
 }
 
 /** @param {Record<string, unknown> | null | undefined} raw */
@@ -351,6 +363,7 @@ export function markVipAbaKhqrBrowserFlowOpen(session) {
         openedAtMs: Date.now(),
         returnedFromBrowser: false,
         tgBackgrounded: false,
+        bankSummoned: false,
       }),
     )
     clearVipAbaKhqrConfirmingUiDismissed()
@@ -362,7 +375,32 @@ export function markVipAbaKhqrBrowserFlowOpen(session) {
 
 /** 成功唤起 ABA App 后上报 payment_entry=aba_deeplink（失败/仅打开浏览器不上报） */
 export function reportVipAbaKhqrDeeplinkOpened({ tranId, handoff } = {}) {
-  void reportViewerVipAbaAppOpened({ tranId, handoff })
+  const tid = String(tranId || '').trim()
+  if (tid) markVipAbaKhqrBankSummoned(tid)
+  void reportViewerVipAbaAppOpened({ tranId: tid, handoff })
+}
+
+/** User entered ABA Mobile after summon (Mini App should show single confirming UI). */
+export function markVipAbaKhqrBankSummoned(tranId) {
+  const tid = String(tranId || '').trim()
+  if (!tid || typeof sessionStorage === 'undefined') return false
+  try {
+    const parsed = readVipAbaKhqrBrowserFlowRecord(tid)
+    if (!parsed) return false
+    sessionStorage.setItem(
+      VIP_ABA_KHQR_BROWSER_FLOW_KEY,
+      JSON.stringify({ ...parsed, bankSummoned: true, tgBackgrounded: true }),
+    )
+    clearVipAbaKhqrConfirmingUiDismissed()
+    return true
+  } catch {
+    return false
+  }
+}
+
+function hasVipAbaKhqrBankSummoned(tranId) {
+  const parsed = readVipAbaKhqrBrowserFlowRecord(tranId)
+  return parsed?.bankSummoned === true
 }
 
 export function markVipAbaKhqrConfirmingUiDismissed() {
@@ -457,15 +495,35 @@ export function shouldShowVipAbaKhqrConfirmingUi(tranId) {
   if (isVipAbaKhqrConfirmingUiDismissed()) return false
   if (!hasActiveVipAbaKhqrBrowserFlow(tid)) return false
   if (!loadVipAbaKhqrPendingPayment(tid)) return false
+  if (hasVipAbaKhqrBankSummoned(tid)) return true
   if (hasVipAbaKhqrBrowserFlowReturned(tid)) return true
-  if (
-    hasVipAbaKhqrBrowserFlowBackgrounded(tid) &&
-    typeof document !== 'undefined' &&
-    document.visibilityState === 'visible'
-  ) {
-    return true
-  }
+  if (hasVipAbaKhqrBrowserFlowBackgrounded(tid)) return true
   return false
+}
+
+const VIP_MINI_APP_INSTANCE_KEY = 'tg_vip_mini_app_instance_v1'
+
+/**
+ * True once per Mini App instance (sessionStorage cleared when user fully closes Mini App).
+ * Used to reset VIP plan/consent on reopen without affecting in-session bank/QR return.
+ */
+export function consumeVipMiniAppColdStart() {
+  if (typeof sessionStorage === 'undefined') return false
+  try {
+    const alive = sessionStorage.getItem(VIP_MINI_APP_INSTANCE_KEY) === '1'
+    sessionStorage.setItem(VIP_MINI_APP_INSTANCE_KEY, '1')
+    return !alive
+  } catch {
+    return false
+  }
+}
+
+/** Clear VIP purchase / ABA pending state after Mini App cold start. */
+export function resetVipPurchaseFlowOnMiniAppColdStart() {
+  clearVipAbaKhqrPendingPayment()
+  clearVipAbaKhqrBrowserFlowMark()
+  clearVipAbaKhqrSession()
+  clearVipAbaKhqrConfirmingUiDismissed()
 }
 
 /** Restore VIP tab awaiting / confirming UI after in-app navigation or cold mount. */

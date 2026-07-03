@@ -29,6 +29,7 @@ import {
  * }} HomeFilterPanelConfig */
 
 const SINGLE_KEYS = new Set(['genre', 'status', 'lengthId', 'source', 'audience'])
+const HIDE_GENRE_AND_TAG_CONTENT_FOR_OFFICIAL_REVIEW = true
 
 function clampInt(n, min, max, fallback) {
   const v = Math.floor(Number(n))
@@ -84,6 +85,20 @@ function normalizeGroup(raw, index) {
   return { key, title, type, options }
 }
 
+function hideOfficialReviewFilterContent(group) {
+  if (!HIDE_GENRE_AND_TAG_CONTENT_FOR_OFFICIAL_REVIEW) return group
+  if (group.key === 'genre') {
+    return {
+      ...group,
+      options: group.options.filter((option) => option.value === 'all'),
+    }
+  }
+  if (group.key === 'tags') {
+    return { ...group, options: [] }
+  }
+  return group
+}
+
 /**
  * 校验并规范化后台返回的筛选面板 JSON。
  * 约定：`genre|status|lengthId|source|audience` 下选项的 `value` 须与小说数据字段一致（如 novel.genreId、novel.audience）；
@@ -106,7 +121,7 @@ export function normalizeHomeFilterPanelConfig(raw) {
     i += 1
     if (!ng || seen.has(ng.key)) continue
     seen.add(ng.key)
-    groups.push(ng)
+    groups.push(hideOfficialReviewFilterContent(ng))
   }
   if (groups.length === 0) return null
   return { title, closeLabel, maxSelectedTags, groups }

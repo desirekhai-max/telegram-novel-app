@@ -172,6 +172,205 @@ body {
   overflow-x: hidden;
 }
 
+/* 底栏三 Tab 保活：固定顶栏 + 内容区显隐 */
+.tg-main-tab-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tg-toolbar--main-tab {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 22;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.tg-toolbar--main-tab .tg-toolbar__search-slot {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+}
+
+.tg-main-tab-toolbar__center {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.tg-main-tab-toolbar__panel {
+  display: none;
+  width: 100%;
+  min-width: 0;
+}
+
+.tg-main-tab-toolbar__panel--active {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.tg-main-tab-toolbar__panel--title.tg-main-tab-toolbar__panel--active {
+  justify-content: center;
+}
+
+.tg-main-tab-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tg-main-tab-host__pane {
+  display: none;
+}
+
+.tg-main-tab-host__pane--active {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.tg-main-tab-host__pane--active > .tg-app {
+  flex: 1;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.tg-main-tab-host__pane--active > .tg-app--home {
+  height: auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.tg-main-tab-host__pane--active > .tg-app--home > .tg-home-body-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.tg-page-shell:has(.tg-main-tab-shell),
+.tg-swipe-foreground:has(.tg-main-tab-shell) {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.tg-page-shell:has(.tg-main-tab-shell) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 首页书本详情：叠在 Home 内容区上，不盖住共用顶栏 */
+.tg-app--home-detail-open.tg-app--home {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.tg-main-tab-host--overlay-open {
+  position: relative;
+}
+
+.tg-main-tab-host--overlay-open .tg-main-tab-host__pane--underlay .tg-account-scroll,
+.tg-main-tab-host--overlay-open .tg-main-tab-host__pane--underlay .tg-home-body-scroll {
+  overflow: hidden;
+}
+
+.tg-shared-chrome-overlay-pane {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--tg-app-surface);
+}
+
+.tg-shared-chrome-overlay-pane.tg-local-swipe-sheet--gesture {
+  will-change: transform;
+}
+
+.tg-shared-chrome-overlay-pane > .tg-app {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tg-shared-chrome-overlay-pane .tg-account-scroll,
+.tg-shared-chrome-overlay-pane .tg-home-body-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tg-home-novel-detail-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--tg-app-surface);
+}
+
+.tg-home-novel-detail-overlay.tg-local-swipe-sheet--gesture {
+  will-change: transform;
+}
+
+.tg-home-novel-detail-overlay__scroller {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 内嵌 ReaderPage：高度跟 overlay，由 .tg-reader-detail 滚动（与独立路由一致） */
+.tg-home-novel-detail-overlay__scroller > .tg-app--reader {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tg-home-novel-detail-overlay__scroller .tg-reader-swipe-sheet {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.tg-home-novel-detail-overlay__scroller .tg-reader-detail {
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.tg-app--home-detail-open .tg-home-body-scroll {
+  overflow: hidden;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -1583,17 +1782,21 @@ a {
   }
 }
 
-/* Notifications: toolbar divider + empty/loading polish; no outer cards */
-.tg-notifications__toolbar.tg-toolbar {
+.tg-toolbar--overlay-route,
+.tg-toolbar--notifications-route {
   box-shadow: none;
   border-bottom: 1px solid rgba(129, 161, 255, 0.13);
 }
 
-.tg-notifications__toolbar .tg-toolbar__title {
+.tg-toolbar__title--overlay {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.03em;
   color: #eef2ff;
+}
+
+.tg-toolbar__tab-end .tg-notifications__mark-all {
+  margin-left: 0;
 }
 
 .tg-notifications__mark-all {
@@ -2397,6 +2600,16 @@ a {
   transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+a.tg-aba-khqr-entry {
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+a.tg-aba-khqr-entry[aria-disabled='true'] {
+  pointer-events: none;
+}
+
 .tg-aba-khqr-entry--aba-mobile {
   background: #fff;
 }
@@ -2523,7 +2736,7 @@ a {
   --tg-aba-khqr-display-width: 74vw;
   --tg-aba-khqr-aspect-ratio: 216 / 448;
   --tg-aba-khqr-max-height: calc(
-    100dvh - 108px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+    100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 16px
   );
   --tg-aba-khqr-merchant-mask-top: 27%;
   --tg-aba-khqr-merchant-mask-height: 12.5%;
@@ -2956,6 +3169,12 @@ a {
   background: var(--tg-aba-khqr-canvas);
 }
 
+.tg-aba-khqr-page.tg-app--account {
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 100dvh;
+}
+
 .tg-aba-khqr-page.tg-app,
 .tg-aba-khqr-page .tg-list-wrap,
 .tg-aba-khqr-page__main,
@@ -2964,14 +3183,23 @@ a {
   background: var(--tg-aba-khqr-canvas);
 }
 
+.tg-aba-khqr-page .tg-list-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .tg-aba-khqr-page__main {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: max(8px, env(safe-area-inset-top, 0px)) 13vw max(8px, env(safe-area-inset-bottom, 0px));
 }
 
@@ -3159,6 +3387,15 @@ a {
   text-align: center;
   font-size: 11px;
   color: #64748b;
+}
+
+.tg-aba-khqr-page__expiry {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  letter-spacing: 0.01em;
 }
 
 /* template3_color — light KHQR receipt */
@@ -8276,6 +8513,23 @@ body.tg-desktop-admin #root {
   pointer-events: none;
   background-color: transparent;
   isolation: isolate;
+  transform: translate3d(0, 0, 0);
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tg-bottom-nav-dock--detail-hidden {
+  transform: translate3d(0, calc(100% + env(safe-area-inset-bottom, 0px)), 0);
+  pointer-events: none;
+}
+
+.tg-bottom-nav-dock--detail-hidden-instant {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-bottom-nav-dock {
+    transition: none;
+  }
 }
 
 .tg-bottom-nav-dock .tg-bottom-nav {
@@ -8739,6 +8993,11 @@ body.tg-desktop-admin #root {
   text-decoration: none;
   color: transparent;
   font-size: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
 .tg-novel-card__backdrop:active + .tg-novel-card__content {

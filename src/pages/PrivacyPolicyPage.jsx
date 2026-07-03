@@ -1,13 +1,15 @@
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import HomePageDom from '../components/HomePageDom.jsx'
+import { useMainTabShell } from '../hooks/useMainTabShell.js'
 
 export default function PrivacyPolicyPage() {
+  const usesSharedToolbar = useMainTabShell()
+  const toolbar = usesSharedToolbar ? null : (
+    <BrandTabToolbar title="Privacy Policy · គោលការណ៍ឯកជនភាព" titleClassName="text-[16px]" />
+  )
+
   return (
-    <HomePageDom
-      toolbar={
-        <BrandTabToolbar title="Privacy Policy · គោលការណ៍ឯកជនភាព" titleClassName="text-[16px]" />
-      }
-    >
+    <HomePageDom toolbar={toolbar}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
           <p

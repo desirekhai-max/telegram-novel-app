@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { bindNovelNavPrefetchHandlers } from '../lib/prefetchNovelOnNav.js'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
+import { useMainTabShell } from '../hooks/useMainTabShell.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { fetchReadingRecordsByMemberId, getPresenceMemberId } from '../lib/miniAppPresence.js'
 import { buildReadingHistoryNavigateTarget } from '../lib/readingHistoryNav.js'
@@ -67,7 +68,8 @@ const historyHelpers = {
 }
 
 export default function ReadingHistoryPage() {
-  const swipeHandlers = useEdgeSwipeBack()
+  const usesSharedToolbar = useMainTabShell()
+  const swipeHandlers = useEdgeSwipeBack({ disabled: usesSharedToolbar })
   const tgUser = useTelegramUser()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -120,7 +122,9 @@ export default function ReadingHistoryPage() {
 
   return (
     <div className="tg-app tg-app--account">
-      <BrandTabToolbar title="ប្រវត្តិអាន" titleLang="km" showDivider />
+      {usesSharedToolbar ? null : (
+        <BrandTabToolbar title="ប្រវត្តិអាន" titleLang="km" showDivider />
+      )}
       <main
         className="tg-list-wrap tg-account-scroll flex flex-1 flex-col px-6 py-8"
         {...swipeHandlers}

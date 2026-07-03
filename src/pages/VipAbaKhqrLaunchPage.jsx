@@ -52,11 +52,13 @@ function resolveLaunchContext(locationState) {
   return { planId, role, mock }
 }
 
-function openBrowserFlow(session, planId) {
-  const opened = startAbaKhqrPaymentFlow(session, planId)
-  if (!opened.opened) return opened
+async function openBrowserFlow(session, planId) {
+  const pid = String(planId || session?.planId || '').trim()
+  if (!session?.tranId || !pid) return { opened: false, method: 'missing_session' }
   saveVipAbaKhqrPendingPayment(session, { expireAtMs: session.expireAtMs })
   markVipAbaKhqrBrowserFlowOpen(session)
+  const opened = await startAbaKhqrPaymentFlow(session, pid)
+  if (!opened.opened) return opened
   return opened
 }
 
@@ -118,7 +120,7 @@ export default function VipAbaKhqrLaunchPage() {
     }
   }, [launchContext])
 
-  const tryOpenBrowser = useCallback((session, planId) => {
+  const tryOpenBrowser = useCallback(async (session, planId) => {
     const pid = String(planId || session?.planId || '').trim()
     if (!session?.tranId || !pid) {
       setPhase('failed')
@@ -128,17 +130,29 @@ export default function VipAbaKhqrLaunchPage() {
     sessionRef.current = session
     saveVipAbaKhqrSession(session)
 
-    const result = openBrowserFlow(session, pid)
+    const result = await openBrowserFlow(session, pid)
     if (!result.opened) {
       setPhase('failed')
       setErrorText(String(result.method || 'browser_open_failed'))
       return false
     }
 
+    if (result.showQrInMiniApp && result.miniAppQrPath) {
+      clearLaunchIntent()
+      navigate(result.miniAppQrPath, { replace: true })
+      return true
+    }
+
+    if (result.launchedInMiniApp) {
+      clearLaunchIntent()
+      navigate('/vip', { replace: true })
+      return true
+    }
+
     setPhase('opening')
     setErrorText('')
     return true
-  }, [])
+  }, [navigate])
 
   useLayoutEffect(() => {
     saveLaunchIntent({

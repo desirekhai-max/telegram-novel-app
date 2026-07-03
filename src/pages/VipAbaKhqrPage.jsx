@@ -11,26 +11,26 @@ import {
 import {
   buildAbaQrPageReturnUrl,
   shouldTryAbaMobileDeeplinkFirst,
-  trySummonAbaMobile,
   trySummonAbaMobileInBrowser,
 } from '../lib/abaMobile.js'
 import { isTelegramMiniApp } from '../lib/telegramWebApp.js'
 import { readVipPaymentFulfillmentHint } from '../lib/vipPaymentResultState.js'
-import { confirmViewerVipPayment, fetchAbaKhqrHandoffSession } from '../lib/viewerProfileApi.js'
+import { fetchAbaKhqrHandoffSession } from '../lib/viewerProfileApi.js'
 import {
   clearVipAbaKhqrPendingPayment,
   clearVipAbaKhqrSession,
   consumeSessionBootFromUrl,
+  handoffKhqrBootShell,
   loadVipAbaKhqrPendingPayment,
   loadVipAbaKhqrSession,
-  handoffKhqrBootShell,
+  resolveVipAbaKhqrQrPageExpireAtMs,
   saveVipAbaKhqrSession,
 } from '../lib/vipAbaKhqrSession.js'
 import { preloadVipPaymentSuccessAssets } from '../lib/vipPaymentSuccessAssets.js'
 import { scheduleVipPaymentSuccessNavigation } from '../lib/vipPaymentSuccessNavigation.js'
 import { useViewerProfile } from '../hooks/useViewerProfile.js'
-import { useDisablePageZoom } from '../hooks/useDisablePageZoom.js'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
+import { useVipAbaKhqrPaymentConfirm } from '../hooks/useVipAbaKhqrPaymentConfirm.js'
 
 const ABA_SUMMON_FAILED_NOTE =
   'មិនអាចបើក ABA Mobile ។ សូម Scan QR ខាងលើដើម្បីបង់ប្រាក់'
@@ -104,8 +104,8 @@ export default function VipAbaKhqrPage() {
   const planIdParam = String(searchParams.get('plan_id') || '').trim()
   const tranIdParam = String(searchParams.get('tran_id') || '').trim()
   const handoffParam = String(searchParams.get('handoff') || '').trim()
-  const autoSummonQuery = searchParams.get('auto_summon') === '1'
   const fulfillmentHint = readVipPaymentFulfillmentHint(searchParams)
+  const inTelegram = isTelegramMiniApp()
 
   const qrSessionRef = useRef(
     readQrSession(planIdParam, tranIdParam, uiMockQuery, viewerProfile.role, searchParams),
@@ -117,26 +117,34 @@ export default function VipAbaKhqrPage() {
   const [handoffError, setHandoffError] = useState('')
   const autoSummonAttemptedRef = useRef(false)
   const qrSession = qrSessionRef.current
-  const inTelegram = isTelegramMiniApp()
   const abaSummonFailedQuery = searchParams.get('aba_summon_failed') === '1'
   const shouldAutoSummonInBrowser =
-    !inTelegram && !abaSummonFailedQuery && autoSummonQuery
+    !inTelegram && !abaSummonFailedQuery && shouldTryAbaMobileDeeplinkFirst()
   const shouldHideQrForAutoSummon = shouldAutoSummonInBrowser
-  const [showQrAfterAutoSummon, setShowQrAfterAutoSummon] = useState(!shouldHideQrForAutoSummon)
+  const [showQrAfterAutoSummon, setShowQrAfterAutoSummon] = useState(
+    () => inTelegram || !shouldHideQrForAutoSummon,
+  )
 
   const isUiMock = isUiMockAbaKhqrSession(qrSession) || uiMockQuery
   const tranId = String(qrSession?.tranId || tranIdParam || '').trim()
   const planId = String(qrSession?.planId || planIdParam || '').trim()
 
+  const qrExpireAtMs = useMemo(
+    () => resolveVipAbaKhqrQrPageExpireAtMs(tranId, searchParams),
+    [searchParams, tranId],
+  )
+  const [qrRemainingMs, setQrRemainingMs] = useState(() =>
+    Math.max(0, qrExpireAtMs - Date.now()),
+  )
+
   const [statusNote, setStatusNote] = useState(() => {
     if (isUiMockAbaKhqrSession(qrSession) || uiMockQuery) return ''
     if (searchParams.get('aba_summon_failed') === '1') return ABA_SUMMON_FAILED_NOTE
-    if (!inTelegram) return BROWSER_RETURN_NOTE
-    return 'កំពុងរង់ចាំការបញ្ជាក់ការទូទាត់…'
+    if (inTelegram) return ''
+    return BROWSER_RETURN_NOTE
   })
   const [resultModal, setResultModal] = useState(null)
   const [successSlideOut, setSuccessSlideOut] = useState(false)
-  const pollRef = useRef(0)
   const successNavRef = useRef(false)
   const pendingSuccessRef = useRef(false)
   const redirectCheckedRef = useRef(false)
@@ -155,12 +163,16 @@ export default function VipAbaKhqrPage() {
   }, [planId, qrSession, tranId])
 
   useEffect(() => {
-    if (!inTelegram) handoffKhqrBootShell()
+    if (inTelegram) return undefined
+    handoffKhqrBootShell()
+    return undefined
   }, [inTelegram])
 
   useEffect(() => {
+    if (inTelegram) return undefined
     if (sessionReady || handoffError) handoffKhqrBootShell()
-  }, [sessionReady, handoffError])
+    return undefined
+  }, [handoffError, inTelegram, sessionReady])
 
   useEffect(() => {
     if (inTelegram) return undefined
@@ -172,13 +184,41 @@ export default function VipAbaKhqrPage() {
   }, [inTelegram])
 
   useEffect(() => {
+    if (inTelegram) return undefined
     if (searchParams.get('aba_summon_failed') === '1') {
       setStatusNote(ABA_SUMMON_FAILED_NOTE)
     }
-  }, [searchParams])
+  }, [inTelegram, searchParams])
 
   useEffect(() => {
-    if (qrSessionRef.current || uiMockQuery) return undefined
+    if (!showQrAfterAutoSummon || isUiMock) return undefined
+
+    const tick = () => {
+      const remaining = Math.max(0, qrExpireAtMs - Date.now())
+      setQrRemainingMs(remaining)
+      if (remaining <= 0) {
+        setStatusNote(
+          inTelegram
+            ? 'QR ផុតកំណត់ហើយ សូមត្រឡប់ទៅ VIP ហើយបង្កើត QR ថ្មី'
+            : 'QR ផុតកំណត់ហើយ សូមបិទ Browser ហើយបង្កើត QR ថ្មីក្នុង Mini App',
+        )
+      }
+    }
+
+    tick()
+    const timerId = window.setInterval(tick, 1000)
+    return () => window.clearInterval(timerId)
+  }, [inTelegram, isUiMock, qrExpireAtMs, showQrAfterAutoSummon])
+
+  useEffect(() => {
+    if (inTelegram && abaSummonFailedQuery) {
+      setStatusNote(ABA_SUMMON_FAILED_NOTE)
+      setShowQrAfterAutoSummon(true)
+    }
+  }, [abaSummonFailedQuery, inTelegram])
+
+  useEffect(() => {
+    if (inTelegram || qrSessionRef.current || uiMockQuery) return undefined
     if (!tranIdParam) return undefined
 
     if (!handoffParam) {
@@ -220,10 +260,15 @@ export default function VipAbaKhqrPage() {
     return () => {
       cancelled = true
     }
-  }, [handoffParam, planIdParam, searchParams, tranIdParam, uiMockQuery])
+  }, [handoffParam, inTelegram, planIdParam, searchParams, tranIdParam, uiMockQuery])
 
   useEffect(() => {
-    if (!shouldAutoSummonInBrowser || inTelegram || autoSummonAttemptedRef.current || handoffLoading) {
+    if (
+      inTelegram ||
+      !shouldAutoSummonInBrowser ||
+      autoSummonAttemptedRef.current ||
+      handoffLoading
+    ) {
       return undefined
     }
     if (!sessionReady) return undefined
@@ -256,20 +301,15 @@ export default function VipAbaKhqrPage() {
   }, [handoffLoading, inTelegram, returnToQrUrl, sessionReady, shouldAutoSummonInBrowser])
 
   useEffect(() => {
+    if (inTelegram) return undefined
     if (abaSummonFailedQuery) setShowQrAfterAutoSummon(true)
-  }, [abaSummonFailedQuery])
-
-  const stopPolling = useCallback(() => {
-    if (!pollRef.current) return
-    window.clearInterval(pollRef.current)
-    pollRef.current = 0
-  }, [])
+    return undefined
+  }, [abaSummonFailedQuery, inTelegram])
 
   const goSuccess = useCallback(() => {
     if (successNavRef.current) return
     successNavRef.current = true
     pendingSuccessRef.current = false
-    stopPolling()
 
     const activeSession = qrSessionRef.current
     const successPayload = {
@@ -292,59 +332,47 @@ export default function VipAbaKhqrPage() {
         },
       },
     )
-  }, [durationHours, navigate, planId, refreshViewerProfile, stopPolling, tranId])
-
-  const startSuccessCountdown = useCallback(() => {
-    if (successNavRef.current) return
-    if (document.visibilityState !== 'visible') return
-
-    setStatusNote('ការបង់ប្រាក់បានជោគជ័យ កំពុងបញ្ជាក់…')
-    void preloadVipPaymentSuccessAssets()
-    goSuccess()
-  }, [goSuccess])
+  }, [durationHours, navigate, planId, refreshViewerProfile, tranId])
 
   const markPaymentSuccess = useCallback(() => {
     if (successNavRef.current || pendingSuccessRef.current) return
     pendingSuccessRef.current = true
-    stopPolling()
 
     if (document.visibilityState === 'visible') {
-      startSuccessCountdown()
+      setStatusNote('ការបង់ប្រាក់បានជោគជ័យ កំពុងបញ្ជាក់…')
+      void preloadVipPaymentSuccessAssets()
+      goSuccess()
     }
-  }, [startSuccessCountdown, stopPolling])
+  }, [goSuccess])
 
-  const pollPayment = useCallback(async () => {
-    if (!tranId || isUiMock || !inTelegram || successNavRef.current || pendingSuccessRef.current) return
-    const result = await confirmViewerVipPayment({ tranId, planId })
-    if (successNavRef.current || pendingSuccessRef.current) return
-    if (result.ok && result.profile?.vipActive) {
-      markPaymentSuccess()
-      return
-    }
-    if (result.error === 'payment_not_confirmed') {
-      setStatusNote('កំពុងរង់ចាំការបញ្ជាក់ការទូទាត់…')
-    }
-  }, [inTelegram, isUiMock, markPaymentSuccess, planId, tranId])
-
-  const pollPaymentRef = useRef(pollPayment)
-  const startSuccessCountdownRef = useRef(startSuccessCountdown)
-  pollPaymentRef.current = pollPayment
-  startSuccessCountdownRef.current = startSuccessCountdown
+  useVipAbaKhqrPaymentConfirm({
+    enabled: inTelegram && Boolean(tranId) && showQrAfterAutoSummon,
+    tranId,
+    planId,
+    onSuccess: markPaymentSuccess,
+    onExpired: () => {
+      setStatusNote('QR ផុតកំណត់ហើយ សូមត្រឡប់ទៅ VIP ហើយបង្កើត QR ថ្មី')
+    },
+  })
 
   useEffect(() => {
+    if (inTelegram) return undefined
     const qrImage = String(qrSessionRef.current?.qrImage || '').trim()
     if (!qrImage || typeof Image === 'undefined') return undefined
     const img = new Image()
     img.decoding = 'sync'
     img.src = qrImage
     return undefined
-  }, [])
+  }, [inTelegram])
 
   useEffect(() => {
+    if (inTelegram) return undefined
     void preloadVipPaymentSuccessAssets()
-  }, [])
+    return undefined
+  }, [inTelegram])
 
   useEffect(() => {
+    if (inTelegram) return undefined
     if (redirectCheckedRef.current) return
     redirectCheckedRef.current = true
 
@@ -361,10 +389,10 @@ export default function VipAbaKhqrPage() {
     if (!activeTranId) {
       navigate('/vip', { replace: true })
     }
-  }, [navigate, planIdParam, tranIdParam, uiMockQuery, viewerProfile.role])
+  }, [inTelegram, navigate, planIdParam, searchParams, tranIdParam, uiMockQuery, viewerProfile.role])
 
   useEffect(() => {
-    if (!tranId) return undefined
+    if (inTelegram || !tranId) return undefined
 
     if (isUiMock) {
       if (qrSessionRef.current) saveVipAbaKhqrSession(qrSessionRef.current)
@@ -376,47 +404,10 @@ export default function VipAbaKhqrPage() {
 
     if (fulfillmentHint === 'rejected') {
       setResultModal('rejected')
-      return undefined
     }
 
-    if (!inTelegram) return undefined
-
-    void pollPaymentRef.current()
-
-    pollRef.current = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
-      if (pendingSuccessRef.current || successNavRef.current) return
-      void pollPaymentRef.current()
-    }, 4000)
-
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return
-
-      if (!qrSessionRef.current) {
-        qrSessionRef.current = readQrSession(
-          planIdParam,
-          tranIdParam,
-          uiMockQuery,
-          viewerProfile.role,
-          searchParams,
-        )
-      }
-
-      if (pendingSuccessRef.current) {
-        startSuccessCountdownRef.current()
-        return
-      }
-
-      void pollPaymentRef.current()
-    }
-
-    document.addEventListener('visibilitychange', onVisible)
-
-    return () => {
-      stopPolling()
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [fulfillmentHint, inTelegram, isUiMock, planIdParam, stopPolling, tranId, tranIdParam, uiMockQuery, viewerProfile.role])
+    return undefined
+  }, [fulfillmentHint, inTelegram, isUiMock, tranId])
 
   const closeResultModal = useCallback(() => {
     setResultModal(null)
@@ -439,46 +430,6 @@ export default function VipAbaKhqrPage() {
       playStore: '',
       returnUrl: '',
     })
-
-  const showAbaMobileButton = useMemo(() => {
-    if (!inTelegram || isUiMock || !shouldTryAbaMobileDeeplinkFirst()) return false
-    const qrString = String(displaySession?.qrString || '').trim()
-    const deeplink = String(displaySession?.abapayDeeplink || '').trim()
-    return Boolean(qrString || deeplink)
-  }, [displaySession?.abapayDeeplink, displaySession?.qrString, inTelegram, isUiMock])
-
-  const onOpenAbaMobile = useCallback(() => {
-    const session = qrSessionRef.current || displaySession
-    const qrString = String(session?.qrString || '').trim()
-    const deeplink = String(session?.abapayDeeplink || '').trim()
-    if (!qrString && !deeplink) return
-
-    if (isUiMock) {
-      setStatusNote('ABA Mobile (UI demo — app not opened)')
-      return
-    }
-
-    const summonInput = {
-      qrString,
-      abapayDeeplink: deeplink,
-      returnToQrUrl,
-      session: qrSessionRef.current || displaySession,
-      onSummonFailed: () => {
-        setStatusNote(ABA_SUMMON_FAILED_NOTE)
-      },
-    }
-
-    const result = inTelegram
-      ? trySummonAbaMobile({
-          ...summonInput,
-          session: qrSessionRef.current || displaySession,
-        })
-      : trySummonAbaMobileInBrowser(summonInput)
-
-    if (!result.attempted) {
-      setStatusNote(ABA_SUMMON_FAILED_NOTE)
-    }
-  }, [displaySession, inTelegram, isUiMock, returnToQrUrl])
 
   return (
     <div
@@ -505,22 +456,12 @@ export default function VipAbaKhqrPage() {
           {showQrAfterAutoSummon ? (
             <AbaKhqrPaymentScreen
               session={displaySession}
-              statusNote={statusNote}
+              statusNote={qrRemainingMs > 0 ? statusNote : ''}
+              expiryRemainingMs={qrRemainingMs}
               showDemoActions={isUiMock}
               onSimulatePaid={markPaymentSuccess}
-              onQrReady={handoffKhqrBootShell}
+              onQrReady={inTelegram ? undefined : handoffKhqrBootShell}
             />
-          ) : null}
-
-          {showAbaMobileButton ? (
-            <button
-              type="button"
-              className="tg-aba-khqr-page__deeplink-btn"
-              lang="en"
-              onClick={onOpenAbaMobile}
-            >
-              Open ABA Mobile
-            </button>
           ) : null}
         </div>
       </main>

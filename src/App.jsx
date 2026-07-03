@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import AmbientBackdrop from './components/AmbientBackdrop.jsx'
 import BannedUserGate from './components/BannedUserGate.jsx'
 import AppBottomNavDock from './components/AppBottomNavDock.jsx'
+import SharedMainChromeShell from './components/SharedMainChromeShell.jsx'
 import { AppChromeProvider } from './contexts/AppChromeProvider.jsx'
 import { ViewerProfileProvider } from './contexts/ViewerProfileProvider.jsx'
 import { SwipeBackProvider, useSwipeBack } from './contexts/SwipeBackProvider.jsx'
@@ -10,7 +11,13 @@ import { useAppChrome } from './contexts/useAppChrome.js'
 import { isAdminAuthed, verifyAdminSession } from './lib/adminAuth.js'
 import { registerPresencePing } from './lib/miniAppPresence.js'
 import { syncPortraitLockRoute } from './lib/portraitOrientationLock.js'
-import { normalizeAppPathname, shouldRenderAppBottomNavDock } from './lib/bottomNavRoutes.js'
+import {
+  isMainTabPath,
+  isSharedMainChromePath,
+  normalizeAppPathname,
+  shouldMountSwipeBackUnderlay,
+  shouldRenderAppBottomNavDock,
+} from './lib/bottomNavRoutes.js'
 import { loadCatalogNovels } from './lib/novelsRuntime.js'
 import { loadVipPlansCatalog } from './lib/vipPlansRuntime.js'
 import PageTransitionLayout from './layouts/PageTransitionLayout.jsx'
@@ -55,13 +62,18 @@ function AdminGuard() {
   return status === 'allowed' ? <AdminPage /> : <Navigate to="/admin-login?redirect=/admin" replace />
 }
 
-function AppRoutes({ routeLocation }) {
+function AppRoutes({ routeLocation, includeMainTabs = true }) {
   return (
     <Routes location={routeLocation}>
       <Route element={<PageTransitionLayout />}>
-        <Route path="/" element={<HomePage />} />
+        {includeMainTabs ? (
+          <>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/vip" element={<VipPage />} />
+            <Route path="/account" element={<AccountPage />} />
+          </>
+        ) : null}
         <Route path="/notifications" element={<NotificationsPage />} />
-        <Route path="/account" element={<AccountPage />} />
         <Route path="/account/orders" element={<OrderHistoryPage />} />
         <Route path="/account/reading-history" element={<ReadingHistoryPage />} />
         <Route path="/account/saved" element={<SavedPage />} />
@@ -70,7 +82,6 @@ function AppRoutes({ routeLocation }) {
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="/refund-policy" element={<RefundPolicyPage />} />
         <Route path="/contact-us" element={<ContactUsPage />} />
-        <Route path="/vip" element={<VipPage />} />
         <Route path="/vip/aba-khqr" element={<VipAbaKhqrPage />} />
         <Route path="/vip/payment-success" element={<VipPaymentSuccessPage />} />
         <Route path="/vip/checkout-redirect" element={<VipCheckoutRedirectPage />} />
@@ -95,6 +106,7 @@ function AppShell() {
     setFilterPanelOpen,
     homeSearchInputFocused,
     setHomeSearchInputFocused,
+    homeNovelDetailOpen,
   } = useAppChrome()
 
   const isReader = location.pathname.startsWith('/read/')
@@ -102,10 +114,18 @@ function AppShell() {
   const isAdminRoute = location.pathname === '/admin' || isAdminLogin
   const previousLocationRef = useRef(null)
   const currentLocationRef = useRef(location)
+  const gesturePathnameRef = useRef(location.pathname)
+  const portraitPathnameRef = useRef(location.pathname)
+  const foregroundMainTab = isSharedMainChromePath(location.pathname)
 
   useLayoutEffect(() => {
     document.body.classList.toggle('tg-desktop-admin', isAdminRoute)
-    syncPortraitLockRoute(location.pathname)
+    const prevPortrait = normalizeAppPathname(portraitPathnameRef.current)
+    const currPortrait = normalizeAppPathname(location.pathname)
+    portraitPathnameRef.current = location.pathname
+    if (!(isMainTabPath(prevPortrait) && isMainTabPath(currPortrait))) {
+      syncPortraitLockRoute(location.pathname)
+    }
     return () => document.body.classList.remove('tg-desktop-admin')
   }, [isAdminRoute, location.pathname])
 
@@ -129,12 +149,18 @@ function AppShell() {
     currentLocationRef.current = location
   }, [location])
 
-  /** 路由切换时清零边缘返回位移，避免整页仍被 translate 到屏外（表现为点卡片后全白） */
+  /** 路由切换时清零边缘返回位移；主 Tab 互切与主 Tab→子页跳过，避免顶栏/内容区闪动 */
   useEffect(() => {
+    const prev = normalizeAppPathname(gesturePathnameRef.current)
+    const curr = normalizeAppPathname(location.pathname)
+    gesturePathnameRef.current = location.pathname
+    if (isSharedMainChromePath(prev) && isSharedMainChromePath(curr)) return
     resetGesture()
   }, [location.pathname, resetGesture])
 
+  /** 离开主 Tab 时再收起搜索/筛选，Tab 互切不重置（共用顶栏保持状态） */
   useEffect(() => {
+    if (isSharedMainChromePath(location.pathname)) return
     setSearchExploreOpen(false)
     setFilterPanelOpen(false)
     setHomeSearchInputFocused(false)
@@ -167,12 +193,22 @@ function AppShell() {
     filterPanelOpen,
     homeSearchInputFocused,
   })
+  const bottomNavDetailHidden =
+    homeNovelDetailOpen && normalizeAppPathname(location.pathname) === '/'
 
   const backLocation = previousLocationRef.current
   const hasSwipeBackUnderlay =
     backLocation &&
-    normalizeAppPathname(backLocation.pathname) !== normalizeAppPathname(location.pathname)
+    shouldMountSwipeBackUnderlay(backLocation.pathname, location.pathname)
   const swipeGestureActive = gestureLive || gestureAnimating
+
+  const foregroundContent = foregroundMainTab ? (
+    <div className="tg-page-shell" style={{ minHeight: '100%' }}>
+      <SharedMainChromeShell activePathname={location.pathname} />
+    </div>
+  ) : (
+    <AppRoutes routeLocation={location} includeMainTabs={false} />
+  )
 
   return (
     <>
@@ -180,7 +216,7 @@ function AppShell() {
       <div className="tg-app-root">
         {hasSwipeBackUnderlay ? (
           <div className="tg-swipe-underlay" aria-hidden>
-            <AppRoutes routeLocation={backLocation} />
+            <AppRoutes routeLocation={backLocation} includeMainTabs />
           </div>
         ) : null}
         <div
@@ -192,9 +228,9 @@ function AppShell() {
             .filter(Boolean)
             .join(' ')}
         >
-          <AppRoutes routeLocation={location} />
+          {foregroundContent}
         </div>
-        {showBottomNav ? <AppBottomNavDock /> : null}
+        {showBottomNav ? <AppBottomNavDock detailHidden={bottomNavDetailHidden} /> : null}
       </div>
     </>
   )

@@ -1,10 +1,16 @@
 import { Link } from 'react-router-dom'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import HomePageDom from '../components/HomePageDom.jsx'
+import { useMainTabShell } from '../hooks/useMainTabShell.js'
 
 export default function TermsOfServicePage() {
+  const usesSharedToolbar = useMainTabShell()
+  const toolbar = usesSharedToolbar ? null : (
+    <BrandTabToolbar title="Terms of Service · លក្ខខណ្ឌប្រើប្រាស់" titleClassName="text-[16px]" />
+  )
+
   return (
-    <HomePageDom toolbar={<BrandTabToolbar title="Terms of Service · លក្ខខណ្ឌប្រើប្រាស់" titleClassName="text-[16px]" />}>
+    <HomePageDom toolbar={toolbar}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p

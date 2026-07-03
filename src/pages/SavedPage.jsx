@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { bindNovelNavPrefetchHandlers } from '../lib/prefetchNovelOnNav.js'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
+import { useMainTabShell } from '../hooks/useMainTabShell.js'
 import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
@@ -74,7 +75,8 @@ function mergeFavoritedAtMs(serverMs, localMs) {
 }
 
 export default function SavedPage() {
-  const swipeHandlers = useEdgeSwipeBack()
+  const usesSharedToolbar = useMainTabShell()
+  const swipeHandlers = useEdgeSwipeBack({ disabled: usesSharedToolbar })
   const tgUser = useTelegramUser()
   const [savedRows, setSavedRows] = useState(() => readSavedNovelRows())
   const effectiveUserId = tgUser?.id != null ? `tg_${tgUser.id}` : getPresenceMemberId()
@@ -138,7 +140,9 @@ export default function SavedPage() {
 
   return (
     <div className="tg-app tg-app--account">
-      <BrandTabToolbar title="រក្សាទុក" titleLang="km" showDivider />
+      {usesSharedToolbar ? null : (
+        <BrandTabToolbar title="រក្សាទុក" titleLang="km" showDivider />
+      )}
       <main
         className="tg-list-wrap tg-account-scroll flex flex-1 flex-col px-6 py-8"
         {...swipeHandlers}

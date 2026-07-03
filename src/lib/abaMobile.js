@@ -1,22 +1,80 @@
-/** ABA Mobile summon — external browser entry + in-browser retry. */
+/** ABA Mobile summon — Mini App deeplink first, external QR fallback. */
 
-import { buildAbaKhqrPageUrl } from './vipAbaKhqrSession.js'
+import { buildAbaKhqrPageUrl, getActiveVipAbaKhqrPendingExpiry } from './vipAbaKhqrSession.js'
 import { getAppPublicOrigin } from './appPublicUrl.js'
 import { reportVipAbaKhqrDeeplinkOpened } from './vipAbaKhqrSession.js'
+import { isTelegramMiniApp } from './telegramWebApp.js'
 
+const ABA_ANDROID_PACKAGE = 'com.paygo24.ibank'
 const ABA_DEEPLINK_PREFIX = 'abamobilebank://'
 const ABA_BRIDGE_PATH = '/aba-open.html'
 const IFRAME_CLEANUP_MS = 5000
+const ABA_MOBILE_KNOWN_INSTALLED_KEY = 'tg_aba_mobile_known_installed_v1'
 
-const TELEGRAM_OPEN_LINK_OPTS = {
+/** iOS: only users who previously entered ABA get auto-summon (avoids Open link? for no-app users). */
+export function readAbaMobileKnownInstalled() {
+  if (typeof localStorage === 'undefined') return false
+  try {
+    return localStorage.getItem(ABA_MOBILE_KNOWN_INSTALLED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function markAbaMobileKnownInstalled() {
+  if (typeof localStorage === 'undefined') return false
+  try {
+    localStorage.setItem(ABA_MOBILE_KNOWN_INSTALLED_KEY, '1')
+    return true
+  } catch {
+    return false
+  }
+}
+
+const TELEGRAM_HTTP_OPEN_LINK_OPTS = {
   try_instant_view: false,
   tryBrowser: 'external',
 }
 
+const TELEGRAM_DEEPLINK_OPEN_LINK_OPTS = {
+  try_instant_view: false,
+}
+
+function isAbaMobileDeeplinkUrl(url) {
+  return String(url || '')
+    .trim()
+    .toLowerCase()
+    .startsWith(ABA_DEEPLINK_PREFIX)
+}
+
 /** Still visible after this → summon failed (no ABA). */
 export const ABA_SUMMON_FAILURE_TIMEOUT_MS = 2500
+/** iOS Open link? — wait for user to tap Open before treating summon as failed. */
+const IOS_OPEN_LINK_CONFIRM_TIMEOUT_MS = 15000
+/** iOS: quick return after Open tap without ABA → summon failed. */
+const IOS_SUMMON_BOUNCE_MS = 1200
+/** iOS: after summon failed, wait before QR so total feels ~0.5–2s (not instant). */
+const IOS_QR_FALLBACK_MIN_MS = 500
+const IOS_QR_FALLBACK_TARGET_MS = 1000
+const IOS_QR_FALLBACK_MAX_MS = 2000
 /** hidden then visible again within this → likely browser bounce without ABA. */
 export const ABA_SUMMON_BOUNCE_MS = 3500
+
+function delayIosQrFallbackAfterSummonFail(summonStartedAt) {
+  const elapsed = Date.now() - summonStartedAt
+  if (elapsed >= IOS_QR_FALLBACK_MAX_MS) {
+    return Promise.resolve()
+  }
+  const waitForMin = IOS_QR_FALLBACK_MIN_MS - elapsed
+  const waitForTarget = IOS_QR_FALLBACK_TARGET_MS - elapsed
+  const waitMs = Math.min(Math.max(waitForMin, waitForTarget), IOS_QR_FALLBACK_MAX_MS - elapsed)
+  if (waitMs <= 0) {
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, waitMs)
+  })
+}
 
 export function isLikelyMobileDevice() {
   if (typeof navigator === 'undefined') return false
@@ -66,7 +124,7 @@ export function buildPayWayAndroidIntentUrl(qrString, fallbackBackUrl = '') {
   const qr = String(qrString || '').trim()
   if (!qr) return ''
   const back = String(fallbackBackUrl || '').trim()
-  let intent = `intent://ababank.com?type=payway&qrcode=${encodeURIComponent(qr)}#Intent;scheme=abamobilebank;`
+  let intent = `intent://ababank.com?type=payway&qrcode=${encodeURIComponent(qr)}#Intent;scheme=abamobilebank;package=${ABA_ANDROID_PACKAGE};`
   if (back) intent += `S.browser_fallback_url=${encodeURIComponent(back)};`
   intent += 'end;'
   return intent
@@ -76,7 +134,7 @@ export function buildPayWayAndroidIntentUrlFromDeeplink(abapayDeeplink, fallback
   const encoded = extractEncodedQrcodeFromDeeplink(abapayDeeplink)
   if (encoded) {
     const back = String(fallbackBackUrl || '').trim()
-    let intent = `intent://ababank.com?type=payway&qrcode=${encoded}#Intent;scheme=abamobilebank;`
+    let intent = `intent://ababank.com?type=payway&qrcode=${encoded}#Intent;scheme=abamobilebank;package=${ABA_ANDROID_PACKAGE};`
     if (back) intent += `S.browser_fallback_url=${encodeURIComponent(back)};`
     intent += 'end;'
     return intent
@@ -138,7 +196,10 @@ function buildLegacyAbaOpenBridgeUrl(summonTarget, returnToQrUrl) {
 }
 
 function buildBridgeQrFallbackUrl(session, planId = '') {
-  return buildAbaKhqrPageUrl(session, planId)
+  const tid = String(session?.tranId || '').trim()
+  const expiry = getActiveVipAbaKhqrPendingExpiry(tid)
+  const extra = expiry?.expireAtMs ? { expire_at: String(expiry.expireAtMs) } : {}
+  return buildAbaKhqrPageUrl(session, planId, extra)
 }
 
 /** Pre-built deeplink / intent for aba-open.html first-paint summon (no handoff fetch wait). */
@@ -218,12 +279,22 @@ function launchViaHiddenIframe(url) {
 }
 
 function launchViaExternalOpenLink(url) {
+  return openExternalLinkLikeTeleAba(url)
+}
+
+/**
+ * Telegram Mini App: openLink for http(s) or abamobilebank deeplink (no external browser on custom scheme).
+ */
+function openExternalLinkLikeTeleAba(url) {
   const target = String(url || '').trim()
   if (!target || typeof window === 'undefined') return false
   const tg = window.Telegram?.WebApp
   if (typeof tg?.openLink === 'function') {
     try {
-      tg.openLink(target, TELEGRAM_OPEN_LINK_OPTS)
+      const opts = isAbaMobileDeeplinkUrl(target)
+        ? TELEGRAM_DEEPLINK_OPEN_LINK_OPTS
+        : TELEGRAM_HTTP_OPEN_LINK_OPTS
+      tg.openLink(target, opts)
       return true
     } catch {
       /* fall through */
@@ -237,6 +308,44 @@ function launchViaExternalOpenLink(url) {
   }
 }
 
+function launchSummonInTelegramMiniApp(_summonTarget, abapayDeeplink = '') {
+  const deeplink = String(abapayDeeplink || '').trim()
+  if (!deeplink.toLowerCase().startsWith(ABA_DEEPLINK_PREFIX)) return false
+  return openExternalLinkLikeTeleAba(deeplink)
+}
+
+function waitForAbaMobileSummonOutcome(input = {}) {
+  return new Promise((resolve) => {
+    const deeplink = String(input.abapayDeeplink || input.session?.abapayDeeplink || '').trim()
+    if (!deeplink) {
+      resolve({ attempted: false, launched: false, method: 'no_deeplink' })
+      return
+    }
+
+    if (!launchSummonInTelegramMiniApp('', deeplink)) {
+      resolve({ attempted: false, launched: false, method: 'mini_app_launch_failed' })
+      return
+    }
+
+    const reportLaunched = resolveSummonReportCallback(input)
+    watchAbaMobileSummonOutcome({
+      timeoutMs: input.timeoutMs,
+      bounceMs: input.bounceMs,
+      immediateLaunchOnHidden: true,
+      iosOpenDismissFallback: input.iosOpenDismissFallback === true,
+      iosDismissCheckMs: input.iosDismissCheckMs,
+      onLaunched: () => {
+        markAbaMobileKnownInstalled()
+        reportLaunched?.()
+        resolve({ attempted: true, launched: true, method: 'mini_app_deeplink' })
+      },
+      onFailed: () => {
+        resolve({ attempted: true, launched: false, method: 'mini_app_deeplink_failed' })
+      },
+    })
+  })
+}
+
 function resolveSummonReportCallback(input = {}) {
   const tranId = String(input.session?.tranId || input.tranId || '').trim()
   const handoff = String(input.session?.browserHandoffToken || input.handoff || '').trim()
@@ -247,7 +356,7 @@ function resolveSummonReportCallback(input = {}) {
 }
 
 /**
- * @param {{ onLaunched?: () => void, onFailed?: () => void, timeoutMs?: number, bounceMs?: number }} [opts]
+ * @param {{ onLaunched?: () => void, onFailed?: () => void, timeoutMs?: number, bounceMs?: number, immediateLaunchOnHidden?: boolean, iosOpenDismissFallback?: boolean, iosDismissCheckMs?: number }} [opts]
  */
 export function watchAbaMobileSummonOutcome(opts = {}) {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -258,14 +367,26 @@ export function watchAbaMobileSummonOutcome(opts = {}) {
   const timeoutMs =
     Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : ABA_SUMMON_FAILURE_TIMEOUT_MS
   const bounceMs = Number(opts.bounceMs) > 0 ? Number(opts.bounceMs) : ABA_SUMMON_BOUNCE_MS
+  const summonAt = Date.now()
+  const iosDismissCheckMs = Number(opts.iosDismissCheckMs) > 0 ? Number(opts.iosDismissCheckMs) : 700
   let settled = false
   let hiddenAt = 0
+  let dismissTimerId = 0
+
+  const cleanup = () => {
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+    if (opts.iosOpenDismissFallback) {
+      window.removeEventListener('focus', onIosDismiss)
+      window.removeEventListener('pageshow', onIosPageShow)
+    }
+    window.clearTimeout(timerId)
+    window.clearTimeout(dismissTimerId)
+  }
 
   const settle = (kind) => {
     if (settled) return
     settled = true
-    document.removeEventListener('visibilitychange', onVisibilityChange)
-    window.clearTimeout(timerId)
+    cleanup()
     if (kind === 'launched') opts.onLaunched?.()
     else opts.onFailed?.()
   }
@@ -273,6 +394,9 @@ export function watchAbaMobileSummonOutcome(opts = {}) {
   const onVisibilityChange = () => {
     if (document.visibilityState === 'hidden') {
       hiddenAt = Date.now()
+      if (opts.immediateLaunchOnHidden) {
+        settle('launched')
+      }
       return
     }
     if (!hiddenAt) return
@@ -282,7 +406,31 @@ export function watchAbaMobileSummonOutcome(opts = {}) {
     else settle('failed')
   }
 
+  const tryIosDismissFailed = () => {
+    if (settled) return
+    if (Date.now() - summonAt < 400) return
+    if (document.visibilityState === 'hidden') return
+    window.clearTimeout(dismissTimerId)
+    dismissTimerId = window.setTimeout(() => {
+      if (settled) return
+      if (document.visibilityState !== 'hidden') settle('failed')
+    }, iosDismissCheckMs)
+  }
+
+  const onIosDismiss = () => {
+    tryIosDismissFailed()
+  }
+
+  const onIosPageShow = (ev) => {
+    if (ev.persisted) return
+    tryIosDismissFailed()
+  }
+
   document.addEventListener('visibilitychange', onVisibilityChange)
+  if (opts.iosOpenDismissFallback) {
+    window.addEventListener('focus', onIosDismiss)
+    window.addEventListener('pageshow', onIosPageShow)
+  }
   const timerId = window.setTimeout(() => {
     if (document.visibilityState === 'hidden') settle('launched')
     else settle('failed')
@@ -342,7 +490,7 @@ export function openAbaMobileDeeplink(deeplink, stores = {}) {
 }
 
 /**
- * Already in Safari/Chrome — try deeplink/intent directly (no TG bridge).
+ * Standalone mobile browser — try deeplink/intent directly (no TG bridge).
  * @param {{ qrString?: string, abapayDeeplink?: string, returnToQrUrl?: string, onSummonFailed?: () => void, session?: import('./vipAbaKhqrSession.js').VipAbaKhqrSession }} input
  */
 export function trySummonAbaMobileInBrowser(input = {}) {
@@ -437,10 +585,122 @@ export function openAbaKhqrPaymentInExternalBrowser(session, planId = '') {
 }
 
 /**
- * Open formal-site browser QR flow (mobile + desktop Telegram).
- * @param {import('./vipAbaKhqrSession.js').VipAbaKhqrSession} session
- * @param {string} [planId]
+ * Mini App QR page (no external browser).
  */
-export function startAbaKhqrPaymentFlow(session, planId = '') {
-  return openAbaKhqrPaymentInExternalBrowser(session, planId)
+export function openAbaKhqrQrPageInMiniApp(session, planId = '') {
+  if (typeof window === 'undefined') {
+    return { opened: false, method: 'no_window', launchedInMiniApp: false }
+  }
+
+  const pid = String(planId || session?.planId || '').trim()
+  const tid = String(session?.tranId || '').trim()
+  if (!tid || !pid) {
+    return { opened: false, method: 'no_session', launchedInMiniApp: false }
+  }
+
+  const expiry = getActiveVipAbaKhqrPendingExpiry(tid)
+  const extra = expiry?.expireAtMs ? { expire_at: String(expiry.expireAtMs) } : {}
+  const targetUrl = buildAbaKhqrPageUrl(session, pid, extra)
+  if (!targetUrl) {
+    return { opened: false, method: 'mini_app_qr_url_failed', launchedInMiniApp: false }
+  }
+
+  let miniAppQrPath = ''
+  try {
+    const url = new URL(targetUrl, getAppPublicOrigin())
+    miniAppQrPath = `${url.pathname}${url.search}`
+  } catch {
+    return { opened: false, method: 'mini_app_qr_path_failed', launchedInMiniApp: false }
+  }
+
+  return {
+    opened: true,
+    method: 'mini_app_qr_page',
+    launchedInMiniApp: true,
+    showQrInMiniApp: true,
+    miniAppQrPath,
+  }
+}
+
+function openAbaKhqrQrFallback(session, planId = '') {
+  if (isTelegramMiniApp()) {
+    return openAbaKhqrQrPageInMiniApp(session, planId)
+  }
+  return openAbaKhqrQrPageInExternalBrowser(session, planId)
+}
+
+export function openAbaKhqrQrPageInExternalBrowser(session, planId = '') {
+  if (typeof window === 'undefined') return { opened: false, method: 'no_window' }
+
+  const pid = String(planId || session?.planId || '').trim()
+  const tid = String(session?.tranId || '').trim()
+  const expiry = getActiveVipAbaKhqrPendingExpiry(tid)
+  const extra = expiry?.expireAtMs ? { expire_at: String(expiry.expireAtMs) } : {}
+  const targetUrl = buildAbaKhqrPageUrl(session, pid, extra)
+
+  if (targetUrl && launchViaExternalOpenLink(targetUrl)) {
+    return { opened: true, method: 'external_qr_page', launchedInMiniApp: false }
+  }
+
+  return { opened: false, method: 'browser_open_failed', launchedInMiniApp: false }
+}
+
+/**
+ * VIP flow — Telegram Mini App.
+ * iOS installed: Open link? → bank → VIP confirming.
+ * iOS not installed: Open link? → tap Open → ~0.5–2s → Mini App QR page.
+ * Android: unchanged.
+ */
+export async function startAbaKhqrPaymentFlow(session, planId = '') {
+  if (typeof window === 'undefined') {
+    return { opened: false, method: 'no_window', launchedInMiniApp: false }
+  }
+
+  const pid = String(planId || session?.planId || '').trim()
+  if (!session?.tranId || !pid) {
+    return { opened: false, method: 'no_session', launchedInMiniApp: false }
+  }
+
+  const returnToQrUrl = buildAbaQrPageReturnUrl(session.tranId, pid, session)
+  const summonInput = {
+    session,
+    planId: pid,
+    qrString: session.qrString,
+    abapayDeeplink: session.abapayDeeplink,
+    returnToQrUrl,
+  }
+
+  if (isTelegramMiniApp() && shouldTryAbaMobileDeeplinkFirst()) {
+    const summonStartedAt = Date.now()
+    const summonResult = await waitForAbaMobileSummonOutcome({
+      ...summonInput,
+      timeoutMs: isIosDevice() ? IOS_OPEN_LINK_CONFIRM_TIMEOUT_MS : undefined,
+      bounceMs: isIosDevice() ? IOS_SUMMON_BOUNCE_MS : undefined,
+      iosOpenDismissFallback: isIosDevice(),
+    })
+    if (summonResult.launched) {
+      return {
+        opened: true,
+        method: summonResult.method,
+        launchedInMiniApp: true,
+      }
+    }
+
+    if (isIosDevice()) {
+      await delayIosQrFallbackAfterSummonFail(summonStartedAt)
+      return openAbaKhqrQrPageInMiniApp(session, pid)
+    }
+
+    return openAbaKhqrQrFallback(session, pid)
+  }
+
+  if (isIosDevice() && isTelegramMiniApp()) {
+    return openAbaKhqrQrPageInMiniApp(session, pid)
+  }
+
+  if (shouldTryAbaMobileDeeplinkFirst()) {
+    return openAbaKhqrPaymentInExternalBrowser(session, pid)
+  }
+
+  return openAbaKhqrQrFallback(session, pid)
 }

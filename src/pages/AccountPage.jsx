@@ -17,6 +17,7 @@ import {
   UserRound,
 } from 'lucide-react'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
+import { useMainTabShell } from '../hooks/useMainTabShell.js'
 import { CommentMemberBadges } from '../components/CommentMemberBadges.jsx'
 import { ACCOUNT_OPEN_IN_TELEGRAM_KM } from '../lib/errorMessagesKm.js'
 import { tryOpenTelegramMeLink } from '../lib/telegramWebApp.js'
@@ -145,6 +146,7 @@ function AccountActionTile({
 const HIDE_ACCOUNT_COMMUNITY_TILE = false
 
 export default function AccountPage() {
+  const usesSharedToolbar = useMainTabShell()
   const MINI_APP_LOGIN_URL = 'https://t.me/nithian_kh_bot/app'
   const rawUser = useTelegramUser()
   const { viewerProfile, viewerProfileLoading } = useViewerProfile()
@@ -211,7 +213,7 @@ export default function AccountPage() {
 
   return (
     <div className="tg-app tg-app--account">
-      <BrandTabToolbar title="គណនី" />
+      {usesSharedToolbar ? null : <BrandTabToolbar title="គណនី" />}
       <main className="tg-list-wrap tg-account-scroll tg-account-scroll--hub flex flex-1 flex-col px-4 pt-2">
         <section className="relative mx-auto w-full max-w-md" aria-labelledby="account-profile-title">
           <div

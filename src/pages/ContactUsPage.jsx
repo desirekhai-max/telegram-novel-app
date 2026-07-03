@@ -7,18 +7,23 @@ import {
 } from '../lib/telegramWebApp.js'
 import BrandTabToolbar from '../components/BrandTabToolbar.jsx'
 import HomePageDom from '../components/HomePageDom.jsx'
+import { useMainTabShell } from '../hooks/useMainTabShell.js'
 
 const TELEGRAM_SUPPORT_URL = 'https://t.me/VIP_69kkh'
 const SUPPORT_EMAIL = DEFAULT_SUPPORT_EMAIL
 
 export default function ContactUsPage() {
+  const usesSharedToolbar = useMainTabShell()
+  const toolbar = usesSharedToolbar ? null : (
+    <BrandTabToolbar title="Contact Us · ទាក់ទងមកយើង" titleClassName="text-[16px]" />
+  )
   const supportEmailOpenHref = buildSupportEmailOpenHref(
     SUPPORT_EMAIL,
     DEFAULT_SUPPORT_EMAIL_SUBJECT,
   )
 
   return (
-    <HomePageDom toolbar={<BrandTabToolbar title="Contact Us · ទាក់ទងមកយើង" titleClassName="text-[16px]" />}>
+    <HomePageDom toolbar={toolbar}>
       <ul className="tg-list tg-home-novel-list">
         <li className="tg-list__item flex flex-col gap-5">
       <p

@@ -10,6 +10,8 @@ export function useEdgeSwipeBack(options = {}) {
       : 0.22
   const instantBack = options.instantBack === true
   const followGesture = options.followGesture !== false
+  const disabled = options.disabled === true
+  const onBack = typeof options.onBack === 'function' ? options.onBack : null
   const navigate = useNavigate()
   const { resetGesture, startGesture, moveGesture, finishGesture } = useSwipeBack()
   const swipeRef = useRef({ startX: 0, startY: 0, tracking: false, axis: null, dx: 0, started: false })
@@ -23,6 +25,15 @@ export function useEdgeSwipeBack(options = {}) {
       resetGesture()
     }
   }, [resetGesture])
+
+  if (disabled) {
+    return {
+      onTouchStart: undefined,
+      onTouchMove: undefined,
+      onTouchEnd: undefined,
+      onTouchCancel: undefined,
+    }
+  }
 
   const onTouchStart = (e) => {
     const t = e.touches?.[0]
@@ -90,12 +101,14 @@ export function useEdgeSwipeBack(options = {}) {
         finishGesture({ commit: true, releaseDx: st.dx })
       }
       swipeRef.current = { startX: 0, startY: 0, tracking: false, axis: null, dx: 0, started: false }
+      const goBack = () => {
+        if (onBack) onBack()
+        else navigate(-1)
+      }
       if (instantBack) {
-        navigate(-1)
+        goBack()
       } else {
-        window.setTimeout(() => {
-          navigate(-1)
-        }, 220)
+        window.setTimeout(goBack, 220)
       }
       return
     }

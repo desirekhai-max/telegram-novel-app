@@ -1,8 +1,7 @@
-import { Download } from 'lucide-react'
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 import { resolveKhqrAmountParts } from '../lib/abaKhqrAmount.js'
 import { ABA_PAY_HEADER_LOGO_SRC } from '../lib/abaKhqrAssets.js'
-import { downloadKhqrQrImage } from '../lib/abaKhqrDownload.js'
+import { formatKhqrPendingCountdown } from '../lib/vipAbaKhqrCountdown.js'
 
 const KHQR_CARD_MERCHANT_NAME = '69KKH NOVEL'
 
@@ -15,6 +14,7 @@ let lastKhqrImageSrc = ''
 export default function AbaKhqrPaymentScreen({
   session,
   statusNote = '',
+  expiryRemainingMs = 0,
   onSimulatePaid,
   onQrReady,
   showDemoActions = false,
@@ -27,7 +27,6 @@ export default function AbaKhqrPaymentScreen({
   const headerLoadedRef = useRef(false)
   const qrImgRef = useRef(null)
   const headerImgRef = useRef(null)
-  const [downloadPending, setDownloadPending] = useState(false)
 
   const tryHandoffBootShell = useCallback(() => {
     if (qrReadyNotifiedRef.current || !onQrReady || !qrImage) return
@@ -62,15 +61,7 @@ export default function AbaKhqrPaymentScreen({
     return Number.isFinite(n) ? n.toFixed(2) : amountParts.value
   }, [amountParts.value])
 
-  const handleDownloadQr = useCallback(async () => {
-    if (downloadPending || !qrImage) return
-    setDownloadPending(true)
-    try {
-      await downloadKhqrQrImage(qrImage)
-    } finally {
-      setDownloadPending(false)
-    }
-  }, [downloadPending, qrImage])
+  const showExpiry = Number(expiryRemainingMs) > 0
 
   return (
     <div className="tg-aba-khqr-page__panel">
@@ -122,27 +113,19 @@ export default function AbaKhqrPaymentScreen({
         )}
       </div>
 
-      {qrImage ? (
-        <div className="tg-aba-khqr-page__actions">
-          <button
-            type="button"
-            className="tg-aba-khqr-page__download-btn"
-            disabled={downloadPending}
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              void handleDownloadQr()
-            }}
-          >
-            <Download size={18} strokeWidth={2.25} aria-hidden />
-            <span lang="en">Download QR</span>
-          </button>
-        </div>
+      {showExpiry ? (
+        <p className="tg-aba-khqr-page__expiry" lang="km" aria-live="polite">
+          QR នេះមានសុពលភាព ៥ នាទី
+          {' · '}
+          នៅសល់ {formatKhqrPendingCountdown(expiryRemainingMs)}
+        </p>
       ) : null}
 
-      <p className="tg-aba-khqr-page__status" lang="km">
-        {statusNote}
-      </p>
+      {statusNote ? (
+        <p className="tg-aba-khqr-page__status" lang="km">
+          {statusNote}
+        </p>
+      ) : null}
 
       {showDemoActions ? (
         <div className="tg-aba-khqr-page__demo-actions">

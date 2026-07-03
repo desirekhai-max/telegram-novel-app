@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom'
 import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
+import { useMainTabShell } from '../hooks/useMainTabShell.js'
 import { normalizeAppPathname } from '../lib/bottomNavRoutes.js'
 
 /** 从账户等入口进入的政策页：右缘左滑返回，跟手露出真实上一页（AppShell underlay） */
@@ -16,9 +17,10 @@ const EDGE_SWIPE_BACK_PATHS = new Set([
  */
 export default function HomePageDom({ shellClassName = '', toolbar, children, afterMain = null }) {
   const location = useLocation()
+  const usesSharedToolbar = useMainTabShell()
   const edgeSwipeBack = EDGE_SWIPE_BACK_PATHS.has(normalizeAppPathname(location.pathname))
-  const swipeHandlers = useEdgeSwipeBack()
-  const gestureHandlers = edgeSwipeBack ? swipeHandlers : {}
+  const swipeHandlers = useEdgeSwipeBack({ disabled: usesSharedToolbar })
+  const gestureHandlers = edgeSwipeBack && !usesSharedToolbar ? swipeHandlers : {}
 
   return (
     <div

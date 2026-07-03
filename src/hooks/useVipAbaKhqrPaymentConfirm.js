@@ -7,7 +7,7 @@ const POLL_MS = 4000
 
 /**
  * Poll PayWay until VIP is active — used when user returns to Telegram after browser/ABA payment.
- * Confirming UI stays up until payment succeeds or the 2-minute pending TTL expires.
+ * Confirming UI stays up until payment succeeds or the 5-minute pending TTL expires.
  * @param {{
  *   enabled?: boolean,
  *   tranId?: string,

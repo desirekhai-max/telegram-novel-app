@@ -2,6 +2,7 @@ import { Bell, ChevronDown, ChevronUp, Filter, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import HomeFilterPanelOverlay from '../components/HomeFilterPanelOverlay.jsx'
+import HomeNovelDetailOverlay from '../components/HomeNovelDetailOverlay.jsx'
 import HomeNovelCard from '../components/HomeNovelCard.jsx'
 import { MAX_SELECTED_FILTER_TAGS } from '../data/homeFilters.js'
 import {
@@ -45,6 +46,7 @@ import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
 import { useTelegramUser } from '../hooks/useTelegramUser.js'
 import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount.js'
 import { setNovelGenreOptions } from '../lib/novelDisplay.js'
+import { useMainTabShell } from '../hooks/useMainTabShell.js'
 import HomePageDom from '../components/HomePageDom.jsx'
 
 const SORT_OPTIONS = [
@@ -55,6 +57,7 @@ const SORT_OPTIONS = [
   { id: 'meat', label: 'ទំហំ'},
 ]
 const HOME_PAGE_SIZE = 43
+const HIDE_HOME_NOVELS_FOR_OFFICIAL_REVIEW = true
 
 /** 当前选中项的 title：sortDesc 为 true 对应 ﹀（降序），false 对应 ︿（升序） */
 const SORT_ACTIVE_TITLE = {
@@ -95,18 +98,25 @@ function buildPageButtonItems(current, total) {
 export default function HomePage() {
   const location = useLocation()
   const navigate = useNavigate()
+  const usesSharedToolbar = useMainTabShell()
   const tgUser = useTelegramUser()
   const [novelList, setNovelList] = useState(() =>
     isCatalogLoadedFromApi() ? getCatalogNovelsSync() : [],
   )
   const [catalogReady, setCatalogReady] = useState(() => isCatalogLoadedFromApi())
   const unreadNotificationCount = useUnreadNotificationCount(tgUser)
-  /** 顶栏搜索框文案（可随时编辑） */
-  const [searchDraft, setSearchDraft] = useState('')
-  /** 仅按回车后用于列表筛选；与草稿不一致时视为未提交，不展示搜索卡片 */
-  const [committedQuery, setCommittedQuery] = useState('')
-  const searchInputRef = useRef(null)
-  const [filterOpen, setFilterOpen] = useState(false)
+  const {
+    setSearchExploreOpen,
+    setFilterPanelOpen,
+    setHomeSearchInputFocused,
+    homeSearchInputFocused,
+    setHomeNovelDetailOpen,
+    homeSearchDraft,
+    setHomeSearchDraft,
+    homeCommittedQuery,
+    setHomeCommittedQuery,
+    homeSearchInputRef,
+  } = useAppChrome()
   /** 首页筛选面板结构（可由后台 JSON 覆盖，缺省与内置默认一致） */
   const [filterPanelConfig, setFilterPanelConfig] = useState(() => DEFAULT_HOME_FILTER_PANEL_CONFIG)
   const [appliedCriteria, setAppliedCriteria] = useState(null)
@@ -115,33 +125,55 @@ export default function HomePage() {
   /** null：未点选任何排序项，列表仍按「更新」规则排，但顶栏不高亮 */
   const [sortKey, setSortKey] = useState(null)
   const [sortDesc, setSortDesc] = useState(true)
-  const {
-    setSearchExploreOpen,
-    setFilterPanelOpen,
-    setHomeSearchInputFocused,
-    homeSearchInputFocused,
-  } = useAppChrome()
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [detailNovelId, setDetailNovelId] = useState(null)
 
-  const searchTrim = committedQuery.trim()
+  const openNovelDetail = useCallback((novelId) => {
+    const id = String(novelId || '').trim() || null
+    setDetailNovelId(id)
+    setHomeNovelDetailOpen(Boolean(id))
+  }, [setHomeNovelDetailOpen])
+
+  const closeNovelDetail = useCallback(() => {
+    setDetailNovelId(null)
+    setHomeNovelDetailOpen(false)
+  }, [setHomeNovelDetailOpen])
+
+  const searchTrim = homeCommittedQuery.trim()
   const isSearchMode = searchTrim.length > 0
 
   useEffect(() => {
-    if (searchDraft.trim() === committedQuery.trim()) return
-    setCommittedQuery('')
-  }, [searchDraft, committedQuery])
+    if (homeSearchDraft.trim() === homeCommittedQuery.trim()) return
+    setHomeCommittedQuery('')
+  }, [homeSearchDraft, homeCommittedQuery, setHomeCommittedQuery])
 
   useEffect(() => {
-    if (isSearchMode) setFilterOpen(false)
-  }, [isSearchMode])
+    if (!homeCommittedQuery.trim()) return
+    setAuthorShelfFilter(null)
+  }, [homeCommittedQuery])
+
+  useEffect(() => {
+    if (homeSearchDraft !== '' || homeCommittedQuery !== '') return
+    setAuthorShelfFilter(null)
+  }, [homeSearchDraft, homeCommittedQuery])
+
+  useEffect(() => {
+    if (!isSearchMode) return
+    setFilterOpen(false)
+    if (detailNovelId) {
+      setDetailNovelId(null)
+      setHomeNovelDetailOpen(false)
+    }
+  }, [isSearchMode, detailNovelId, setHomeNovelDetailOpen])
 
   useEffect(() => {
     const incomingQuery = String(location.state?.homeSearchQuery || '').trim()
     if (!incomingQuery) return
     setAuthorShelfFilter(null)
-    setSearchDraft(incomingQuery)
-    setCommittedQuery(incomingQuery)
+    setHomeSearchDraft(incomingQuery)
+    setHomeCommittedQuery(incomingQuery)
     navigate(location.pathname, { replace: true, state: null })
-  }, [location.pathname, location.state, navigate])
+  }, [location.pathname, location.state, navigate, setHomeSearchDraft, setHomeCommittedQuery])
 
   useEffect(() => {
     return () => setHomeSearchInputFocused(false)
@@ -432,8 +464,8 @@ export default function HomePage() {
   const onPickAuthorFromCard = useCallback((name) => {
     setAuthorShelfFilter(name)
     /** 从搜索列表点作者：退出搜索，直接看该作者全部作品（不出现在「已选」里） */
-    setSearchDraft('')
-    setCommittedQuery('')
+    setHomeSearchDraft('')
+    setHomeCommittedQuery('')
   }, [])
 
   const panelCriteria = appliedCriteria ?? EMPTY_HOME_FILTER_CRITERIA
@@ -470,7 +502,7 @@ export default function HomePage() {
     }
   }, [filterOpen, setFilterPanelOpen])
 
-  const homeToolbar = (
+  const homeToolbar = usesSharedToolbar ? null : (
     <>
       <header className="tg-toolbar tg-toolbar--large tg-toolbar--home">
         <button
@@ -491,36 +523,39 @@ export default function HomePage() {
           />
         </button>
         <div className="tg-toolbar__search-slot min-w-0" role="search">
-          <div className="tg-search-field">
+          <form
+            className="tg-search-field"
+            onSubmit={(e) => {
+              e.preventDefault()
+              setAuthorShelfFilter(null)
+              const q = homeSearchDraft.trim()
+              setHomeSearchDraft(q)
+              setHomeCommittedQuery(q)
+              homeSearchInputRef.current?.blur()
+            }}
+          >
             <span className="tg-search-field__icon" aria-hidden="true">
               <Search size={17} strokeWidth={2} />
             </span>
             <input
-              ref={searchInputRef}
+              ref={homeSearchInputRef}
               className="tg-search-field__input"
-              type="text"
+              type="search"
               enterKeyHint="search"
               inputMode="search"
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
               placeholder="ស្វែងរកសៀវភៅ ឬអ្នកនិពន្ធ..."
-              value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
+              value={homeSearchDraft}
+              onChange={(e) => setHomeSearchDraft(e.target.value)}
               onFocus={() => setHomeSearchInputFocused(true)}
               onBlur={() => {
                 window.setTimeout(() => setHomeSearchInputFocused(false), 120)
               }}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return
-                e.preventDefault()
-                setAuthorShelfFilter(null)
-                setCommittedQuery(searchDraft.trim())
-                searchInputRef.current?.blur()
-              }}
               aria-label="ស្វែងរកសៀវភៅ អ្នកនិពន្ធ ឬស្លាក; ចុច Enter ដើម្បីមើលលទ្ធផល និងបិទក្ដារចុច"
             />
-            {searchDraft.length > 0 ? (
+            {homeSearchDraft.length > 0 ? (
               <button
                 type="button"
                 className="tg-search-field__clear"
@@ -528,14 +563,14 @@ export default function HomePage() {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   setAuthorShelfFilter(null)
-                  setSearchDraft('')
-                  setCommittedQuery('')
+                  setHomeSearchDraft('')
+                  setHomeCommittedQuery('')
                 }}
               >
                 <X size={15} strokeWidth={2.25} aria-hidden />
               </button>
             ) : null}
-          </div>
+          </form>
         </div>
         <NavLink
           to="/notifications"
@@ -557,17 +592,27 @@ export default function HomePage() {
 
   return (
     <HomePageDom
-      shellClassName={homeSearchInputFocused ? 'tg-app--home-search-focus' : ''}
+      shellClassName={[
+        homeSearchInputFocused ? 'tg-app--home-search-focus' : '',
+        detailNovelId ? 'tg-app--home-detail-open' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       toolbar={homeToolbar}
       afterMain={
-        filterOpen ? (
-          <HomeFilterPanelOverlay
-            criteria={panelCriteria}
-            panelConfig={filterPanelConfig}
-            onCriteriaChange={onFilterCriteriaChange}
-            onClose={() => setFilterOpen(false)}
-          />
-        ) : null
+        <>
+          {filterOpen ? (
+            <HomeFilterPanelOverlay
+              criteria={panelCriteria}
+              panelConfig={filterPanelConfig}
+              onCriteriaChange={onFilterCriteriaChange}
+              onClose={() => setFilterOpen(false)}
+            />
+          ) : null}
+          {detailNovelId ? (
+            <HomeNovelDetailOverlay novelId={detailNovelId} onClose={closeNovelDetail} />
+          ) : null}
+        </>
       }
     >
         <div className="tg-home-filter-bar">
@@ -657,13 +702,41 @@ export default function HomePage() {
           </div>
         </div>
 
-        {isSearchMode ? (
-          displayedNovels.length === 0 ? (
+        {!HIDE_HOME_NOVELS_FOR_OFFICIAL_REVIEW ? (
+          isSearchMode ? (
+            !catalogReady ? (
+              <p className="tg-home-novel-list__empty" lang="km">
+                កំពុងផ្ទុក…
+              </p>
+            ) : displayedNovels.length === 0 ? (
+              <p className="tg-home-novel-list__empty" lang="km">
+                {(searchKeywordHits?.length ?? 0) === 0
+                  ? `រកមិនឃើញរឿងដែលពាក់ព័ន្ធនឹង 「${searchTrim}」 ទេ (ចំណងជើង អ្នកនិពន្ធ ឬស្លាក)`
+                  : formatHomeSearchFilterEmptyKm(searchTrim)}
+              </p>
+            ) : (
+              <ul className="tg-list tg-home-novel-list">
+                {pagedNovels.map((n) => (
+                  <li key={n.id} className="tg-list__item tg-list__item--novel-card">
+                    <HomeNovelCard
+                      novel={n}
+                      meatCohort={displayedNovels}
+                      onPickOriginal={onPickOriginalFromCard}
+                      onPickTheme={onPickThemeFromCard}
+                      onPickTag={onPickTagFromCard}
+                      onPickAuthor={onPickAuthorFromCard}
+                      onOpenDetail={openNovelDetail}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : !catalogReady ? (
             <p className="tg-home-novel-list__empty" lang="km">
-              {(searchKeywordHits?.length ?? 0) === 0
-                ? `រកមិនឃើញរឿងដែលពាក់ព័ន្ធនឹង 「${searchTrim}」 ទេ (ចំណងជើង អ្នកនិពន្ធ ឬស្លាក)`
-                : formatHomeSearchFilterEmptyKm(searchTrim)}
+              កំពុងផ្ទុក…
             </p>
+          ) : filterHadNoResults ? (
+            <p className="tg-home-novel-list__empty">មិនមានរឿងដែលត្រូវនឹងលក្ខខណ្ឌចម្រាញ់របស់អ្នកទេ សូមព្យាយាមបន្ធូរបន្ថយលក្ខខណ្ឌម្តងទៀត។</p>
           ) : (
             <ul className="tg-list tg-home-novel-list">
               {pagedNovels.map((n) => (
@@ -675,34 +748,14 @@ export default function HomePage() {
                     onPickTheme={onPickThemeFromCard}
                     onPickTag={onPickTagFromCard}
                     onPickAuthor={onPickAuthorFromCard}
+                    onOpenDetail={openNovelDetail}
                   />
                 </li>
               ))}
             </ul>
           )
-        ) : !catalogReady ? (
-          <p className="tg-home-novel-list__empty" lang="km">
-            កំពុងផ្ទុក…
-          </p>
-        ) : filterHadNoResults ? (
-          <p className="tg-home-novel-list__empty">មិនមានរឿងដែលត្រូវនឹងលក្ខខណ្ឌចម្រាញ់របស់អ្នកទេ សូមព្យាយាមបន្ធូរបន្ថយលក្ខខណ្ឌម្តងទៀត។</p>
-        ) : (
-          <ul className="tg-list tg-home-novel-list">
-            {pagedNovels.map((n) => (
-              <li key={n.id} className="tg-list__item tg-list__item--novel-card">
-                <HomeNovelCard
-                  novel={n}
-                  meatCohort={displayedNovels}
-                  onPickOriginal={onPickOriginalFromCard}
-                  onPickTheme={onPickThemeFromCard}
-                  onPickTag={onPickTagFromCard}
-                  onPickAuthor={onPickAuthorFromCard}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-        {displayedNovels.length > 0 && totalPages > 1 ? (
+        ) : null}
+        {!HIDE_HOME_NOVELS_FOR_OFFICIAL_REVIEW && displayedNovels.length > 0 && totalPages > 1 ? (
           <nav className="tg-home-pagination" aria-label="首页分页">
             <button
               type="button"
