@@ -249,12 +249,21 @@ export async function startViewerVipPayWayCheckout(planId) {
   }
 }
 
+const confirmPaymentInflightByTranId = new Map()
+
 export async function confirmViewerVipPayment({
   tranId,
   planId,
   skipVerify = false,
   strictVerify = false,
 } = {}) {
+  const tid = String(tranId || '').trim()
+  if (tid) {
+    const inflight = confirmPaymentInflightByTranId.get(tid)
+    if (inflight) return inflight
+  }
+
+  const work = (async () => {
   const { telegramUser, initDataRaw } = getTelegramAuthPayload()
   if (!telegramUser?.id) {
     return { ok: false, profile: getDefaultViewerProfile(null), order: null, alreadyFulfilled: false }
@@ -298,6 +307,18 @@ export async function confirmViewerVipPayment({
       error: err instanceof Error ? err.message : 'network error',
     }
   }
+  })()
+
+  if (tid) {
+    confirmPaymentInflightByTranId.set(tid, work)
+    work.finally(() => {
+      if (confirmPaymentInflightByTranId.get(tid) === work) {
+        confirmPaymentInflightByTranId.delete(tid)
+      }
+    })
+  }
+
+  return work
 }
 
 export async function purchaseViewerVipPlan(planId) {

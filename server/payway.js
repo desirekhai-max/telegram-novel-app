@@ -416,6 +416,7 @@ export async function checkPayWayTransaction(tranId) {
   const merchant_id = PAYWAY_MERCHANT_ID
   const hash = buildCheckTransactionHash(req_time, merchant_id, tran_id)
   const body = new URLSearchParams({ req_time, merchant_id, tran_id, hash })
+  const checkStartedAt = new Date().toISOString()
   try {
     const res = await fetch(PAYWAY_CHECK_URL, {
       method: 'POST',
@@ -431,6 +432,7 @@ export async function checkPayWayTransaction(tranId) {
     }
     const { status } = sanitizePayWayCheckStatus(parsed)
     const approved = PAYWAY_APPROVED_STATUSES.has(status)
+    console.log(`[payway] check-transaction tran_id=${tran_id} at=${checkStartedAt}`)
     return { ok: approved, status, error: approved ? '' : 'not_approved' }
   } catch (err) {
     return {

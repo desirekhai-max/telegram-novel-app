@@ -131,6 +131,9 @@ const memberProfiles = new Map()
 const vipOrdersByUser = new Map()
 const pendingVipOrdersByTranId = new Map()
 const fulfilledVipTranIds = new Set()
+const CHECK_TRANSACTION_MIN_INTERVAL_MS = 4000
+const payWayCheckTransactionByTranId = new Map()
+const sleepCheckTransactionMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const APP_PUBLIC_URL = String(
   process.env.PAYWAY_APP_PUBLIC_URL
   || process.env.APP_PUBLIC_URL
@@ -971,6 +974,36 @@ async function fulfillVipAfterPayment(input = {}) {
     order: result.order,
     alreadyFulfilled: false,
   }
+}
+
+async function checkPayWayTransactionForConfirm(tranId) {
+  const tid = String(tranId || '').trim().slice(0, 20)
+  if (!tid) return { ok: false, status: '', error: 'tranId required' }
+
+  const nowMs = Date.now()
+  const current = payWayCheckTransactionByTranId.get(tid)
+  if (current?.inflight) return current.inflight
+  const waitMs = current?.lastResult
+    ? Math.max(0, CHECK_TRANSACTION_MIN_INTERVAL_MS - (nowMs - current.lastStartedAt))
+    : 0
+
+  const entry = current || { lastStartedAt: 0, lastResult: null, inflight: null }
+  const inflight = (async () => {
+    if (waitMs > 0) await sleepCheckTransactionMs(waitMs)
+    const startedAt = Date.now()
+    entry.lastStartedAt = startedAt
+    const result = await checkPayWayTransaction(tid)
+    entry.lastResult = result
+    return result
+  })().finally(() => {
+    if (payWayCheckTransactionByTranId.get(tid) === entry) {
+      entry.inflight = null
+    }
+  })
+
+  entry.inflight = inflight
+  payWayCheckTransactionByTranId.set(tid, entry)
+  return inflight
 }
 
 async function applyPaymentSuccessPayload(body, req) {
@@ -3769,7 +3802,7 @@ const server = http.createServer(async (req, res) => {
     const strictVerify = body.strictVerify === true
     const skipVerify = !strictVerify && (body.skipVerify === true || process.env.PAYWAY_SKIP_VERIFY === '1')
     if (!skipVerify) {
-      const checked = await checkPayWayTransaction(tranId)
+      const checked = await checkPayWayTransactionForConfirm(tranId)
       if (!checked.ok) {
         return sendJson(res, 402, {
           ok: false,
