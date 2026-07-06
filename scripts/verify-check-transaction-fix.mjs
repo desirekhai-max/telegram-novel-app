@@ -5,10 +5,15 @@ import {
 } from '../server/payway.js'
 import { getOrderByTranId, initOrdersStore } from '../server/orders-store.js'
 
-const tranId = process.argv[2] || 'V05492680940856742'
-const telegramUserId = process.argv[3] || '8707054926'
+const tranId = String(process.argv[2] || '').trim()
+const telegramUserId = String(process.argv[3] || '').trim()
 const planId = process.argv[4] || 'vip_entry'
 const baseUrl = String(process.argv[5] || 'http://127.0.0.1:8787').replace(/\/+$/, '')
+
+if (!tranId || !telegramUserId) {
+  console.error('Usage: node scripts/verify-check-transaction-fix.mjs <realTranId> <telegramUserId> [planId] [baseUrl]')
+  process.exit(1)
+}
 
 initOrdersStore()
 const beforeOrder = getOrderByTranId(tranId)

@@ -1,9 +1,15 @@
 import { setTimeout as sleep } from 'node:timers/promises'
 
 const base = String(process.argv[2] || 'http://127.0.0.1:8787').replace(/\/+$/, '')
-const tranId = process.argv[3] || 'V65487983105686120'
-const telegramUserId = Number(process.argv[4] || '8399654879')
+const tranId = String(process.argv[3] || '').trim()
+const telegramUserIdRaw = String(process.argv[4] || '').trim()
+const telegramUserId = Number(telegramUserIdRaw)
 const planId = process.argv[5] || 'vip_premium'
+
+if (!tranId || !telegramUserIdRaw || !Number.isFinite(telegramUserId)) {
+  console.error('Usage: node scripts/verify-payway-timeline-real.mjs <baseUrl> <realTranId> <telegramUserId> [planId]')
+  process.exit(1)
+}
 
 async function confirm(label) {
   const startedAt = new Date()

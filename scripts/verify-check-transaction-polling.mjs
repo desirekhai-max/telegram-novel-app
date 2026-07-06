@@ -1,14 +1,19 @@
 /**
  * Verify Check Transaction polling interval and dedupe against local API.
- * Usage: node scripts/verify-check-transaction-polling.mjs [tranId] [telegramUserId]
+ * Usage: node scripts/verify-check-transaction-polling.mjs <realTranId> <telegramUserId> [baseUrl] [planId]
  */
-import { spawn } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
 
-const tranId = process.argv[2] || 'V05492680940856742'
-const telegramUserId = Number(process.argv[3] || '8707054926')
+const tranId = String(process.argv[2] || '').trim()
+const telegramUserIdRaw = String(process.argv[3] || '').trim()
+const telegramUserId = Number(telegramUserIdRaw)
 const baseUrl = String(process.argv[4] || 'http://127.0.0.1:8787').replace(/\/+$/, '')
-const planId = 'vip_entry'
+const planId = String(process.argv[5] || 'vip_entry').trim()
+
+if (!tranId || !telegramUserIdRaw || !Number.isFinite(telegramUserId)) {
+  console.error('Usage: node scripts/verify-check-transaction-polling.mjs <realTranId> <telegramUserId> [baseUrl] [planId]')
+  process.exit(1)
+}
 
 const POLL_MS = 4000
 const POLL_COUNT = 5

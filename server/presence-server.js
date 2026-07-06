@@ -3581,6 +3581,7 @@ const server = http.createServer(async (req, res) => {
     }
     const atMs = now()
     const tranId = buildVipTranId(profile.telegramUserId, atMs)
+    console.log(`[payway] payment-order-created tran_id=${tranId} at=${new Date(atMs).toISOString()} channel=payway_hosted`)
     const amount = parseUsdAmountFromLabel(plan.priceUsdLabel)
     const expireAt = computePaymentExpireAt(atMs)
     const storeOrder = createPaymentOrder({
@@ -3646,6 +3647,7 @@ const server = http.createServer(async (req, res) => {
     }
     const atMs = now()
     const tranId = buildVipTranId(profile.telegramUserId, atMs)
+    console.log(`[payway] payment-order-created tran_id=${tranId} at=${new Date(atMs).toISOString()} channel=aba_khqr`)
     const amount = parseUsdAmountFromLabel(plan.priceUsdLabel)
     const expireAt = computePaymentExpireAt(atMs)
     const storeOrder = createPaymentOrder({

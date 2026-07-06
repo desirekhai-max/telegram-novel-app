@@ -82,7 +82,7 @@ E:        1 秒后 1 次
 客户端请求日志：
 
 ```
-Test TranId: V65487983105686120
+Test TranId: <真实订单 tran_id>
 A1_same_second client=2026-07-06T17:54:21.581Z status=402
 A2_same_second client=2026-07-06T17:54:21.678Z status=402
 A3_same_second client=2026-07-06T17:54:21.680Z status=402
@@ -96,9 +96,9 @@ E_plus_4s     client=2026-07-06T17:54:30.581Z status=402
 后端真实 PayWay 调用日志：
 
 ```
-[payway] check-transaction tran_id=V65487983105686120 at=2026-07-06T17:54:21.703Z
-[payway] check-transaction tran_id=V65487983105686120 at=2026-07-06T17:54:26.204Z
-[payway] check-transaction tran_id=V65487983105686120 at=2026-07-06T17:54:30.585Z
+[payway] check-transaction tran_id=<真实订单 tran_id> at=2026-07-06T17:54:21.703Z
+[payway] check-transaction tran_id=<真实订单 tran_id> at=2026-07-06T17:54:26.204Z
+[payway] check-transaction tran_id=<真实订单 tran_id> at=2026-07-06T17:54:30.585Z
 ```
 
 验证结论：同秒 3 次、1 秒后额外请求、同秒 2 次请求都没有进入 PayWay；PayWay 后台只收到被 gate 放行的请求。
@@ -246,11 +246,11 @@ Poll #4
 
 命令：`node scripts/verify-poll-coordinator-sim.mjs`
 
-### 测试 2 — 真实 API（pending 订单 V65487983105686120）
+### 测试 2 — 真实 API（pending 订单 `<真实订单 tran_id>`）
 
 ```
 Test TranId:
-V65487983105686120
+<真实订单 tran_id>
 
 Poll #1
 01:34:16.360
@@ -272,7 +272,7 @@ Poll #5
 Δ 4.012s
 ```
 
-命令：`node scripts/verify-check-transaction-polling.mjs V65487983105686120 8707054926`
+命令：`node scripts/verify-check-transaction-polling.mjs <真实订单 tran_id> <telegramUserId>`
 
 ---
 

@@ -7,8 +7,13 @@ import {
 } from '../server/payway.js'
 import { getOrderByTranId, initOrdersStore } from '../server/orders-store.js'
 
-const tranId = process.argv[2] || 'V05492680940856742'
-const telegramUserId = process.argv[3] || '8707054926'
+const tranId = String(process.argv[2] || '').trim()
+const telegramUserId = String(process.argv[3] || '').trim()
+
+if (!tranId || !telegramUserId) {
+  console.error('Usage: node scripts/_diag-once.mjs <realTranId> <telegramUserId>')
+  process.exit(1)
+}
 
 initOrdersStore()
 const order = getOrderByTranId(tranId)
