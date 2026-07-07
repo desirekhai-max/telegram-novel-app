@@ -133,6 +133,15 @@ const pendingVipOrdersByTranId = new Map()
 const fulfilledVipTranIds = new Set()
 const CHECK_TRANSACTION_MIN_INTERVAL_MS = 4000
 const payWayCheckTransactionByTranId = new Map()
+const serverCheckTransactionPollsByTranId = new Map()
+const PAYWAY_TERMINAL_UNPAID_STATUSES = new Set([
+  'DECLINED',
+  'FAILED',
+  'CANCELLED',
+  'CANCELED',
+  'EXPIRED',
+  'REJECTED',
+])
 const sleepCheckTransactionMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const APP_PUBLIC_URL = String(
   process.env.PAYWAY_APP_PUBLIC_URL
@@ -958,6 +967,7 @@ async function fulfillVipAfterPayment(input = {}) {
 
   if (tranId) {
     fulfilledVipTranIds.add(tranId)
+    stopServerCheckTransactionPoll(tranId)
     markOrderPaid(tranId, now(), result.order.id)
     const row = pendingVipOrdersByTranId.get(tranId)
     if (row) pendingVipOrdersByTranId.set(tranId, { ...row, status: 'paid', paidAt: now() })
@@ -1004,6 +1014,120 @@ async function checkPayWayTransactionForConfirm(tranId) {
   entry.inflight = inflight
   payWayCheckTransactionByTranId.set(tid, entry)
   return inflight
+}
+
+function normalizePayWayPollStatus(status) {
+  return String(status || '').trim().toUpperCase()
+}
+
+function isAbaKhqrPendingOrderActive(row, atMs = now()) {
+  const tranId = String(row?.tranId || '').trim().slice(0, 20)
+  if (!tranId || fulfilledVipTranIds.has(tranId)) return false
+  if (String(row?.paymentChannel || '').trim() !== 'aba_khqr') return false
+  if (String(row?.status || 'pending').trim() !== 'pending') return false
+  const expireAt = Number(row?.expireAt || 0) || 0
+  if (expireAt > 0 && expireAt <= atMs) return false
+  const planId = String(row?.planId || '').trim()
+  const telegramUserId = normalizeTelegramUserId(row?.telegramUserId)
+  const memberId = String(row?.memberId || '').trim()
+  return Boolean(planId && (telegramUserId || memberId))
+}
+
+function stopServerCheckTransactionPoll(tranId) {
+  const tid = String(tranId || '').trim().slice(0, 20)
+  if (!tid) return
+  const poll = serverCheckTransactionPollsByTranId.get(tid)
+  if (!poll) return
+  if (poll.timerId) clearTimeout(poll.timerId)
+  serverCheckTransactionPollsByTranId.delete(tid)
+}
+
+function scheduleServerCheckTransactionPoll(tranId, delayMs = CHECK_TRANSACTION_MIN_INTERVAL_MS) {
+  const tid = String(tranId || '').trim().slice(0, 20)
+  if (!tid || !isPayWayConfigured()) return false
+  const row = pendingVipOrdersByTranId.get(tid)
+  if (!isAbaKhqrPendingOrderActive(row)) {
+    stopServerCheckTransactionPoll(tid)
+    return false
+  }
+
+  let poll = serverCheckTransactionPollsByTranId.get(tid)
+  if (!poll) {
+    poll = { timerId: null, inFlight: false }
+    serverCheckTransactionPollsByTranId.set(tid, poll)
+  }
+  if (poll.timerId || poll.inFlight) return true
+
+  poll.timerId = setTimeout(() => {
+    const active = serverCheckTransactionPollsByTranId.get(tid)
+    if (active) active.timerId = null
+    void runServerCheckTransactionPoll(tid)
+  }, Math.max(0, Number(delayMs || 0)))
+  return true
+}
+
+async function runServerCheckTransactionPoll(tranId) {
+  const tid = String(tranId || '').trim().slice(0, 20)
+  const poll = serverCheckTransactionPollsByTranId.get(tid)
+  if (!tid || !poll || poll.inFlight) return
+
+  const row = pendingVipOrdersByTranId.get(tid)
+  if (!isAbaKhqrPendingOrderActive(row)) {
+    stopServerCheckTransactionPoll(tid)
+    return
+  }
+
+  poll.inFlight = true
+  let shouldContinue = false
+  try {
+    const checked = await checkPayWayTransactionForConfirm(tid)
+    const latest = pendingVipOrdersByTranId.get(tid) || row
+    if (!isAbaKhqrPendingOrderActive(latest)) {
+      stopServerCheckTransactionPoll(tid)
+      return
+    }
+
+    if (checked.ok) {
+      const fulfillment = await fulfillVipAfterPayment({
+        tranId: tid,
+        planId: latest.planId,
+        telegramUserId: latest.telegramUserId,
+        memberId: latest.memberId,
+      })
+      if (!fulfillment.ok) {
+        console.warn(`[payway] server check fulfillment failed tran_id=${tid} error=${fulfillment.error}`)
+      }
+      persistMembers()
+      stopServerCheckTransactionPoll(tid)
+      return
+    }
+
+    const status = normalizePayWayPollStatus(checked.status)
+    if (PAYWAY_TERMINAL_UNPAID_STATUSES.has(status) || checked.error === 'payment_expired') {
+      stopServerCheckTransactionPoll(tid)
+      return
+    }
+
+    shouldContinue = true
+  } catch (err) {
+    console.warn(`[payway] server check polling failed tran_id=${tid}:`, err?.message || err)
+    shouldContinue = true
+  } finally {
+    const active = serverCheckTransactionPollsByTranId.get(tid)
+    if (active) active.inFlight = false
+  }
+
+  if (shouldContinue) {
+    scheduleServerCheckTransactionPoll(tid, CHECK_TRANSACTION_MIN_INTERVAL_MS)
+  }
+}
+
+function resumeServerCheckTransactionPolls() {
+  for (const [tranId, row] of pendingVipOrdersByTranId.entries()) {
+    if (isAbaKhqrPendingOrderActive(row)) {
+      scheduleServerCheckTransactionPoll(tranId, CHECK_TRANSACTION_MIN_INTERVAL_MS)
+    }
+  }
 }
 
 async function applyPaymentSuccessPayload(body, req) {
@@ -3708,6 +3832,7 @@ const server = http.createServer(async (req, res) => {
         khqrSession,
       })
     }
+    scheduleServerCheckTransactionPoll(tranId, CHECK_TRANSACTION_MIN_INTERVAL_MS)
     persistMembers()
     return sendJson(res, 200, {
       ok: true,
@@ -3771,6 +3896,7 @@ const server = http.createServer(async (req, res) => {
       }
       const order = markOrderAbaAppLaunched(tranId)
       if (!order) return sendJson(res, 404, { ok: false, error: 'order_not_found' })
+      scheduleServerCheckTransactionPoll(tranId, 0)
       return sendJson(res, 200, { ok: true, order })
     }
 
@@ -3783,6 +3909,7 @@ const server = http.createServer(async (req, res) => {
     }
     const order = markOrderAbaAppLaunched(tranId)
     if (!order) return sendJson(res, 404, { ok: false, error: 'order_not_found' })
+    scheduleServerCheckTransactionPoll(tranId, 0)
     return sendJson(res, 200, { ok: true, order })
   }
 
@@ -4813,6 +4940,7 @@ initAppSettingsStore()
 initNovelVisibilityStore()
 initOrdersStore()
 loadPersistedMembers()
+resumeServerCheckTransactionPolls()
 loadAdminSessionsFromDisk()
 initNovelCoverUpload()
 initNovelsStore()
