@@ -97,9 +97,15 @@ function isPhase1SandboxOnly() {
   return !urls.some(isProductionPayWayUrl)
 }
 
+function isProductionModeConfigured() {
+  if (isSandboxModeEnabled()) return false
+  const urls = [PAYWAY_CHECKOUT_URL, PAYWAY_CHECK_URL, PAYWAY_QR_URL]
+  return urls.every(isProductionPayWayUrl)
+}
+
 export function isPayWayConfigured() {
   if (!PAYWAY_MERCHANT_ID || !PAYWAY_API_KEY) return false
-  return isPhase1SandboxOnly()
+  return isPhase1SandboxOnly() || isProductionModeConfigured()
 }
 
 export function getPayWayQrLifetimeMinutes() {
@@ -118,6 +124,7 @@ export function getPayWaySandboxStatus() {
     qrUrl: PAYWAY_QR_URL || null,
     qrLifetimeMin: PAYWAY_QR_LIFETIME_MIN,
     phase1SandboxOnly: isPhase1SandboxOnly(),
+    productionModeConfigured: isProductionModeConfigured(),
   }
 }
 
