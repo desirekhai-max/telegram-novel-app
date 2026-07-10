@@ -49,7 +49,7 @@ import { useEdgeSwipeBack } from '../hooks/useEdgeSwipeBack.js'
 import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount.js'
 import { normalizeStoredMemberTier } from '../lib/memberTier.js'
 import { refreshAppFromLogo } from '../lib/refreshAppFromLogo.js'
-import { tryOpenTelegramMeLink } from '../lib/telegramWebApp.js'
+import { isTelegramMiniApp, tryOpenTelegramMeLink } from '../lib/telegramWebApp.js'
 import { formatReadingRecordInstant } from '../lib/adminDateTimePickerUtils.js'
 import {
   appendNovelReplyVerbose,
@@ -387,6 +387,7 @@ export default function ReaderPage() {
   const isVipReader = Boolean(viewerProfile.vipActive)
   const [reviewItems, setReviewItems] = useState([])
   const [startReadPageOpen, setStartReadPageOpen] = useState(false)
+  const [webMiniAppOnlyNoticeOpen, setWebMiniAppOnlyNoticeOpen] = useState(false)
   const [chapterVipGateOpen, setChapterVipGateOpen] = useState(false)
   const [readingChapterIndex, setReadingChapterIndex] = useState(null)
   const [articleHeaderCompact, setArticleHeaderCompact] = useState(false)
@@ -1271,6 +1272,10 @@ export default function ReaderPage() {
   }, [novel, location.state?.openChapterIndex])
 
   const onOpenStartReadPage = () => {
+    if (!isTelegramMiniApp()) {
+      setWebMiniAppOnlyNoticeOpen(true)
+      return
+    }
     if (isMiniAppLoggedIn || devGuestRead) {
       const firstReadableChapterIndex = findFirstReadableChapterIndex(novel)
       if (firstReadableChapterIndex >= 0) {
@@ -2020,6 +2025,35 @@ export default function ReaderPage() {
               </div>
             </nav>
           </main>
+        </div>
+      ) : null}
+
+      {webMiniAppOnlyNoticeOpen ? (
+        <div className="tg-reader-start-page" role="dialog" aria-modal="true" aria-labelledby="tg-reader-web-mini-app-only-title">
+          <button
+            type="button"
+            className="tg-reader-start-page__backdrop"
+            aria-label="បិទ"
+            onClick={() => setWebMiniAppOnlyNoticeOpen(false)}
+          />
+          <div className="tg-reader-start-page__panel">
+            <h3 id="tg-reader-web-mini-app-only-title" className="tg-reader-start-page__title" lang="km">
+              ការជូនដំណឹង
+            </h3>
+            <p className="tg-reader-start-page__desc" lang="km">
+              សូមបើកកម្មវិធីនេះនៅក្នុងកម្មវិធី Telegram Mini។
+            </p>
+            <div className="tg-reader-start-page__actions">
+              <button
+                type="button"
+                className="tg-reader-start-page__btn tg-reader-start-page__btn--primary"
+                onClick={() => setWebMiniAppOnlyNoticeOpen(false)}
+                lang="km"
+              >
+                យល់ព្រម
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 

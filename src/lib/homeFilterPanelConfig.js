@@ -29,7 +29,7 @@ import {
  * }} HomeFilterPanelConfig */
 
 const SINGLE_KEYS = new Set(['genre', 'status', 'lengthId', 'source', 'audience'])
-const HIDE_GENRE_AND_TAG_CONTENT_FOR_OFFICIAL_REVIEW = true
+const HIDE_GENRE_AND_TAG_CONTENT_FOR_OFFICIAL_REVIEW = false
 
 function clampInt(n, min, max, fallback) {
   const v = Math.floor(Number(n))

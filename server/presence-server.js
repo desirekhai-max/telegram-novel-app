@@ -3070,18 +3070,20 @@ function normalizeIp(raw) {
 }
 
 function getRequestIp(req) {
-  const xff = String(req.headers['x-forwarded-for'] || '').split(',')[0]
-  const cfIp = String(req.headers['cf-connecting-ip'] || '')
-  const realIp = String(req.headers['x-real-ip'] || '')
-  const socketIp = String(req.socket?.remoteAddress || '')
+  const headers = req?.headers || {}
+  const xff = String(headers['x-forwarded-for'] || '').split(',')[0]
+  const cfIp = String(headers['cf-connecting-ip'] || '')
+  const realIp = String(headers['x-real-ip'] || '')
+  const socketIp = String(req?.socket?.remoteAddress || '')
   return normalizeIp(xff || cfIp || realIp || socketIp)
 }
 
 function getRequestGeoLabel(req) {
-  const bodyCity = String(req.headers['x-geo-city'] || req.headers['x-vercel-ip-city'] || req.headers['cf-ipcity'] || '').trim()
-  const bodyRegion = String(req.headers['x-geo-region'] || req.headers['x-vercel-ip-region'] || req.headers['cf-region'] || '').trim()
-  const bodyDistrict = String(req.headers['x-geo-district'] || req.headers['x-location-district'] || '').trim()
-  const userProvided = String(req.headers['x-location-label'] || '').trim()
+  const headers = req?.headers || {}
+  const bodyCity = String(headers['x-geo-city'] || headers['x-vercel-ip-city'] || headers['cf-ipcity'] || '').trim()
+  const bodyRegion = String(headers['x-geo-region'] || headers['x-vercel-ip-region'] || headers['cf-region'] || '').trim()
+  const bodyDistrict = String(headers['x-geo-district'] || headers['x-location-district'] || '').trim()
+  const userProvided = String(headers['x-location-label'] || '').trim()
   if (userProvided) return userProvided.slice(0, 120)
   if (bodyRegion && bodyDistrict) return `${bodyRegion} / ${bodyDistrict}`.slice(0, 120)
   if (bodyRegion && bodyCity) return `${bodyRegion} / ${bodyCity}`.slice(0, 120)

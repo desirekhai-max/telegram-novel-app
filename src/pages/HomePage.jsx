@@ -57,7 +57,7 @@ const SORT_OPTIONS = [
   { id: 'meat', label: 'ទំហំ'},
 ]
 const HOME_PAGE_SIZE = 43
-const HIDE_HOME_NOVELS_FOR_OFFICIAL_REVIEW = true
+const HIDE_HOME_NOVELS_FOR_OFFICIAL_REVIEW = false
 
 /** 当前选中项的 title：sortDesc 为 true 对应 ﹀（降序），false 对应 ︿（升序） */
 const SORT_ACTIVE_TITLE = {
