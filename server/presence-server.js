@@ -3568,11 +3568,13 @@ const server = http.createServer(async (req, res) => {
     let volumeWritable = false
 
     try {
-      // 补：先确保目录存在
-      if (!fs.existsSync(PERSISTENT_DATA_DIR)) {
-        fs.mkdirSync(PERSISTENT_DATA_DIR, { recursive: true })
-      }
-      const probe = path.join(PERSISTENT_DATA_DIR, '.health-probe')
+      // Railway 优先用挂载路径：RAILWAY_VOLUME_MOUNT_PATH 才是正确的！
+      const dataDir = process.env.RAILWAY_VOLUME_MOUNT_PATH 
+        || process.env.PERSISTENT_DATA_DIR 
+        || PERSISTENT_DATA_DIR
+
+      // 只尝试写，不强行创建目录——Railway 会自动建好挂载目录
+      const probe = path.join(dataDir, '.health-probe')
       fs.writeFileSync(probe, String(Date.now()), 'utf8')
       fs.unlinkSync(probe)
       volumeWritable = true
@@ -3584,7 +3586,6 @@ const server = http.createServer(async (req, res) => {
       ok: true,
       volumeConfigured: isVolumeConfigured(),
       persistentDataDir: PERSISTENT_DATA_DIR,
-      envPersistentDataDir: process.env.PERSISTENT_DATA_DIR || null,
       railwayVolumeMountPath: process.env.RAILWAY_VOLUME_MOUNT_PATH || null,
       volumeWritable,
       paths: {
@@ -3592,6 +3593,7 @@ const server = http.createServer(async (req, res) => {
         presenceData: DATA_FILE,
         ordersData: getOrdersDataFilePath(),
         coversDir: COVERS_DIR,
+        legacyNovels: legacyNovelsPath,
       },
       novelsCount: getNovelsCount(),
       ordersCount: getOrdersCount(),
@@ -3606,9 +3608,8 @@ const server = http.createServer(async (req, res) => {
     })
   }
 
-  // 你的其他路由保留在这里
+  // 其他路由保留在这里
 })
-  }
 
   /** ΘªûΘí╡τ¡¢ΘÇëΘ¥óµ¥┐Θàìτ╜«∩╝Üµö╛τ╜« `server/home-filter-panel-config.json`∩╝îσÉÄσÅ░Σ╗╗µäÅµö╣µáçΘóÿ/σêåτ╗ä/ΘÇëΘí╣σì│τöƒµòê∩╝êΘçìσÉ»σÅ»ΘÇë∩╝Üσ╜ôσëìµ»Åµ¼í GET Φ»╗τ¢ÿ∩╝ë */
   const bundledCoverMatch = url.pathname.match(/^\/covers\/([^/]+)$/)
