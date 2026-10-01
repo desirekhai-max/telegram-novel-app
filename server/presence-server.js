@@ -3566,7 +3566,12 @@ const server = http.createServer(async (req, res) => {
     const novelsPath = getNovelsDataFilePath()
     const legacyNovelsPath = path.join(__dirname, 'novels-data.json')
     let volumeWritable = false
+
     try {
+      // 补：先确保目录存在
+      if (!fs.existsSync(PERSISTENT_DATA_DIR)) {
+        fs.mkdirSync(PERSISTENT_DATA_DIR, { recursive: true })
+      }
       const probe = path.join(PERSISTENT_DATA_DIR, '.health-probe')
       fs.writeFileSync(probe, String(Date.now()), 'utf8')
       fs.unlinkSync(probe)
@@ -3574,6 +3579,7 @@ const server = http.createServer(async (req, res) => {
     } catch {
       volumeWritable = false
     }
+
     return sendJson(res, 200, {
       ok: true,
       volumeConfigured: isVolumeConfigured(),
@@ -3589,7 +3595,7 @@ const server = http.createServer(async (req, res) => {
       },
       novelsCount: getNovelsCount(),
       ordersCount: getOrdersCount(),
-      payway: getPayWaySandboxStatus(),
+      payway: getPaywaySandboxStatus(),
       files: {
         novelsDataExists: fs.existsSync(novelsPath),
         presenceDataExists: fs.existsSync(DATA_FILE),
@@ -3598,6 +3604,10 @@ const server = http.createServer(async (req, res) => {
       },
       lastMigration: getLastMigrationResults(),
     })
+  }
+
+  // 你的其他路由保留在这里
+})
   }
 
   /** ΘªûΘí╡τ¡¢ΘÇëΘ¥óµ¥┐Θàìτ╜«∩╝Üµö╛τ╜« `server/home-filter-panel-config.json`∩╝îσÉÄσÅ░Σ╗╗µäÅµö╣µáçΘóÿ/σêåτ╗ä/ΘÇëΘí╣σì│τöƒµòê∩╝êΘçìσÉ»σÅ»ΘÇë∩╝Üσ╜ôσëìµ»Åµ¼í GET Φ»╗τ¢ÿ∩╝ë */
