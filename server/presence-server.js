@@ -3559,56 +3559,74 @@ function requireLegacyAdmin(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
-  if (req.method === 'OPTIONS') return sendJson(res, 204, {})
+  // ===== CORS 头部 =====
+  const origin = req.headers.origin || '*'
+  res.setHeader('Access-Control-Allow-Origin', origin)
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
 
+  // 预检请求
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204)
+    return res.end()
+  }
+
+  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
+
+  // ===== 健康检测接口 =====
   if (req.method === 'GET' && url.pathname === '/api/health/persistence') {
     const novelsPath = getNovelsDataFilePath()
     const legacyNovelsPath = path.join(__dirname, 'novels-data.json')
     let volumeWritable = false
 
     try {
-      // Railway 优先用挂载路径：RAILWAY_VOLUME_MOUNT_PATH 才是正确的！
-      const dataDir = process.env.RAILWAY_VOLUME_MOUNT_PATH 
-        || process.env.PERSISTENT_DATA_DIR 
-        || PERSISTENT_DATA_DIR
-
-      // 只尝试写，不强行创建目录——Railway 会自动建好挂载目录
+      const dataDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || '/data'
       const probe = path.join(dataDir, '.health-probe')
       fs.writeFileSync(probe, String(Date.now()), 'utf8')
       fs.unlinkSync(probe)
       volumeWritable = true
-    } catch {
+    } catch (err) {
+      console.error('Health check failed:', err.message)
       volumeWritable = false
     }
 
     return sendJson(res, 200, {
       ok: true,
-      volumeConfigured: isVolumeConfigured(),
-      persistentDataDir: PERSISTENT_DATA_DIR,
-      railwayVolumeMountPath: process.env.RAILWAY_VOLUME_MOUNT_PATH || null,
       volumeWritable,
+      railwayVolumeMountPath: process.env.RAILWAY_VOLUME_MOUNT_PATH || null,
+      persistentDataDir: typeof PERSISTENT_DATA_DIR !== 'undefined' ? PERSISTENT_DATA_DIR : '/data',
       paths: {
         novelsData: novelsPath,
-        presenceData: DATA_FILE,
-        ordersData: getOrdersDataFilePath(),
-        coversDir: COVERS_DIR,
-        legacyNovels: legacyNovelsPath,
+        legacyNovels: legacyNovelsPath
       },
-      novelsCount: getNovelsCount(),
-      ordersCount: getOrdersCount(),
-      payway: getPaywaySandboxStatus(),
       files: {
         novelsDataExists: fs.existsSync(novelsPath),
-        presenceDataExists: fs.existsSync(DATA_FILE),
-        ordersDataExists: fs.existsSync(getOrdersDataFilePath()),
-        legacyNovelsExists: fs.existsSync(legacyNovelsPath),
-      },
-      lastMigration: getLastMigrationResults(),
+        legacyNovelsExists: fs.existsSync(legacyNovelsPath)
+      }
     })
   }
 
-  // 其他路由保留在这里
+  // ===== 你的其他路由（登录等）保留在这里 =====
+  // ... 不要动你已有的代码 ...
+
+  // 404 兜底
+  res.writeHead(404, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify({ ok: false, error: 'Not Found' }))
+})
+
+// ===== 监听端口：必须在函数外面，不要 return！=====
+const PORT = process.env.PORT || 3000
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server running on port ${PORT}`)
+})
+
+// 全局错误捕获
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err)
+})
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Unhandled Rejection:', err)
 })
 
   /** ΘªûΘí╡τ¡¢ΘÇëΘ¥óµ¥┐Θàìτ╜«∩╝Üµö╛τ╜« `server/home-filter-panel-config.json`∩╝îσÉÄσÅ░Σ╗╗µäÅµö╣µáçΘóÿ/σêåτ╗ä/ΘÇëΘí╣σì│τöƒµòê∩╝êΘçìσÉ»σÅ»ΘÇë∩╝Üσ╜ôσëìµ»Åµ¼í GET Φ»╗τ¢ÿ∩╝ë */
