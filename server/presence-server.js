@@ -4227,7 +4227,16 @@ process.on('unhandledRejection', (err) => {
       return sendJson(res, 400, { ok: false, error: 'username/password/otp required' })
     }
     const passwordOk = verifyAdminPassword(password)
-    if (username !== ADMIN_USER || !passwordOk || !verifyAdminOtp(otp)) {
+    const usernameOk = username === ADMIN_USER
+    const otpOk = verifyAdminOtp(otp)
+
+    console.log('[admin-login-debug]', {
+      usernameOk,
+      passwordOk,
+      otpOk,
+    })
+
+    if (username !== ADMIN_USER || !passwordOk || !otpOk) {
       return sendJson(res, 401, { ok: false, error: 'Φ┤ªσÅ╖πÇüσ»åτáüµêûσè¿µÇüτáüΘöÖΦ»»' })
     }
     const token = crypto.randomBytes(24).toString('hex')
