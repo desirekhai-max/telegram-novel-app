@@ -3610,24 +3610,6 @@ const server = http.createServer(async (req, res) => {
   // ===== 你的其他路由（登录等）保留在这里 =====
   // ... 不要动你已有的代码 ...
 
-  // 404 兜底
-  res.writeHead(404, { 'Content-Type': 'application/json' })
-  res.end(JSON.stringify({ ok: false, error: 'Not Found' }))
-})
-
-// ===== 监听端口：必须在函数外面，不要 return！=====
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server running on port ${PORT}`)
-})
-
-// 全局错误捕获
-process.on('uncaughtException', (err) => {
-  console.error('❌ Uncaught Exception:', err)
-})
-process.on('unhandledRejection', (err) => {
-  console.error('❌ Unhandled Rejection:', err)
-})
-
   /** ΘªûΘí╡τ¡¢ΘÇëΘ¥óµ¥┐Θàìτ╜«∩╝Üµö╛τ╜« `server/home-filter-panel-config.json`∩╝îσÉÄσÅ░Σ╗╗µäÅµö╣µáçΘóÿ/σêåτ╗ä/ΘÇëΘí╣σì│τöƒµòê∩╝êΘçìσÉ»σÅ»ΘÇë∩╝Üσ╜ôσëìµ»Åµ¼í GET Φ»╗τ¢ÿ∩╝ë */
   const bundledCoverMatch = url.pathname.match(/^\/covers\/([^/]+)$/)
   if (req.method === 'GET' && bundledCoverMatch) {
