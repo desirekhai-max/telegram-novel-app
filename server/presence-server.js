@@ -3616,7 +3616,6 @@ const server = http.createServer(async (req, res) => {
 })
 
 // ===== 监听端口：必须在函数外面，不要 return！=====
-const PORT = process.env.PORT || 3000
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${PORT}`)
 })
